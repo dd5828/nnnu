@@ -1,0 +1,53 @@
+{
+  "common": {
+    "appName": "nnnu",
+    "tagline": "AI learning workbench",
+    "language": "Language",
+    "theme": "Theme",
+    "themeLight": "Light",
+    "themeBeige": "Beige",
+    "themeDark": "Dark",
+    "themeGlass": "Glass",
+    "comingSoon": "Coming soon"
+  },
+  "nav": {
+    "home": "Home",
+    "book": "Book",
+    "coWriter": "Co-Writer",
+    "knowledge": "Knowledge",
+    "learning": "Learning",
+    "memory": "Memory",
+    "notebooks": "Notebooks",
+    "questions": "Questions",
+    "skills": "Skills",
+    "partners": "Partners",
+    "agents": "Agents",
+    "playground": "Playground",
+    "settings": "Settings"
+  },
+  "settings": {
+    "appearance": {
+      "theme": "Theme",
+      "uiLanguage": "Interface language",
+      "outputLanguage": "Model output language"
+    },
+    "network": {
+      "backendPort": "Backend port",
+      "frontendPort": "Frontend port",
+      "corsOrigins": "CORS origins"
+    },
+    "system": {
+      "logLevel": "Log level"
+    }
+  },
+  "health": {
+    "backend": "Backend",
+    "status": "Status",
+    "online": "Online",
+    "offline": "Offline",
+    "version": "Version",
+    "memory": "Memory",
+    "uptime": "Uptime",
+    "seconds": "{n}s"
+  }
+}

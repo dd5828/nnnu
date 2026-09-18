@@ -1,0 +1,53 @@
+{
+  "common": {
+    "appName": "nnnu",
+    "tagline": "AI 学习工作台",
+    "language": "语言",
+    "theme": "主题",
+    "themeLight": "浅色",
+    "themeBeige": "米色",
+    "themeDark": "深色",
+    "themeGlass": "玻璃",
+    "comingSoon": "即将推出"
+  },
+  "nav": {
+    "home": "首页",
+    "book": "活书",
+    "coWriter": "协作写作",
+    "knowledge": "知识中心",
+    "learning": "掌握路径",
+    "memory": "记忆",
+    "notebooks": "笔记本",
+    "questions": "题库",
+    "skills": "技能",
+    "partners": "伴侣",
+    "agents": "子代理",
+    "playground": "实验场",
+    "settings": "设置"
+  },
+  "settings": {
+    "appearance": {
+      "theme": "主题",
+      "uiLanguage": "界面语言",
+      "outputLanguage": "模型输出语言"
+    },
+    "network": {
+      "backendPort": "后端端口",
+      "frontendPort": "前端端口",
+      "corsOrigins": "CORS 来源"
+    },
+    "system": {
+      "logLevel": "日志级别"
+    }
+  },
+  "health": {
+    "backend": "后端",
+    "status": "状态",
+    "online": "在线",
+    "offline": "离线",
+    "version": "版本",
+    "memory": "内存",
+    "uptime": "运行时长",
+    "seconds": "{n} 秒"
+  }
+}

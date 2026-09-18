@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+/* ── 四主题（§4）：light 浅色 / beige 米色 / dark 深色 / glass 玻璃 ──
+   机制：<html data-theme="..."> + 每主题一个 CSS 变量块；
+   每个主题必须发布同一套语义 token（新增主题时补齐全部变量）。 */
+
+:root,
+[data-theme="light"] {
+  --background: #f7f8fa;
+  --foreground: #1f2430;
+  --surface: #ffffff;
+  --border: #e4e7ee;
+  --muted: #6b7280;
+  --primary: #4f6ef7;
+  --primary-foreground: #ffffff;
+  --accent: #eef1ff;
+  --sidebar-bg: #f1f2f7;
+  --sidebar-fg: #3b4356;
+  --success: #16a34a;
+  --danger: #dc2626;
+}
+
+[data-theme="beige"] {
+  --background: #f5efe4;
+  --foreground: #33291c;
+  --surface: #fdf8ee;
+  --border: #e2d6c0;
+  --muted: #8a7c64;
+  --primary: #a05e2c;
+  --primary-foreground: #fdf8ee;
+  --accent: #eadfca;
+  --sidebar-bg: #ece1cd;
+  --sidebar-fg: #4a3c28;
+  --success: #3f7d3a;
+  --danger: #b3402f;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #111318;
+  --foreground: #e6e8ee;
+  --surface: #1a1d24;
+  --border: #2c303b;
+  --muted: #8b93a5;
+  --primary: #6f86ff;
+  --primary-foreground: #0d0f14;
+  --accent: #232838;
+  --sidebar-bg: #171a21;
+  --sidebar-fg: #c6cbd8;
+  --success: #4ade80;
+  --danger: #f87171;
+}
+
+[data-theme="glass"] {
+  color-scheme: dark;
+  --background: #14101f;
+  --foreground: #ece9f7;
+  --surface: rgba(255, 255, 255, 0.08);
+  --border: rgba(255, 255, 255, 0.16);
+  --muted: #a99fc9;
+  --primary: #b7a5ff;
+  --primary-foreground: #14101f;
+  --accent: rgba(183, 165, 255, 0.16);
+  --sidebar-bg: rgba(20, 16, 31, 0.6);
+  --sidebar-fg: #d6cff0;
+  --success: #5eead4;
+  --danger: #fda4af;
+}
+
+/* Tailwind token 映射（shadcn v4 同款模式）：bg-background 等工具类直接可用 */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-sidebar-bg: var(--sidebar-bg);
+  --color-sidebar-fg: var(--sidebar-fg);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
