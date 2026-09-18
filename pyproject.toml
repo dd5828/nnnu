@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nnnu"
+dynamic = ["version"]
+# 不设 readme 字段：全部 *.md 不入库，干净 checkout 下构建不能失败
+description = "单用户 AI 学习工作台：agent-native 两层插件架构"
+requires-python = ">=3.11,<3.14"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "pydantic>=2.10",
+    "httpx>=0.28",
+    "PyYAML>=6.0.2",
+    "psutil>=6.0,<8.0",
+]
+
+[project.optional-dependencies]
+# 链式分组（参考仓库 extras 组织方式）：核心依赖即默认安装，
+# server 为空别名占位（对齐未来 CLI-only 拆分），重依赖随对应阶段填充。
+server = []
+rag = []
+math-animator = []
+partners = ["nnnu[server]"]
+dev = [
+    "nnnu[server]",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25,<2",
+    "ruff==0.16.0",
+    "mypy==1.13.0",
+    "pre-commit>=4.0",
+]
+all = ["nnnu[partners]", "nnnu[rag]", "nnnu[math-animator]", "nnnu[dev]"]
+
+[tool.setuptools.dynamic]
+version = { attr = "nnnu.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+extend-select = ["B006"]
+# RUF001-003：中文注释与文档中的全角标点是有意为之
+ignore = ["E501", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/test_*.py" = ["E501", "F401"]
+"**/__init__.py" = ["F401"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["nnnu"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+check_untyped_defs = true
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--strict-markers", "--tb=short"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

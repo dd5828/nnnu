@@ -1,0 +1,11 @@
+# 统一换行符：源码与脚本强制 LF，防 Windows CRLF 混入 CI/容器
+* text=auto
+*.py text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+*.toml text eol=lf

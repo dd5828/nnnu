@@ -1,2 +1,38 @@
-.claude/
+# 文档：全部 md 仅保留本地，不入库（用户要求）
 *.md
+
+# 本地工具与 IDE
+.claude/
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# 运行时数据（§8：data/ 全部 gitignore）
+data/
+
+# 环境与密钥
+.env
+.env.*
+*.log
+
+# 前端
+web/node_modules/
+web/.next/
+web/out/
+
+# 系统
+Thumbs.db
+.DS_Store
