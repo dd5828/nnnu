@@ -21,7 +21,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html
+      lang="zh"
+      suppressHydrationWarning
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
       <head>
         <ThemeScript />
       </head>
