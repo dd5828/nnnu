@@ -1,0 +1,3 @@
+system: "You are {name}, a helpful assistant."
+stage_templates:
+  planning: "Plan for {task}."

@@ -13,6 +13,15 @@ from nnnu.runtime import bootstrap
 
 logger = logging.getLogger(__name__)
 
+
+def _check_prompt_parity() -> None:
+    """启动校验提示词中英键集合一致（§10.1），差异仅告警。"""
+    from nnnu.services.i18n.prompts import get_prompt_manager
+
+    for issue in get_prompt_manager().check_parity():
+        logger.warning("提示词中英不一致: %s", issue)
+
+
 # P0 默认本机前端来源（§11.5）；P2 起读取 network.cors_origins 设置项
 DEFAULT_CORS_ORIGINS = [
     "http://localhost:3782",
@@ -29,6 +38,7 @@ def create_app() -> FastAPI:
         for step, func in (
             ("bootstrap", bootstrap.ensure_bootstrap),
             ("logging", bootstrap.configure_logging),
+            ("prompt-parity", _check_prompt_parity),
         ):
             try:
                 func()
