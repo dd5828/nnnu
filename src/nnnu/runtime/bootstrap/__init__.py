@@ -57,6 +57,10 @@ def ensure_bootstrap() -> Path:
     schema_file = data_root / "system" / "schema_version.txt"
     if not schema_file.exists():
         schema_file.write_text(f"{SCHEMA_VERSION}\n", encoding="utf-8")
+    # 播种缺失的设置 JSON（绝不覆盖用户文件）；局部导入避免循环依赖
+    from nnnu.services.settings.service import get_settings_service
+
+    get_settings_service().seed_missing()
     return data_root
 
 

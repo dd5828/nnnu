@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from nnnu import __version__
-from nnnu.api.routers import health
+from nnnu.api.routers import health, settings
 from nnnu.runtime import bootstrap
 
 logger = logging.getLogger(__name__)
@@ -65,6 +65,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health.router)
+    app.include_router(settings.router)
     return app
 
 
