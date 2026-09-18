@@ -1,1 +1,95 @@
-"""启动引导：内置工具/能力注册清单（P1 实现）。"""
+"""启动引导：幂等创建 data 目录树、schema 版本文件与结构化日志。"""
+
+import json
+import logging
+import logging.handlers
+import os
+from pathlib import Path
+
+from nnnu.runtime import home
+
+SCHEMA_VERSION = "1"
+
+# §8.1 目录布局：启动时随 data 根目录自动创建（全部 gitignore）
+DATA_SUBDIRS: tuple[str, ...] = (
+    "user/settings",
+    "user/memory/trace",
+    "user/memory/L2",
+    "user/memory/L3",
+    "user/sessions",
+    "user/notebooks",
+    "user/question_bank",
+    "user/books",
+    "user/co_writer",
+    "user/skills",
+    "user/knowledge",
+    "user/uploads",
+    "user/workspace",
+    "user/logs",
+    "user/exports",
+    "partners",
+    "system/user-secrets",
+)
+
+_LOGGING_CONFIGURED = False
+
+
+class JsonLineFormatter(logging.Formatter):
+    """§12.4 结构化日志：每行 JSON（time/level/logger/event/exception）。"""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "time": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
+            "level": record.levelname,
+            "logger": record.name,
+            "event": record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        return json.dumps(payload, ensure_ascii=False)
+
+
+def ensure_bootstrap() -> Path:
+    """幂等创建 data 目录树与 schema 版本文件，返回 data 根目录。"""
+    data_root = home.get_data_root()
+    for sub in DATA_SUBDIRS:
+        (data_root / sub).mkdir(parents=True, exist_ok=True)
+    schema_file = data_root / "system" / "schema_version.txt"
+    if not schema_file.exists():
+        schema_file.write_text(f"{SCHEMA_VERSION}\n", encoding="utf-8")
+    return data_root
+
+
+def configure_logging(level: str | None = None) -> None:
+    """应用日志：data/user/logs/{app,error}.log，JSON 行，10MB 轮转保留 7 份。
+
+    进程内只配置一次；NNNU_LOG_LEVEL 环境变量控制级别（默认 info）。
+    """
+    global _LOGGING_CONFIGURED
+    if _LOGGING_CONFIGURED:
+        return
+    _LOGGING_CONFIGURED = True
+
+    raw_level = level or os.environ.get("NNNU_LOG_LEVEL") or "info"
+    level = raw_level.upper()
+    logs_dir = home.get_data_root() / "user" / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+
+    formatter = JsonLineFormatter()
+
+    app_handler = logging.handlers.RotatingFileHandler(
+        logs_dir / "app.log", maxBytes=10 * 1024 * 1024, backupCount=7, encoding="utf-8"
+    )
+    app_handler.setFormatter(formatter)
+    app_handler.setLevel(level)
+
+    error_handler = logging.handlers.RotatingFileHandler(
+        logs_dir / "error.log", maxBytes=10 * 1024 * 1024, backupCount=7, encoding="utf-8"
+    )
+    error_handler.setFormatter(formatter)
+    error_handler.setLevel("ERROR")
+
+    root = logging.getLogger()
+    root.setLevel(level)
+    root.addHandler(app_handler)
+    root.addHandler(error_handler)
