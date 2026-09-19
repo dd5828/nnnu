@@ -63,6 +63,17 @@ def ensure_bootstrap() -> Path:
     return data_root
 
 
+def register_builtins() -> None:
+    """内置工具/能力注册清单（§6.11）：幂等，随阶段追加。"""
+    from nnnu.capabilities.chat.capability import ChatCapability
+    from nnnu.runtime.registry.capability_registry import get_capability_registry
+    from nnnu.runtime.registry.tool_registry import get_tool_registry
+    from nnnu.tools.builtin.ask_user import AskUserTool
+
+    get_capability_registry().register(ChatCapability.manifest, ChatCapability)
+    get_tool_registry().register(AskUserTool())
+
+
 def configure_logging(level: str | None = None) -> None:
     """应用日志：data/user/logs/{app,error}.log，JSON 行，10MB 轮转保留 7 份。
 
