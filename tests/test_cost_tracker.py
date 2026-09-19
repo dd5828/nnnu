@@ -21,8 +21,12 @@ def test_lookup_price_local_markers_return_none():
 
 def test_add_usage_aggregates_per_model():
     tracker = CostTracker()
-    tracker.add_usage(provider="deepseek", model="deepseek-chat", input_tokens=1000, output_tokens=200)
-    tracker.add_usage(provider="deepseek", model="deepseek-chat", input_tokens=500, output_tokens=100)
+    tracker.add_usage(
+        provider="deepseek", model="deepseek-chat", input_tokens=1000, output_tokens=200
+    )
+    tracker.add_usage(
+        provider="deepseek", model="deepseek-chat", input_tokens=500, output_tokens=100
+    )
     summary = tracker.summary()
     assert summary["tokens"] == 1800
     per = summary["per_model"]["deepseek-chat"]
@@ -44,7 +48,9 @@ def test_unknown_model_zero_cost_but_tokens_counted():
 
 def test_add_estimated_chars_ratio():
     tracker = CostTracker()
-    tracker.add_estimated(provider="deepseek", model="deepseek-chat", input_chars=350, output_chars=35)
+    tracker.add_estimated(
+        provider="deepseek", model="deepseek-chat", input_chars=350, output_chars=35
+    )
     per = tracker.summary()["per_model"]["deepseek-chat"]
     assert per["input_tokens"] == 100
     assert per["output_tokens"] == 10
