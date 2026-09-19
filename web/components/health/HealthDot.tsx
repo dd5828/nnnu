@@ -13,10 +13,7 @@ export default function HealthDot() {
       className="inline-flex items-center gap-1.5 text-xs text-muted"
       title={online && data ? `v${data.version}` : undefined}
     >
-      <span
-        className={`size-2 rounded-full ${online ? "bg-success" : "bg-danger"}`}
-        aria-hidden
-      />
+      <span className={`size-2 rounded-full ${online ? "bg-success" : "bg-danger"}`} aria-hidden />
       {online ? data?.version : "—"}
     </span>
   );
