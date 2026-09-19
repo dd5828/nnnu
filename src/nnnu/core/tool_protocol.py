@@ -51,13 +51,17 @@ class ToolResult(BaseModel):
 
 
 class ToolContext(BaseModel):
-    """工具执行上下文：模型输入之外的一切从 ctx 取（不污染 LLM 可见参数面）。"""
+    """工具执行上下文：模型输入之外的一切从 ctx 取（不污染 LLM 可见参数面）。
+
+    args 为模型调用参数（经 JSON Schema 校验后的 dict）。
+    """
 
     turn_id: str
     session_id: str
     language: str = "zh"
     config: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)  # 运行期通道（如 ask_user_fn）
+    args: dict[str, Any] = Field(default_factory=dict)  # 模型调用参数
 
 
 class BaseTool(ABC):
