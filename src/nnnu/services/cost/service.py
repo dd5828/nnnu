@@ -35,9 +35,10 @@ class CostService:
 
     async def query_summary(self, *, days: int = 7) -> dict:
         cutoff = time.time() - days * 86400
+        # 严格 >：粗颗粒时钟下与 cutoff 同 tick 的记录按窗口外处理（days=0 语义确定）
         rows = await self._db.fetch_all(
             """SELECT provider, model, input_tokens, output_tokens, cost, created_at
-               FROM usage_records WHERE created_at >= ? ORDER BY created_at DESC""",
+               FROM usage_records WHERE created_at > ? ORDER BY created_at DESC""",
             (cutoff,),
         )
         per_model: dict[str, dict] = {}

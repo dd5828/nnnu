@@ -236,34 +236,12 @@ class TurnRuntimeManager:
                 )
                 execution.session_id = session.id
                 execution.bus.session_id = session.id  # bus 创建时 session 未知，此处回填
-                if request.session_id is not None:
-                    self._active_by_session[session.id] = execution.turn_id
-                if request.persist_user_message:
-                    # 用户消息落库（ask_user 挂起时对会话列表可见）+ 标题
-                    user_message = Message.new(
-                        session_id=session.id, role="user", content=request.message
-                    )
-                    await self._sessions.append_message(user_message)
-                    await self._sessions.set_title_from_first_user(session.id)
-                else:
-                    # regenerate：复用末条 user 消息为快照（§6.8）
-                    user_message = await self._sessions.get_last_user_message(session.id)
-                    if user_message is None:
-                        raise TurnRejected(f"会话 {session.id} 无用户消息可重新生成")
-                session_messages = await self._sessions.list_messages(session.id)
-
-                await execution.bus.emit_turn_start(
-                    capability=request.capability, model=request.model
-                )
-                ctx = build_unified_context(
-                    request,
-                    session,
-                    user_message,
-                    session_messages,
-                    language=request.language or session.language,
-                )
-                ctx.metadata["ask_user_fn"] = self._make_ask_user_fn(execution)
-                await self._orchestrator.handle(ctx, execution.bus)
+                # 新会话同样注册：resume（按 session 订阅）依赖此映射找到活动回合
+                self._active_by_session[session.id] = execution.turn_id
+                # session 解析后重入日志上下文：后续日志带真实 session_id
+                with turn_log_context(execution.turn_id, session.id):
+                    await self._run_turn_body(execution, request, session, relay)
+                # 正常路径落到 else 分支统一收尾
         except asyncio.CancelledError:
             logger.info("回合被取消 turn=%s", execution.turn_id)
             try:
@@ -281,6 +259,34 @@ class TurnRuntimeManager:
             await self._finalize_turn(execution, session, user_message, relay)
         else:
             await self._finalize_turn(execution, session, user_message, relay)
+
+    async def _run_turn_body(
+        self, execution: _TurnExecution, request: TurnRequest, session, relay
+    ) -> None:
+        """session 解析后的回合主体（异常上抛，收尾全归 _run_turn 单出口）。"""
+        user_message: Message | None
+        if request.persist_user_message:
+            # 用户消息落库（ask_user 挂起时对会话列表可见）+ 标题
+            user_message = Message.new(session_id=session.id, role="user", content=request.message)
+            await self._sessions.append_message(user_message)
+            await self._sessions.set_title_from_first_user(session.id)
+        else:
+            # regenerate：复用末条 user 消息为快照（§6.8）
+            user_message = await self._sessions.get_last_user_message(session.id)
+            if user_message is None:
+                raise TurnRejected(f"会话 {session.id} 无用户消息可重新生成")
+        session_messages = await self._sessions.list_messages(session.id)
+
+        await execution.bus.emit_turn_start(capability=request.capability, model=request.model)
+        ctx = build_unified_context(
+            request,
+            session,
+            user_message,
+            session_messages,
+            language=request.language or session.language,
+        )
+        ctx.metadata["ask_user_fn"] = self._make_ask_user_fn(execution)
+        await self._orchestrator.handle(ctx, execution.bus)
 
     async def _relay(self, execution: _TurnExecution) -> None:
         """bus → wire（补 seq）→ 缓冲 + 订阅者扇出。"""
@@ -318,9 +324,6 @@ class TurnRuntimeManager:
                 await relay
             except Exception:
                 pass
-        for queue in execution.subscribers:
-            queue.put_nowait(None)
-        execution.subscribers.clear()
         # 3) assistant 消息持久化（best-effort，含 partial）
         try:
             if session is not None:
@@ -353,6 +356,10 @@ class TurnRuntimeManager:
         self._finished.move_to_end(execution.turn_id)
         while len(self._finished) > FINISHED_LRU_SIZE:
             self._finished.popitem(last=False)
+        # 7) 最后才投订阅者哨兵：订阅方（REST 收集/WS 转发）结束即全量收尾完成
+        for queue in execution.subscribers:
+            queue.put_nowait(None)
+        execution.subscribers.clear()
 
     async def _persist_assistant(self, execution: _TurnExecution, session_id: str) -> None:
         """从事件缓冲还原 assistant 消息（无终局内容时不落空行）。"""
