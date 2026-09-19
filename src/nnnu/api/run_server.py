@@ -1,20 +1,19 @@
-"""后端启动入口：编程式 uvicorn.run（Windows Proactor + 热重载开关）。
+"""后端启动入口：编程式 uvicorn.run（Windows Proactor + 设置驱动的端口）。
 
 用编程式启动而非 uvicorn CLI：保证 Windows 事件循环策略在 uvicorn 之前
 设置，并控制"先 bootstrap 再从 network 设置读端口"的时序。
+
+开发期热重启由仓库根 dev.py 的 watchfiles 循环负责（本入口始终单进程、
+不带 uvicorn 内置 reload——其 Windows 实现经 multiprocessing spawn，
+在本机 venv 重定向器下启动慢、输出丢失、终止留孤儿进程）。
 """
 
 import asyncio
-import os
 import sys
 
 if sys.platform == "win32":
     # 必须在任何 uvicorn / 子进程使用之前设置（P7 沙箱子进程依赖）
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-
-
-def _dev_reload() -> bool:
-    return os.environ.get("NNNU_DEV_RELOAD", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _backend_port() -> int:
@@ -39,15 +38,6 @@ def main() -> None:
         "nnnu.api.main:app",
         host="0.0.0.0",
         port=_backend_port(),
-        reload=_dev_reload(),
-        reload_excludes=[
-            "data/**",
-            ".venv/**",
-            "venv/**",
-            "web/**",
-            ".git/**",
-            "**/__pycache__/**",
-        ],
         access_log=False,
     )
 

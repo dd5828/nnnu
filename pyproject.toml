@@ -16,6 +16,7 @@ dependencies = [
     "httpx>=0.28",
     "PyYAML>=6.0.2",
     "psutil>=6.0,<8.0",
+    "watchfiles>=0.24",  # dev.py 后端热重启循环（uvicorn[standard] 的传递依赖，显式声明）
 ]
 
 [project.optional-dependencies]
