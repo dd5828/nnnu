@@ -1,0 +1,14 @@
+# P1 验收①脚本（§14）：mock LLM 驱动「思考 → 调 2 个工具 → 回答」。
+# 用法（demo_turn 进程内置 add_numbers/multiply 演示工具）：
+#   NNNU_LLM_MOCK=scripted NNNU_LLM_SCRIPT=tests/fixtures/scripts/p1_acceptance.yaml \
+#     python -m nnnu.api.demo_turn "请计算 1+2 与 3×4"
+steps:
+  - thinking: ["先分别计算两个算式"]
+    tool_calls:
+      - {id: call-1, name: add_numbers, arguments: '{"a": 1, "b": 2}'}
+      - {id: call-2, name: multiply, arguments: '{"x": 3, "y": 4}'}
+    finish_reason: tool_calls
+    usage: {prompt_tokens: 50, completion_tokens: 10}
+  - chunks: ["1+2=3，3×4=12，两个结果分别是 3 和 12。"]
+    finish_reason: stop
+    usage: {prompt_tokens: 40, completion_tokens: 5}
