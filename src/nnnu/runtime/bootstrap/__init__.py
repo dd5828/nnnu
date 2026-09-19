@@ -1,4 +1,8 @@
-"""启动引导：幂等创建 data 目录树、schema 版本文件与结构化日志。"""
+"""启动引导：幂等创建 data 目录树与结构化日志。
+
+schema 版本文件自 v2 起由 services/sessions/schema.py 唯一负责（§8.4 单写者），
+本模块不再写入。
+"""
 
 import json
 import logging
@@ -7,8 +11,6 @@ import os
 from pathlib import Path
 
 from nnnu.runtime import home
-
-SCHEMA_VERSION = "1"
 
 # §8.1 目录布局：启动时随 data 根目录自动创建（全部 gitignore）
 DATA_SUBDIRS: tuple[str, ...] = (
@@ -50,13 +52,10 @@ class JsonLineFormatter(logging.Formatter):
 
 
 def ensure_bootstrap() -> Path:
-    """幂等创建 data 目录树与 schema 版本文件，返回 data 根目录。"""
+    """幂等创建 data 目录树，返回 data 根目录（schema 迁移见 services/sessions/schema.py）。"""
     data_root = home.get_data_root()
     for sub in DATA_SUBDIRS:
         (data_root / sub).mkdir(parents=True, exist_ok=True)
-    schema_file = data_root / "system" / "schema_version.txt"
-    if not schema_file.exists():
-        schema_file.write_text(f"{SCHEMA_VERSION}\n", encoding="utf-8")
     # 播种缺失的设置 JSON（绝不覆盖用户文件）；局部导入避免循环依赖
     from nnnu.services.settings.service import get_settings_service
 

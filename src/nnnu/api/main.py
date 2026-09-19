@@ -34,9 +34,18 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        # 每个子系统单独 try/except：单个失败不阻断启动
+        # 目录树自举失败不阻断（后续步骤各自降级）
+        try:
+            bootstrap.ensure_bootstrap()
+        except Exception:
+            logger.exception("启动步骤 bootstrap 失败，继续启动")
+        # schema 迁移是硬步骤（§8.4）：失败中止启动，绝不静默丢数据
+        from nnnu.runtime import home as runtime_home
+        from nnnu.services.sessions import schema
+
+        schema.migrate(runtime_home.get_data_root())
+        # 其余子系统单独 try/except：单个失败不阻断启动
         for step, func in (
-            ("bootstrap", bootstrap.ensure_bootstrap),
             ("logging", bootstrap.configure_logging),
             ("prompt-parity", _check_prompt_parity),
         ):

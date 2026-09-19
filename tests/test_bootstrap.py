@@ -1,4 +1,4 @@
-"""启动引导：data 目录树创建、schema 版本文件与幂等性。"""
+"""启动引导：data 目录树创建与幂等性（schema 版本文件归 services/sessions/schema.py）。"""
 
 from nnnu.runtime import bootstrap
 from nnnu.runtime.home import get_data_root
@@ -9,9 +9,8 @@ def test_ensure_bootstrap_creates_tree(tmp_home):
     assert data_root == get_data_root()
     for sub in bootstrap.DATA_SUBDIRS:
         assert (data_root / sub).is_dir(), f"缺少目录 {sub}"
-    schema_file = data_root / "system" / "schema_version.txt"
-    assert schema_file.is_file()
-    assert schema_file.read_text(encoding="utf-8").strip() == bootstrap.SCHEMA_VERSION
+    # schema 版本文件不再由 bootstrap 写（§8.4 单写者）
+    assert not (data_root / "system" / "schema_version.txt").exists()
 
 
 def test_ensure_bootstrap_idempotent(tmp_home):
