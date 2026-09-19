@@ -1,0 +1,91 @@
+# §12.3：lint + 后端测试 + 前端测试 + 构建，四 job 最小流水线。
+# Docker 镜像构建 smoke 在 P15 Dockerfile 交付后补充（§13）。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install backend deps
+        run: pip install ".[dev]"
+      - name: Backend lint
+        run: |
+          ruff check src tests
+          ruff format --check src tests
+          mypy src
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install frontend deps
+        run: npm ci
+        working-directory: web
+      - name: Frontend lint
+        run: |
+          npx eslint .
+          npx tsc --noEmit
+        working-directory: web
+
+  test-backend:
+    name: test-backend (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install backend deps
+        run: pip install ".[dev]"
+      - name: Run tests
+        run: pytest
+
+  test-frontend:
+    name: test-frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install frontend deps
+        run: npm ci
+        working-directory: web
+      - name: Run tests
+        run: npm run test
+        working-directory: web
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install frontend deps
+        run: npm ci
+        working-directory: web
+      - name: Build
+        run: npm run build
+        working-directory: web
