@@ -1,4 +1,8 @@
-"""FastAPI 应用装配：lifespan 引导、中间件与路由挂载。"""
+"""FastAPI 应用装配：lifespan 引导、中间件、路由挂载与运行时依赖注入。
+
+app.state.db / app.state.runtime：lifespan 创建（测试隔离天然），
+路由经 request.app.state 取用——不搞模块级单例。
+"""
 
 import logging
 from contextlib import asynccontextmanager
@@ -8,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from nnnu import __version__
-from nnnu.api.routers import health, plugins, settings
+from nnnu.api.routers import chat, cost, health, plugins, sessions, settings, unified_ws
 from nnnu.runtime import bootstrap
 
 logger = logging.getLogger(__name__)
@@ -54,8 +58,29 @@ def create_app() -> FastAPI:
                 func()
             except Exception:
                 logger.exception("启动步骤 %s 失败，继续启动", step)
+        # 运行时装配：数据库 + 会话/成本服务 + 编排器 + TurnRuntime（§6.5 唯一收敛点）
+        from nnnu.runtime.orchestrator import ChatOrchestrator
+        from nnnu.runtime.registry.capability_registry import get_capability_registry
+        from nnnu.runtime.registry.tool_registry import get_tool_registry
+        from nnnu.runtime.turn_runtime import TurnRuntimeManager
+        from nnnu.services.cost.service import CostService
+        from nnnu.services.sessions.db import Database
+        from nnnu.services.sessions.schema import db_path
+        from nnnu.services.sessions.service import SessionManager
+
+        db = Database(db_path(runtime_home.get_data_root()))
+        await db.connect()
+        session_manager = SessionManager(db)
+        cost_service = CostService(db)
+        orchestrator = ChatOrchestrator(
+            capabilities=get_capability_registry(), tools=get_tool_registry()
+        )
+        _app.state.db = db
+        _app.state.runtime = TurnRuntimeManager(
+            sessions=session_manager, costs=cost_service, orchestrator=orchestrator
+        )
         yield
-        # shutdown 钩子占位（P1 起逐子系统 stop）
+        await db.close()
 
     app = FastAPI(
         title="nnnu API",
@@ -87,6 +112,10 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(settings.router)
     app.include_router(plugins.router)
+    app.include_router(chat.router)
+    app.include_router(sessions.router)
+    app.include_router(cost.router)
+    app.include_router(unified_ws.router)
     return app
 
 
