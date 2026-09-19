@@ -37,13 +37,15 @@ _LOGGING_CONFIGURED = False
 
 
 class JsonLineFormatter(logging.Formatter):
-    """§12.4 结构化日志：每行 JSON（time/level/logger/event/exception）。"""
+    """§12.4 结构化日志：每行 JSON（time/level/logger/turn_id/session_id/event/exception）。"""
 
     def format(self, record: logging.LogRecord) -> str:
         payload = {
             "time": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
             "level": record.levelname,
             "logger": record.name,
+            "turn_id": getattr(record, "turn_id", None),
+            "session_id": getattr(record, "session_id", None),
             "event": record.getMessage(),
         }
         if record.exc_info:
@@ -90,18 +92,24 @@ def configure_logging(level: str | None = None) -> None:
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     formatter = JsonLineFormatter()
+    # §12.4 链路关联：回合任务树的所有日志行自动带 turn_id/session_id
+    from nnnu.runtime.log_ctx import TurnContextFilter
+
+    turn_filter = TurnContextFilter()
 
     app_handler = logging.handlers.RotatingFileHandler(
         logs_dir / "app.log", maxBytes=10 * 1024 * 1024, backupCount=7, encoding="utf-8"
     )
     app_handler.setFormatter(formatter)
     app_handler.setLevel(level)
+    app_handler.addFilter(turn_filter)
 
     error_handler = logging.handlers.RotatingFileHandler(
         logs_dir / "error.log", maxBytes=10 * 1024 * 1024, backupCount=7, encoding="utf-8"
     )
     error_handler.setFormatter(formatter)
     error_handler.setLevel("ERROR")
+    error_handler.addFilter(turn_filter)
 
     root = logging.getLogger()
     root.setLevel(level)

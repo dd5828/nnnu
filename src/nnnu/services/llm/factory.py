@@ -29,12 +29,12 @@ from nnnu.services.llm.scripted import ScriptedLLM
 
 logger = logging.getLogger(__name__)
 
-_scripted_factory: Callable[[], ScriptedLLM] | None = None
+_scripted_factory: Callable[[], LLMClient] | None = None
 _env_scripted: ScriptedLLM | None = None
 
 
-def install_scripted(factory_fn: Callable[[], ScriptedLLM]) -> None:
-    """测试注入：每次 create_client 调用 factory_fn 取新脚本实例。"""
+def install_scripted(factory_fn: Callable[[], LLMClient]) -> None:
+    """测试注入：每次 create_client 调用 factory_fn 取新脚本实例（§12.1）。"""
     global _scripted_factory
     _scripted_factory = factory_fn
 
