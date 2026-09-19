@@ -8,7 +8,7 @@
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from nnnu.core.tool_protocol import ToolMountFlags
 from nnnu.services.cost.tracker import CostTracker
@@ -50,6 +50,9 @@ class ModelRef(BaseModel):
 
 
 class UnifiedContext(BaseModel):
+    # CostTracker 是普通类（非 pydantic 模型），需放行任意类型字段
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     session: SessionRef
     capability: str
     message: Message  # 当前用户消息（含附件引用）
