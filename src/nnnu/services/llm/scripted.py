@@ -67,9 +67,7 @@ class ScriptedLLM:
     async def stream(self, request: LLMRequest) -> AsyncIterator[LLMChunk]:
         self.calls.append(request)
         if not self._steps:
-            raise RuntimeError(
-                "脚本耗尽：LLM 调用次数超出脚本定义（防测试假绿，请补脚本步骤）"
-            )
+            raise RuntimeError("脚本耗尽：LLM 调用次数超出脚本定义（防测试假绿，请补脚本步骤）")
         step = self._steps.pop(0)
 
         for thinking_piece in step.thinking:

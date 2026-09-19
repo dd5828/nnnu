@@ -23,8 +23,15 @@ async def test_scripted_stream_chunk_order():
     )
     chunks = [c async for c in llm.stream(_request())]
     kinds = [
-        "thinking" if c.thinking else "tool" if c.tool_call_delta else "text" if c.text
-        else "usage" if c.usage else "finish"
+        "thinking"
+        if c.thinking
+        else "tool"
+        if c.tool_call_delta
+        else "text"
+        if c.text
+        else "usage"
+        if c.usage
+        else "finish"
         for c in chunks
     ]
     # 思考先行，正文其后，usage 与 finish_reason 收尾
