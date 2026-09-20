@@ -411,9 +411,11 @@ class TurnRuntimeManager:
         done = self._last_event(execution, StreamEventType.DONE)
         response = ""
         tool_calls: list[dict] = []
+        citations: list[dict] = []
         if done is not None:
             response = done["payload"].get("response", "")
             tool_calls = done["payload"].get("tool_calls", [])
+            citations = done["payload"].get("citations", [])
         if not response:
             content_done = self._last_event(execution, StreamEventType.CONTENT_DONE)
             response = content_done["payload"]["full_text"] if content_done else ""
@@ -423,7 +425,7 @@ class TurnRuntimeManager:
             if e["type"] == StreamEventType.THINKING_DONE.value
         ]
         cost = self._last_event(execution, StreamEventType.COST_SUMMARY)
-        if not response and not thinking_parts and not tool_calls:
+        if not response and not thinking_parts and not tool_calls and not citations:
             return  # 无任何产出（如立刻停止）不落空 assistant 行
         message = Message.new(
             session_id=session_id,
@@ -431,6 +433,7 @@ class TurnRuntimeManager:
             content=response,
             thinking="".join(thinking_parts) or None,
             tool_calls=tool_calls,
+            citations=citations,
             cost=cost["payload"] if cost else None,
         )
         await self._sessions.append_message(message)

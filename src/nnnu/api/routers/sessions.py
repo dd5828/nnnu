@@ -4,11 +4,12 @@ PATCH 支持会话级 persona（§7.1 粘性）：字段缺席即不变，显式
 """
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, model_validator
 
 from nnnu.capabilities.chat.personas import CUSTOM_PERSONA, is_valid_persona
 from nnnu.runtime.orchestrator import TurnBusyError, TurnRejected
+from nnnu.services.sessions.export import export_session_markdown
 from nnnu.services.sessions.models import Session
 
 router = APIRouter()
@@ -92,6 +93,22 @@ async def patch_session(session_id: str, body: SessionPatch, http_request: Reque
 async def delete_session(session_id: str, http_request: Request):
     await http_request.app.state.runtime._sessions.delete_session(session_id)
     return {"deleted": session_id}
+
+
+@router.get("/api/v1/sessions/{session_id}/export")
+async def export_session(session_id: str, http_request: Request):
+    """§7.1 会话导出：完整 Markdown 转录（消息+思考+工具轨迹+引用+成本）。"""
+    sessions = http_request.app.state.runtime._sessions
+    session = await sessions.get_session(session_id)
+    if session is None:
+        return _error("not_found", f"会话 {session_id} 不存在", False, 404)
+    messages = await sessions.list_messages(session_id)
+    markdown = export_session_markdown(session, messages)
+    return Response(
+        content=markdown,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{session_id}.md"'},
+    )
 
 
 @router.post("/api/v1/sessions/{session_id}/regenerate")
