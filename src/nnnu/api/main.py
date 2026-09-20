@@ -12,7 +12,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from nnnu import __version__
-from nnnu.api.routers import chat, cost, health, plugins, sessions, settings, unified_ws
+from nnnu.api.routers import (
+    attachments,
+    chat,
+    cost,
+    health,
+    plugins,
+    sessions,
+    settings,
+    unified_ws,
+)
 from nnnu.runtime import bootstrap
 
 logger = logging.getLogger(__name__)
@@ -64,6 +73,7 @@ def create_app() -> FastAPI:
         from nnnu.runtime.registry.tool_registry import get_tool_registry
         from nnnu.runtime.turn_runtime import TurnRuntimeManager
         from nnnu.services.cost.service import CostService
+        from nnnu.services.files.service import AttachmentsService
         from nnnu.services.sessions.db import Database
         from nnnu.services.sessions.schema import db_path
         from nnnu.services.sessions.service import SessionManager
@@ -76,6 +86,7 @@ def create_app() -> FastAPI:
             capabilities=get_capability_registry(), tools=get_tool_registry()
         )
         _app.state.db = db
+        _app.state.attachments = AttachmentsService(db, runtime_home.get_data_root())
         _app.state.runtime = TurnRuntimeManager(
             sessions=session_manager, costs=cost_service, orchestrator=orchestrator
         )
@@ -111,6 +122,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(settings.router)
+    app.include_router(attachments.router)
     app.include_router(plugins.router)
     app.include_router(chat.router)
     app.include_router(sessions.router)

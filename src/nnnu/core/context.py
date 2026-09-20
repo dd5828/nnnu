@@ -21,6 +21,7 @@ class SessionRef(BaseModel):
 
 
 class Attachment(BaseModel):
+    id: str  # 上传时分配的附件 id（uploads/<session>/<id>/ 目录名）
     name: str
     path: str | None = None  # data/user/uploads/ 下归档路径（P2 附件落盘）
     mime: str | None = None

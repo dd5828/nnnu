@@ -60,8 +60,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         detect_base_keyword="openai",
         key_prefix="sk-",
         models=[
-            ModelInfo(id="gpt-4o", context_window=131072),
-            ModelInfo(id="gpt-4o-mini", context_window=131072),
+            ModelInfo(
+                id="gpt-4o",
+                context_window=131072,
+                capabilities={"chat", "tool_calling", "vision"},
+            ),
+            ModelInfo(
+                id="gpt-4o-mini",
+                context_window=131072,
+                capabilities={"chat", "tool_calling", "vision"},
+            ),
         ],
     ),
     ProviderSpec(

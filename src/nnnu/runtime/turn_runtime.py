@@ -19,8 +19,9 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
+from nnnu.core.context import Attachment
 from nnnu.core.events import StreamEventType
 from nnnu.core.ids import new_id
 from nnnu.core.stream_bus import StreamBus
@@ -32,6 +33,7 @@ from nnnu.runtime.orchestrator import (
     build_unified_context,
 )
 from nnnu.services.cost.service import CostService
+from nnnu.services.files.service import MAX_ATTACHMENTS_PER_TURN
 from nnnu.services.sessions.models import Message
 from nnnu.services.sessions.service import SessionManager
 
@@ -49,7 +51,7 @@ class TurnRequest(BaseModel):
     session_id: str | None = None
     capability: str = "chat"
     message: str = ""
-    attachments: list[dict] = field(default_factory=list)
+    attachments: list[Attachment] = field(default_factory=list)
     kb_ids: list[str] = field(default_factory=list)
     refs: dict[str, Any] = field(default_factory=dict)
     config: dict[str, Any] = field(default_factory=dict)
@@ -57,6 +59,12 @@ class TurnRequest(BaseModel):
     model: str | None = None
     # 运行时内部标志：regenerate 复用原 user 消息，不重复落库（§6.8）
     persist_user_message: bool = True
+
+    @model_validator(mode="after")
+    def _validate_attachments(self) -> "TurnRequest":
+        if len(self.attachments) > MAX_ATTACHMENTS_PER_TURN:
+            raise ValueError(f"单回合附件数量超过上限（{MAX_ATTACHMENTS_PER_TURN} 个）")
+        return self
 
 
 @dataclass(slots=True)

@@ -120,12 +120,19 @@ def build_unified_context(
     language: str,
     model_ref: ModelRef | None = None,
 ) -> UnifiedContext:
-    """粘性（模型/persona/kb/语言取会话）vs 一次性（refs 仅当回合）——纯函数。"""
+    """粘性（模型/persona/kb/语言取会话）vs 一次性（refs 仅当回合）——纯函数。
+
+    附件参数与数量上限已在 TurnRequest 校验层拒绝（传输层 fail-fast）。
+    """
     from nnnu.services.llm.factory import parse_model_ref
 
     if model_ref is None and request.model:
         provider_id, model = parse_model_ref(request.model)
         model_ref = ModelRef(provider=provider_id or "", model=model)
+    # §6.3 context_gated：有附件 → attachment_search 自动挂载
+    context_flags: set[str] = set()
+    if request.attachments:
+        context_flags.add("attachment_search")
     return UnifiedContext(
         session=SessionRef(id=session.id, title=session.title),
         capability=request.capability,
@@ -133,6 +140,7 @@ def build_unified_context(
         attachments=request.attachments,
         kb_refs=[KbRef(kb_id=kb_id) for kb_id in request.kb_ids],
         tool_flags=ToolMountFlags(
+            context=context_flags,
             forced=set(request.config.get("forced_tools", [])),
             suppressed=set(request.config.get("suppressed_tools", [])),
         ),

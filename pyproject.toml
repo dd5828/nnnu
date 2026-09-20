@@ -18,6 +18,9 @@ dependencies = [
     "psutil>=6.0,<8.0",
     "watchfiles>=0.24",  # dev.py 后端热重启循环（uvicorn[standard] 的传递依赖，显式声明）
     "aiosqlite>=0.20",  # §8.2 单文件 SQLite（会话/成本等持久化）
+    "markitdown>=0.1.7",  # §4 文档解析默认引擎（P2 附件解析提前引入，P4 KB 复用）
+    "PyMuPDF>=1.28",  # §4 PDF 解析与页级引用（P2 附件页码定位）
+    "python-multipart>=0.0.12",  # 附件上传 multipart 表单（FastAPI 依赖）
 ]
 
 [project.optional-dependencies]
@@ -32,7 +35,7 @@ dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.25,<2",
     "ruff==0.16.0",
-    "mypy==1.13.0",
+    "mypy==2.3.1",
     "types-PyYAML>=6.0",
     "pre-commit>=4.0",
 ]
@@ -62,7 +65,9 @@ ignore = ["E501", "RUF001", "RUF002", "RUF003"]
 known-first-party = ["nnnu"]
 
 [tool.mypy]
-python_version = "3.11"
+# 视角取 3.12：传递依赖（markitdown→magika→numpy）的 stub 使用 3.12+ 语法；
+# 运行时兼容下限仍是 3.11（requires-python），本项目自身代码不用 3.12 新语法
+python_version = "3.12"
 ignore_missing_imports = true
 check_untyped_defs = true
 disallow_untyped_defs = false

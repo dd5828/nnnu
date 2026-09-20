@@ -15,3 +15,4 @@ personas:
 
 tool_descriptions:
   ask_user: "回合中途向用户提问澄清（question 必填，options 为可选项数组）。"
+  attachment_search: "在用户上传的附件（PDF 等文档）中检索段落，返回带页码的命中片段；回答涉及附件内容时优先用它，引用时标注附件名与页码。"

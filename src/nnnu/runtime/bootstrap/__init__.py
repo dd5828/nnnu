@@ -71,9 +71,11 @@ def register_builtins() -> None:
     from nnnu.runtime.registry.capability_registry import get_capability_registry
     from nnnu.runtime.registry.tool_registry import get_tool_registry
     from nnnu.tools.builtin.ask_user import AskUserTool
+    from nnnu.tools.builtin.attachment_search import AttachmentSearchTool
 
     get_capability_registry().register(ChatCapability.manifest, ChatCapability)
     get_tool_registry().register(AskUserTool())
+    get_tool_registry().register(AttachmentSearchTool())
 
 
 def configure_logging(level: str | None = None) -> None:

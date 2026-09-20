@@ -15,3 +15,4 @@ personas:
 
 tool_descriptions:
   ask_user: "Ask the user a clarifying question mid-turn (question required; options is an optional list)."
+  attachment_search: "Search paragraphs inside user-uploaded attachments (PDFs etc.), returning page-numbered hit snippets; prefer it when answering about attachment content and cite the attachment name and page when referencing."
