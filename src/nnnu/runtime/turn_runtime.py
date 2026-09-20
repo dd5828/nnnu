@@ -21,7 +21,7 @@ from typing import Any, AsyncIterator
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from nnnu.core.context import Attachment
+from nnnu.core.context import Attachment, SessionRef
 from nnnu.core.events import StreamEventType
 from nnnu.core.ids import new_id
 from nnnu.core.stream_bus import StreamBus
@@ -43,6 +43,15 @@ ASK_TIMEOUT_S = 300.0  # §7.20：ask_user 无前端连接 5 分钟超时空答�
 FINISHED_LRU_SIZE = 100  # 已结束回合的迟来重放上限
 
 
+class TurnRefs(BaseModel):
+    """一次性引用（§6.7 仅当回合有效）：P2 先落地历史会话；笔记本/题库/书页
+    随 P9/P10 实体扩展字段，未知字段宽容。"""
+
+    model_config = ConfigDict(extra="ignore")
+
+    sessions: list[str] = field(default_factory=list)  # 引用会话 id
+
+
 class TurnRequest(BaseModel):
     """WS chat 入站与 REST 兜底的统一请求模型（§7.20；未知字段宽容）。"""
 
@@ -53,7 +62,7 @@ class TurnRequest(BaseModel):
     message: str = ""
     attachments: list[Attachment] = field(default_factory=list)
     kb_ids: list[str] = field(default_factory=list)
-    refs: dict[str, Any] = field(default_factory=dict)
+    refs: TurnRefs = field(default_factory=TurnRefs)
     config: dict[str, Any] = field(default_factory=dict)
     language: str | None = None
     model: str | None = None
@@ -286,15 +295,43 @@ class TurnRuntimeManager:
         session_messages = await self._sessions.list_messages(session.id)
 
         await execution.bus.emit_turn_start(capability=request.capability, model=request.model)
+        history_refs, history_transcripts = await self._resolve_history_refs(request, execution.bus)
         ctx = build_unified_context(
             request,
             session,
             user_message,
             session_messages,
             language=request.language or session.language,
+            history_refs=history_refs,
         )
+        ctx.metadata["history_ref_transcripts"] = history_transcripts
         ctx.metadata["ask_user_fn"] = self._make_ask_user_fn(execution)
         await self._orchestrator.handle(ctx, execution.bus)
+
+    async def _resolve_history_refs(
+        self, request: TurnRequest, bus: StreamBus
+    ) -> tuple[list[SessionRef], list[dict[str, Any]]]:
+        """一次性引用：历史会话转录装入 metadata 供能力注入（§7.1）。
+
+        引用的会话不存在 → warning 跳过，不阻断回合（宽容语义）。
+        """
+        transcripts: list[dict[str, Any]] = []
+        resolved: list[SessionRef] = []
+        for session_id in request.refs.sessions:
+            ref_session = await self._sessions.get_session(session_id)
+            if ref_session is None:
+                await bus.emit_warning(message=f"引用的会话 {session_id} 不存在，已忽略")
+                continue
+            messages = await self._sessions.list_messages(session_id)
+            resolved.append(SessionRef(id=ref_session.id, title=ref_session.title))
+            transcripts.append(
+                {
+                    "id": ref_session.id,
+                    "title": ref_session.title,
+                    "messages": [message.model_dump() for message in messages],
+                }
+            )
+        return resolved, transcripts
 
     async def _relay(self, execution: _TurnExecution) -> None:
         """bus → wire（补 seq）→ 缓冲 + 订阅者扇出。"""

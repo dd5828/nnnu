@@ -34,6 +34,8 @@ DEFAULT_MODEL_REF = "deepseek:deepseek-chat"  # P1 默认（env NNNU_MODEL 可�
 # 附件注入上限（§7.1：注入是给模型直读的摘要，全量检索走 attachment_search）
 PAGE_INJECT_MAX_CHARS = 2000  # 每页注入上限
 ATTACHMENT_INJECT_MAX_CHARS = 12000  # 每附件注入总上限
+HISTORY_REF_INJECT_MAX_CHARS = 6000  # 每个引用会话的转录注入上限
+HISTORY_REF_MESSAGE_MAX_CHARS = 2000  # 引用会话中单条消息上限
 
 
 class ChatCapability(BaseCapability):
@@ -190,8 +192,14 @@ class ChatCapability(BaseCapability):
             ctx.metadata["attachment_index"] = index_entries
 
         content_text = ctx.message.content
-        if attachment_texts:
-            content_text += "\n\n" + "\n\n".join(attachment_texts)
+        # 一次性引用：历史会话转录（§7.1；笔记本/题库/书页随 P9/P10 实体扩展）
+        ref_texts = [
+            _format_history_ref(ref, ctx.language)
+            for ref in ctx.metadata.get("history_ref_transcripts", [])
+        ]
+        injected = [*attachment_texts, *ref_texts]
+        if injected:
+            content_text += "\n\n" + "\n\n".join(injected)
         if image_parts:
             # 多模态 parts：文本在前、图片在后（OpenAI 兼容格式）
             return {
@@ -234,6 +242,36 @@ def _supports_vision(provider_id: str | None, model: str) -> bool:
     spec = find_by_id(build_registry(), provider_id) if provider_id else None
     info = find_model(spec, model) if spec else None
     return info is not None and "vision" in info.capabilities
+
+
+def _format_history_ref(ref: dict[str, Any], lang: str) -> str:
+    """引用会话转录（截断，仅 user/assistant 消息，思考与工具轨迹省略）。"""
+    header = (
+        f"【引用历史会话《{ref.get('title') or ref.get('id')}》】"
+        if lang == "zh"
+        else f'[Referenced history session "{ref.get("title") or ref.get("id")}"]'
+    )
+    role_labels = (
+        {"user": "用户", "assistant": "助手"}
+        if lang == "zh"
+        else {
+            "user": "User",
+            "assistant": "Assistant",
+        }
+    )
+    lines: list[str] = [header]
+    budget = HISTORY_REF_INJECT_MAX_CHARS
+    for message in ref.get("messages", []):
+        role = message.get("role")
+        if role not in role_labels or not message.get("content"):
+            continue
+        if budget <= 0:
+            lines.append("…" if lang == "zh" else "...")
+            break
+        line = f"{role_labels[role]}：{str(message['content'])[:HISTORY_REF_MESSAGE_MAX_CHARS]}"
+        lines.append(line[:budget])
+        budget -= len(line)
+    return "\n".join(lines)
 
 
 def _format_paged_attachment(name: str, pages: list[dict[str, Any]], lang: str) -> str:
