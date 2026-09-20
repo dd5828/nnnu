@@ -5,7 +5,10 @@ repos:
     hooks:
       - id: ruff
         args: [--fix]
+      # --check：只报不改（与 CI lint 一致）——自动格式化修改可能在暂存区竞态中丢失，
+      # 曾导致未格式化文件入库、CI format --check 失败（2026-09-20 教训）
       - id: ruff-format
+        args: [--check]
 
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.5.0

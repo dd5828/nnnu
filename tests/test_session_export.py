@@ -25,7 +25,12 @@ def test_export_pure_function_includes_all_parts():
             content="答案正文",
             thinking="先想一下",
             tool_calls=[
-                {"tool_name": "attachment_search", "call_id": "c1", "ok": True, "summary": "命中 1 段"}
+                {
+                    "tool_name": "attachment_search",
+                    "call_id": "c1",
+                    "ok": True,
+                    "summary": "命中 1 段",
+                }
             ],
             citations=[{"doc_id": "att-1", "kb": "attachment", "page": 2, "snippet": "片段"}],
             cost={"tokens": 100, "cost": 0.01, "per_model": {}},

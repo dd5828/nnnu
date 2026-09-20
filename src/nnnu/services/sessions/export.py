@@ -8,7 +8,10 @@ from typing import Any
 
 from nnnu.services.sessions.models import Message, Session
 
-_ROLE_LABELS = {"user": {"zh": "用户", "en": "User"}, "assistant": {"zh": "助手", "en": "Assistant"}}
+_ROLE_LABELS = {
+    "user": {"zh": "用户", "en": "User"},
+    "assistant": {"zh": "助手", "en": "Assistant"},
+}
 _TOOL_OK = {"zh": "成功", "en": "ok"}
 _TOOL_FAIL = {"zh": "失败", "en": "failed"}
 _CITATION = {"zh": "引用", "en": "citation"}
