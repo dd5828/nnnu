@@ -10,6 +10,7 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
+from nnnu.capabilities.chat.personas import resolve_persona_text
 from nnnu.core.agent_loop import LoopDeps, ToolSet, run_agent_loop
 from nnnu.core.capability_protocol import BaseCapability, CapabilityManifest
 from nnnu.core.stream_bus import StreamBus
@@ -50,12 +51,21 @@ class ChatCapability(BaseCapability):
             for name, tool in mounted.items()
         }
         tool_lines = ", ".join(f"{name}（{desc}）" for name, desc in descriptions.items()) or "无"
+        persona_text = ""
+        if ctx.persona is not None:
+            persona_text = resolve_persona_text(
+                persona_id=ctx.persona.id,
+                description=ctx.persona.description,
+                prompts=prompts,
+                lang=ctx.language,
+            )
         system_prompt = prompts.render(
             "chat",
             ctx.language,
             "system",
             tools=tool_lines,
             language={"zh": "中文", "en": "English"}.get(ctx.language, ctx.language),
+            persona=persona_text,
         )
 
         # 2) 历史组装：system + 会话历史 + 当前用户消息（一次性引用注入 P2 补齐）

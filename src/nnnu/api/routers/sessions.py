@@ -1,9 +1,13 @@
-"""会话 REST（§9.1）：列表/新建/详情/重命名/删除/重新生成。"""
+"""会话 REST（§9.1）：列表/新建/详情/重命名/删除/重新生成。
+
+PATCH 支持会话级 persona（§7.1 粘性）：字段缺席即不变，显式 null 即清除。
+"""
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
+from nnnu.capabilities.chat.personas import CUSTOM_PERSONA, is_valid_persona
 from nnnu.runtime.orchestrator import TurnBusyError, TurnRejected
 from nnnu.services.sessions.models import Session
 
@@ -15,8 +19,21 @@ class SessionCreate(BaseModel):
     language: str = "zh"
 
 
-class RenameRequest(BaseModel):
-    title: str
+class SessionPatch(BaseModel):
+    """PATCH /sessions/{id}：全部字段可选，只应用显式提供的字段。"""
+
+    title: str | None = None
+    persona: str | None = None  # 预设 id / custom / null（清除）
+    persona_description: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_persona(self) -> "SessionPatch":
+        if "persona" in self.model_fields_set and self.persona is not None:
+            if not is_valid_persona(self.persona):
+                raise ValueError(f"未知 persona: {self.persona}")
+            if self.persona == CUSTOM_PERSONA and not (self.persona_description or "").strip():
+                raise ValueError("自定义 persona 需要 persona_description")
+        return self
 
 
 def _error(code: str, message: str, recoverable: bool, status_code: int) -> JSONResponse:
@@ -57,10 +74,17 @@ async def get_session(session_id: str, http_request: Request):
 
 
 @router.patch("/api/v1/sessions/{session_id}")
-async def rename_session(session_id: str, body: RenameRequest, http_request: Request):
-    session = await http_request.app.state.runtime._sessions.rename_session(session_id, body.title)
+async def patch_session(session_id: str, body: SessionPatch, http_request: Request):
+    sessions = http_request.app.state.runtime._sessions
+    session = await sessions.get_session(session_id)
     if session is None:
         return _error("not_found", f"会话 {session_id} 不存在", False, 404)
+    if "title" in body.model_fields_set and body.title is not None:
+        session = await sessions.rename_session(session_id, body.title)
+    if "persona" in body.model_fields_set:
+        # 预设 persona 忽略（清空）描述；custom 用描述；null 清除两者
+        description = body.persona_description if body.persona == CUSTOM_PERSONA else None
+        session = await sessions.set_persona(session_id, body.persona, description)
     return _session_dict(session)
 
 

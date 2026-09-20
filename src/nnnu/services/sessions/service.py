@@ -71,6 +71,16 @@ class SessionManager:
     async def delete_session(self, session_id: str) -> None:
         await self._db.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
 
+    async def set_persona(
+        self, session_id: str, persona: str | None, persona_description: str | None
+    ) -> Session | None:
+        """设置会话 persona（§7.1 粘性）：persona 为预设 id / custom / None（清除）。"""
+        await self._db.execute(
+            "UPDATE sessions SET persona = ?, persona_description = ?, updated_at = ? WHERE id = ?",
+            (persona, persona_description, time.time(), session_id),
+        )
+        return await self.get_session(session_id)
+
     async def touch_session(self, session_id: str) -> None:
         await self._db.execute(
             "UPDATE sessions SET updated_at = ? WHERE id = ?", (time.time(), session_id)
@@ -161,6 +171,7 @@ class SessionManager:
             capability=row["capability"],
             model=row["model"],
             persona=row["persona"],
+            persona_description=row["persona_description"],
             kb_ids=_loads(row["kb_ids"], []),
             tool_overrides=_loads(row["tool_overrides"], {}),
             language=row["language"] or "zh",
@@ -183,15 +194,16 @@ class SessionManager:
     async def _insert_session(self, session: Session) -> None:
         await self._db.execute(
             """INSERT INTO sessions
-               (id, title, capability, model, persona, language, kb_ids, tool_overrides,
-                created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (id, title, capability, model, persona, persona_description, language,
+                kb_ids, tool_overrides, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 session.id,
                 session.title,
                 session.capability,
                 session.model,
                 session.persona,
+                session.persona_description,
                 session.language,
                 _dumps(session.kb_ids),
                 _dumps(session.tool_overrides),

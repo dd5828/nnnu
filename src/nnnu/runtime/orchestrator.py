@@ -137,7 +137,11 @@ def build_unified_context(
             suppressed=set(request.config.get("suppressed_tools", [])),
         ),
         config=dict(request.config),
-        persona=PersonaRef(id=session.persona) if session.persona else None,
+        persona=(
+            PersonaRef(id=session.persona, description=session.persona_description)
+            if session.persona
+            else None
+        ),
         language=language,
         model=model_ref,
         metadata={"session_messages": session_messages},

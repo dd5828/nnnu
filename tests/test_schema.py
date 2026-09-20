@@ -1,4 +1,4 @@
-"""schema 迁移：全新安装、v1→v2、幂等、失败中止。"""
+"""schema 迁移：全新安装、v1→v2→v3、幂等、失败中止。"""
 
 import sqlite3
 
@@ -20,29 +20,71 @@ def _table_names(tmp_home) -> set[str]:
         conn.close()
 
 
-def test_fresh_install_creates_v2(tmp_home):
+def _session_columns(tmp_home) -> set[str]:
+    conn = sqlite3.connect(db_path(tmp_home / "data"))
+    try:
+        rows = conn.execute("PRAGMA table_info(sessions)").fetchall()
+        return {r[1] for r in rows}
+    finally:
+        conn.close()
+
+
+def test_fresh_install_creates_v3(tmp_home):
     assert migrate(tmp_home / "data") == SCHEMA_VERSION
-    assert _version_file(tmp_home).read_text(encoding="utf-8").strip() == "2"
+    assert _version_file(tmp_home).read_text(encoding="utf-8").strip() == "3"
     tables = _table_names(tmp_home)
     assert {"sessions", "messages", "usage_records"} <= tables
+    assert "persona_description" in _session_columns(tmp_home)
 
 
-def test_migrate_v1_to_v2(tmp_home):
+def test_migrate_v1_to_v3(tmp_home):
     # 模拟 P0 状态：版本文件 v1、无表
     (tmp_home / "data" / "system").mkdir(parents=True)
     _version_file(tmp_home).write_text("1\n", encoding="utf-8")
-    assert migrate(tmp_home / "data") == "2"
+    assert migrate(tmp_home / "data") == "3"
     assert {"sessions", "messages", "usage_records"} <= _table_names(tmp_home)
+    assert "persona_description" in _session_columns(tmp_home)
+
+
+def test_migrate_v2_to_v3_preserves_data(tmp_home):
+    # 模拟 P1 状态：v2 库含会话行，迁移后数据保留且新列就位
+    data = tmp_home / "data"
+    (data / "system").mkdir(parents=True)
+    _version_file(tmp_home).write_text("2\n", encoding="utf-8")
+    path = db_path(data)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    try:
+        for statement in MIGRATIONS["2"]:
+            conn.execute(statement)
+        conn.execute(
+            """INSERT INTO sessions
+               (id, title, capability, model, persona, language, kb_ids, tool_overrides,
+                created_at, updated_at)
+               VALUES ('sess-old', '旧会话', 'chat', NULL, 'teacher', 'zh', '[]', '{}', 1.0, 1.0)"""
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert migrate(data) == "3"
+    assert "persona_description" in _session_columns(tmp_home)
+    conn = sqlite3.connect(path)
+    try:
+        row = conn.execute("SELECT persona FROM sessions WHERE id = 'sess-old'").fetchone()
+    finally:
+        conn.close()
+    assert row == ("teacher",)
 
 
 def test_migrate_missing_version_file_treated_as_v1(tmp_home):
-    assert migrate(tmp_home / "data") == "2"
+    assert migrate(tmp_home / "data") == "3"
     assert _version_file(tmp_home).exists()
 
 
 def test_migrate_idempotent(tmp_home):
     migrate(tmp_home / "data")
-    assert migrate(tmp_home / "data") == "2"  # 已是最新，直接返回
+    assert migrate(tmp_home / "data") == "3"  # 已是最新，直接返回
     assert {"sessions", "messages", "usage_records"} <= _table_names(tmp_home)
 
 

@@ -11,7 +11,8 @@ import tempfile
 from pathlib import Path
 
 # v2：P1 会话/消息/成本表（§8.2 + 偏离：usage_records 为 §6.9 成本汇总新增）
-SCHEMA_VERSION = "2"
+# v3：P2 persona——自定义 persona 描述粘性存储（§7.1）
+SCHEMA_VERSION = "3"
 
 MIGRATIONS: dict[str, list[str]] = {
     "2": [
@@ -51,6 +52,9 @@ MIGRATIONS: dict[str, list[str]] = {
             created_at REAL NOT NULL
         )""",
         "CREATE INDEX IF NOT EXISTS idx_usage_created ON usage_records(created_at)",
+    ],
+    "3": [
+        "ALTER TABLE sessions ADD COLUMN persona_description TEXT",
     ],
 }
 

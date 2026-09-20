@@ -18,6 +18,7 @@ class Session(BaseModel):
     capability: str = "chat"
     model: str | None = None
     persona: str | None = None
+    persona_description: str | None = None  # 自定义 persona（§7.1）的行为描述
     kb_ids: list[str] = Field(default_factory=list)
     tool_overrides: dict[str, Any] = Field(default_factory=dict)
     language: str = "zh"
