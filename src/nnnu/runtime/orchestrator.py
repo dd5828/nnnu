@@ -131,7 +131,7 @@ def build_unified_context(
     if model_ref is None and request.model:
         provider_id, model = parse_model_ref(request.model)
         model_ref = ModelRef(provider=provider_id or "", model=model)
-    # §6.3 context_gated：有附件 → attachment_search；有定时任务 → cron
+    # §6.3 context_gated：有附件 → attachment_search；有定时任务 → cron；有 ready 知识库 → rag
     context_flags: set[str] = set()
     if request.attachments:
         context_flags.add("attachment_search")
@@ -142,6 +142,13 @@ def build_unified_context(
             context_flags.add("cron")
     except RuntimeError:
         pass  # cron 未装配（独立测试路径），视为无任务
+    try:
+        from nnnu.services.knowledge.service import get_kb_service
+
+        if get_kb_service().has_ready_kb():
+            context_flags.add("rag")
+    except RuntimeError:
+        pass  # KB 服务未装配，视为没有知识库（fail-closed）
     # §7.2 工具开关：设置 chat 区与请求级配置合并（请求覆盖更具体，仅做并集/补集）
     from nnnu.services.settings.service import get_settings_service
 

@@ -84,6 +84,7 @@ def register_builtins() -> None:
     from nnnu.tools.builtin.github_query import GithubQueryTool
     from nnnu.tools.builtin.media_gen_tool import ImageGenTool, VideoGenTool
     from nnnu.tools.builtin.paper_search_tool import PaperSearchTool
+    from nnnu.tools.builtin.rag_tool import RagSearchTool
     from nnnu.tools.builtin.reason import ReasonTool
     from nnnu.tools.builtin.web_fetch import WebFetchTool
     from nnnu.tools.builtin.web_search import WebSearchTool
@@ -91,6 +92,7 @@ def register_builtins() -> None:
     get_capability_registry().register(ChatCapability.manifest, ChatCapability)
     get_tool_registry().register(AskUserTool())
     get_tool_registry().register(AttachmentSearchTool())
+    get_tool_registry().register(RagSearchTool())
     get_tool_registry().register(CodeExecutionTool())
     get_tool_registry().register(ExecTool())
     get_tool_registry().register(ListWorkspaceTool())
