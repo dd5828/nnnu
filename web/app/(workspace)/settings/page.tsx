@@ -4,6 +4,7 @@
 
 import HealthCard from "@/components/health/HealthCard";
 import SettingsForm from "@/components/settings/SettingsForm";
+import ToolCatalog from "@/components/settings/ToolCatalog";
 import { useI18n } from "@/hooks/useI18n";
 
 export default function SettingsPage() {
@@ -22,6 +23,12 @@ export default function SettingsPage() {
           title={t("settings.modelsTitle")}
           description={t("settings.modelsDesc")}
         />
+        <SettingsForm
+          area="chat"
+          title={t("settings.chatTitle")}
+          description={t("settings.chatDesc")}
+        />
+        <ToolCatalog />
         <SettingsForm area="network" title={t("settings.networkTitle")} />
         <SettingsForm area="system" title={t("settings.systemTitle")} />
         <HealthCard />

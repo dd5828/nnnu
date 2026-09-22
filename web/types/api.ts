@@ -33,3 +33,18 @@ export interface SettingsAreaResponse {
   values: Record<string, unknown>;
   fields: SettingsFieldMeta[];
 }
+
+/** 对应 nnnu/core/tool_protocol.py 的 ToolDefinition（§6.3）。 */
+export interface ToolDefinitionMeta {
+  name: string;
+  description: string; // 提示词 i18n 键（后端 prompts/*/chat.yaml）
+  parameters: Record<string, unknown>;
+  mount: "user_toggleable" | "context_gated" | "always";
+  cost_hint: string | null;
+}
+
+/** 对应 nnnu/api/routers/plugins.py 的 GET /api/v1/plugins 响应（§6.11 内省）。 */
+export interface PluginsResponse {
+  tools: { definition: ToolDefinitionMeta; available: boolean }[];
+  capabilities: { name: string; display_name?: string }[];
+}

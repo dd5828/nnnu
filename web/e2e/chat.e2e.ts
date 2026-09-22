@@ -77,3 +77,42 @@ test("⑤ 附件 PDF 引用：上传后回答带引用来源", async ({ page }) 
   await expect(page.getByText("根据你上传的文档")).toBeVisible({ timeout: 10000 });
   await expect(page.getByText(/第 1 页/).first()).toBeVisible();
 });
+
+test("⑥ code_execution：沙箱真跑代码，stdout 回到对话", async ({ page }) => {
+  await openSession(page);
+  const box = page.locator("textarea").first();
+  await box.fill("算一下 1 到 10 的和");
+  await box.press("Enter");
+  // 工具卡出现（code_execution 恒挂载）→ 展开看沙箱 stdout
+  const card = page.getByRole("button").filter({ hasText: "code_execution" }).first();
+  await expect(card).toBeVisible({ timeout: 10000 });
+  await card.click();
+  await expect(page.getByText(/sum-1-to-10=/).first()).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText("沙箱算出来是 55。")).toBeVisible({ timeout: 10000 });
+});
+
+test("⑦ 工具开关：设置里放行 exec 后，下一回合真能调起来", async ({ page }) => {
+  // 默认 exec 在「禁用工具」里 → 先在设置页改开关（应用即时生效）
+  await page.goto("/settings");
+  const card = page.locator("section").filter({ hasText: "禁用工具" });
+  await expect(card.getByLabel("禁用工具")).toHaveValue("exec");
+  // 工具目录列出全部内置工具（含未挂载的 exec），点开是参数 schema
+  const catalog = page.locator("section").filter({ hasText: "工具目录" });
+  await expect(catalog.getByText("exec", { exact: true })).toBeVisible({ timeout: 10000 });
+  await expect(catalog.getByText("code_execution", { exact: true })).toBeVisible();
+  await card.getByLabel("禁用工具").fill(""); // 从禁用列表里删掉
+  await card.getByLabel("强制启用工具").fill("exec"); // 再显式启用
+  await card.getByRole("button", { name: "应用" }).click();
+  await expect(card.getByText("已应用")).toBeVisible({ timeout: 10000 });
+
+  // 回对话：模型调 exec，命令真的跑了
+  await openSession(page);
+  const box = page.locator("textarea").first();
+  await box.fill("跑个命令");
+  await box.press("Enter");
+  const execCard = page.getByRole("button").filter({ hasText: "exec" }).first();
+  await expect(execCard).toBeVisible({ timeout: 10000 });
+  await execCard.click();
+  await expect(page.getByText("exec-ok").first()).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText("命令跑通了，输出 exec-ok。")).toBeVisible({ timeout: 10000 });
+});

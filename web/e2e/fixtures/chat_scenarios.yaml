@@ -39,3 +39,23 @@ steps:
   - chunks: ["根据你上传的文档，傅里叶变换把时域信号分解为频域分量（见引用）。"]
     finish_reason: stop
     usage: { prompt_tokens: 100, completion_tokens: 30 }
+  # Turn 6（测试⑥）：code_execution——模型写代码，沙箱真跑（stdout 用 ASCII，避开子进程编码）
+  - tool_calls:
+      - {
+          id: code-1,
+          name: code_execution,
+          arguments: '{"code": "print(\"sum-1-to-10=\", sum(range(1, 11)))"}',
+        }
+    finish_reason: tool_calls
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  - chunks: ["沙箱算出来是 55。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  # Turn 7（测试⑦）：工具开关——设置里把 exec 放行后，模型调 exec 真能跑命令
+  - tool_calls:
+      - { id: exec-1, name: exec, arguments: '{"command": "echo exec-ok"}' }
+    finish_reason: tool_calls
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  - chunks: ["命令跑通了，输出 exec-ok。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
