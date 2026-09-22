@@ -1,4 +1,4 @@
-"""code_execution 工具（§7.2）：沙箱化 Python 执行，回传 stdout/图。
+"""code_execution 工具（§7.2）：沙箱化 Python 执行，回传 stdout/exit code。
 
 模型写代码（NL 意图 → 代码由模型完成），本工具只负责安全执行；
 执行环境锁在 data/workspace/，超时/输出上限/环境白名单见 services/sandbox。

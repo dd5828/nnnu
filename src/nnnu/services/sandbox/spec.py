@@ -3,7 +3,7 @@
 限制项：
 - 超时默认 30s（上限 120s）；
 - 输出上限 1MB（stdout+stderr 合并口径，超限杀进程并截断）；
-- 工作目录锁定 data/workspace/（cwd_relative 归一化后必须落在其内）；
+- 工作目录锁定 data/user/workspace/（cwd_relative 归一化后必须落在其内；§8.1 目录树）；
 - 内存限制：POSIX 走 setrlimit(RLIMIT_AS)，Windows 平台不可用则跳过（§11.2"平台可用时"）；
 - 环境变量白名单：系统级几个变量 + 显式传入；代理/凭据变量默认剔除
   （子进程沙箱的"网络关闭"即代理变量剥离——真隔离需 Docker，方案 §4 列为后续可选）；
