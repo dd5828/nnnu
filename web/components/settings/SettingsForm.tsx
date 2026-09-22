@@ -2,7 +2,7 @@
 
 /** spec 驱动的设置表单（§7.19）：字段自动渲染 + 草稿-应用两段式；models 区附探测。 */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { CheckCircle2, CircleAlert, Loader2, PlugZap, XCircle } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useSettingsArea } from "@/hooks/useSettings";
@@ -271,22 +271,26 @@ function FieldControl({
   onClearChange: (checked: boolean) => void;
 }) {
   const { t } = useI18n();
+  const inputId = useId();
   const label = t(field.label_key);
   const description = field.description_key ? t(field.description_key) : "";
   const inputClass =
     "w-full rounded-lg border border-border bg-background/40 px-3 py-1.5 text-sm outline-none transition-colors focus:border-primary/60";
 
   return (
-    <label className="block">
-      <span className="mb-1 flex items-baseline gap-2 text-sm font-medium">
+    <div className="block">
+      <label
+        htmlFor={inputId}
+        className="mb-1 flex items-baseline gap-2 text-sm font-medium"
+      >
         {label}
         {field.effect === "restart" && (
           <span className="text-[10px] font-normal text-muted">（{t("settings.restartRequired")}）</span>
         )}
-      </span>
-      {description && <span className="mb-1 block text-xs text-muted">{description}</span>}
+      </label>
+      {description && <p className="mb-1 text-xs text-muted">{description}</p>}
       {field.type === "choice" ? (
-        <select className={inputClass} value={String(value ?? "")} onChange={(e) => onChange(e.target.value)}>
+        <select id={inputId} className={inputClass} value={String(value ?? "")} onChange={(e) => onChange(e.target.value)}>
           {field.choices?.map((choice) => (
             <option key={choice} value={choice}>
               {choice === "" ? t("settings.choiceDefault") : choice}
@@ -295,6 +299,7 @@ function FieldControl({
         </select>
       ) : field.type === "bool" ? (
         <input
+          id={inputId}
           type="checkbox"
           checked={Boolean(value)}
           onChange={(e) => onChange(e.target.checked)}
@@ -302,6 +307,7 @@ function FieldControl({
         />
       ) : field.type === "float" ? (
         <input
+          id={inputId}
           type="number"
           step="0.1"
           min={0}
@@ -312,6 +318,7 @@ function FieldControl({
         />
       ) : field.type === "int" ? (
         <input
+          id={inputId}
           type="number"
           className={inputClass}
           value={typeof value === "number" ? value : ""}
@@ -319,6 +326,7 @@ function FieldControl({
         />
       ) : field.type === "string_list" ? (
         <textarea
+          id={inputId}
           className={`${inputClass} font-mono text-xs`}
           rows={2}
           value={Array.isArray(value) ? value.join("\n") : ""}
@@ -334,6 +342,7 @@ function FieldControl({
       ) : field.type === "secret" ? (
         <div className="flex items-center gap-2">
           <input
+            id={inputId}
             type="password"
             className={inputClass}
             placeholder={typeof value === "string" && value ? value : t("settings.secretPlaceholder")}
@@ -352,12 +361,13 @@ function FieldControl({
         </div>
       ) : (
         <input
+          id={inputId}
           type="text"
           className={inputClass}
           value={typeof value === "string" ? value : ""}
           onChange={(e) => onChange(e.target.value)}
         />
       )}
-    </label>
+    </div>
   );
 }

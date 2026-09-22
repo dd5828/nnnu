@@ -85,8 +85,13 @@ def _resolve_probe_key(provider: str, body_key: str | None = None) -> str | None
 
 
 async def _probe_models_candidate(candidate: dict[str, Any]) -> str | None:
-    """apply 前的模型探测（§7.19）：失败返回文案，原配置与草稿都不动。"""
+    """apply 前的模型探测（§7.19）：失败返回文案，原配置与草稿都不动。
+
+    provider 留空 = 未显式配置（回退 env/默认），没有可探测的目标，直接放行。
+    """
     provider = str(candidate.get("provider") or "")
+    if not provider:
+        return None
     base_url = str(candidate.get("base_url") or "").strip() or None
     if not base_url:
         spec = find_by_id(build_registry(), provider)

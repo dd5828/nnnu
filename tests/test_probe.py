@@ -81,6 +81,13 @@ async def test_probe_empty_base_url():
     assert "base_url" in result.error
 
 
+async def test_probe_scheme_missing_returns_friendly_error():
+    """不带 http(s):// 的地址 → 友好报错而不是 500（实测踩出来的坑）。"""
+    result = await probe_models("deepseek-chat")
+    assert result.ok is False
+    assert "格式不对" in result.error
+
+
 async def test_probe_sends_bearer_header():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["Authorization"] == "Bearer sk-test-key-123"

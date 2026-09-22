@@ -290,6 +290,23 @@ async def test_apply_without_draft_returns_409(client):
     assert resp.json()["error"]["code"] == "no_draft"
 
 
+async def test_apply_default_provider_skips_probe(client, monkeypatch):
+    """provider 留空 = 还原默认，没有探测目标，直接应用成功（不触发探测）。"""
+    probed = {"count": 0}
+
+    async def counting_probe(base_url, api_key=None, *, timeout=8.0, transport=None):
+        probed["count"] += 1
+        return ProbeResult(ok=False, error="不应被调用")
+
+    monkeypatch.setattr("nnnu.api.routers.settings.probe_models", counting_probe)
+    resp = await client.put("/api/v1/settings/models/draft", json={"values": {"provider": ""}})
+    assert resp.status_code == 200
+    resp = await client.post("/api/v1/settings/models/apply")
+    assert resp.status_code == 200
+    assert resp.json()["values"]["provider"] == ""
+    assert probed["count"] == 0
+
+
 async def test_put_models_secret_rejected(client):
     resp = await client.put("/api/v1/settings/models", json={"values": {"api_key": "sk-x"}})
     assert resp.status_code == 422

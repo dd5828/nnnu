@@ -48,8 +48,11 @@ async def probe_models(
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> ProbeResult:
     """探测端点可用性；失败时 error 为可直接展示的文案（§7.19 探测失败提示）。"""
-    if not base_url.strip():
+    base = base_url.strip().rstrip("/")
+    if not base:
         return ProbeResult(ok=False, error="base_url 为空")
+    if not base.startswith(("http://", "https://")):
+        return ProbeResult(ok=False, error="base_url 格式不对（需要 http:// 或 https:// 开头）")
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     urls = _candidate_urls(base_url)
     async with httpx.AsyncClient(timeout=timeout, transport=transport) as client:
@@ -60,6 +63,9 @@ async def probe_models(
                 return ProbeResult(ok=False, error=f"连接超时（{timeout:g} 秒），请检查地址与网络")
             except httpx.ConnectError:
                 return ProbeResult(ok=False, error=f"无法连接 {url}，请检查 base_url 是否正确")
+            except httpx.HTTPError as exc:
+                # SSL/协议等其余传输错误：兜底转友好文案，绝不 500（§7.19）
+                return ProbeResult(ok=False, error=f"连接失败（{exc.__class__.__name__}）")
             if response.status_code == 401:
                 return ProbeResult(ok=False, error="API 密钥无效（端点返回 401）")
             if response.status_code != 200:
