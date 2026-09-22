@@ -99,3 +99,44 @@ def test_migrate_failure_aborts(tmp_home, monkeypatch):
 
 def test_db_path_layout(tmp_home):
     assert db_path(tmp_home / "data") == tmp_home / "data" / "user" / "neolearn.db"
+
+
+def test_version_without_migration_definition_aborts(tmp_home, monkeypatch):
+    # 事故复现：SCHEMA_VERSION 改大了但 MIGRATIONS 里没有对应条目 →
+    # 迁移一条不跑、版本号却被推高（"no such table" 的根因）。必须硬中止。
+    monkeypatch.setitem(MIGRATIONS, "5", [])
+    monkeypatch.setattr("nnnu.services.sessions.schema.SCHEMA_VERSION", "6")
+    with pytest.raises(RuntimeError, match="与 MIGRATIONS 不同步"):
+        migrate(tmp_home / "data")
+    assert not _version_file(tmp_home).exists()
+
+
+def test_version_file_ahead_of_db_aborts_with_hint(tmp_home):
+    # 事故善后：版本文件已是 v5 而库内容只到 v4（缺 cron_jobs）——
+    # 不能带病启动，报错要指出库实际到哪一级、怎么修
+    (tmp_home / "data" / "system").mkdir(parents=True)
+    _version_file(tmp_home).write_text("5\n", encoding="utf-8")
+    path = db_path(tmp_home / "data")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    try:
+        for level in ("2", "3", "4"):
+            for statement in MIGRATIONS[level]:
+                conn.execute(statement)
+        conn.commit()
+    finally:
+        conn.close()
+
+    with pytest.raises(RuntimeError, match="库内容实际只到 v4"):
+        migrate(tmp_home / "data")
+    # 按提示把版本号改回 v4 → 重跑 v5 迁移补齐
+    _version_file(tmp_home).write_text("4\n", encoding="utf-8")
+    assert migrate(tmp_home / "data") == SCHEMA_VERSION
+    assert "cron_jobs" in _table_names(tmp_home)
+
+
+def test_db_newer_than_program_aborts(tmp_home):
+    (tmp_home / "data" / "system").mkdir(parents=True)
+    _version_file(tmp_home).write_text("99\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="比本程序"):
+        migrate(tmp_home / "data")

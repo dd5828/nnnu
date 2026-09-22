@@ -85,6 +85,20 @@ MIGRATIONS: dict[str, list[str]] = {
     ],
 }
 
+# 每级迁移应落地的产物——启动自检清单（见 _verify）。
+# 曾出过的事故：SCHEMA_VERSION 先于 MIGRATIONS 条目被改大，pending 算成空集，
+# 迁移一条没跑、版本文件却写成了新值，之后启动报 "no such table"。自检就是为了
+# 让这种"版本文件与库内容对不上"当场硬中止（带可操作的修复提示），而不是带病运行。
+EXPECTED_TABLES: dict[str, tuple[str, ...]] = {
+    "2": ("sessions", "messages", "usage_records"),
+    "4": ("attachments",),
+    "5": ("cron_jobs",),
+}
+
+EXPECTED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
+    "3": (("sessions", "persona_description"),),
+}
+
 
 def db_path(data_root: Path) -> Path:
     """单文件数据库位置（§8.2 标题：data/user/neolearn.db）。"""
@@ -107,6 +121,43 @@ def _apply(conn: sqlite3.Connection, version: str) -> None:
         conn.execute(statement)
 
 
+def _level_ok(conn: sqlite3.Connection, tables: set[str], level: str) -> bool:
+    """该级迁移的产物是否齐备（表 + 列）。"""
+    for table in EXPECTED_TABLES.get(level, ()):
+        if table not in tables:
+            return False
+    for table, column in EXPECTED_COLUMNS.get(level, ()):
+        if table not in tables:
+            return False
+        columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in columns:
+            return False
+    return True
+
+
+def _detected_version(conn: sqlite3.Connection, upto: str) -> str:
+    """库内容实际达到的级别：从 upto 往下找第一个产物齐全的级别。"""
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    for level in sorted(MIGRATIONS, key=int, reverse=True):
+        if int(level) <= int(upto) and _level_ok(conn, tables, level):
+            return level
+    return "1"
+
+
+def _verify(conn: sqlite3.Connection, version: str, path: Path, version_file: Path) -> None:
+    """自检：版本号声称达到 version，则 ≤ version 各级的产物必须都在，否则硬中止。"""
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    for level in sorted(MIGRATIONS, key=int):
+        if int(level) <= int(version) and not _level_ok(conn, tables, level):
+            detected = _detected_version(conn, version)
+            raise RuntimeError(
+                f"数据文件与版本文件对不上：版本号是 v{version}，但 v{level} 该建的产物缺失"
+                f"（库内容实际只到 v{detected}）——多半是早先的迁移没真正执行、版本号却被推高了。"
+                f"数据文件未损坏，备份路径 {path}；"
+                f"把 {version_file} 里的版本号改回 v{detected} 再启动，迁移会重跑补齐"
+            )
+
+
 def migrate(data_root: Path) -> str:
     """把 data 目录升级到最新 schema，返回新版本号；失败抛 RuntimeError。
 
@@ -114,17 +165,29 @@ def migrate(data_root: Path) -> str:
     """
     current = _read_version(data_root)
     target = SCHEMA_VERSION
-    if current == target:
-        return target
-    ordered = sorted(MIGRATIONS, key=lambda v: int(v))
-    pending = [v for v in ordered if int(v) > int(current)]
+    version_file = _version_file(data_root)
+    if not current.isdigit():
+        raise RuntimeError(f"schema 版本文件内容不是数字：{current!r}（{version_file}）")
+    if int(current) > int(target):
+        raise RuntimeError(
+            f"数据文件 schema v{current} 比本程序（v{target}）新——请升级程序；"
+            f"绝不回写版本号降级（会静默丢数据）。备份路径 {db_path(data_root)}"
+        )
+    # 完整性校验：中间每一级都得有迁移定义，否则版本号会被平白推高而库没跟上
+    missing = [v for v in range(int(current) + 1, int(target) + 1) if str(v) not in MIGRATIONS]
+    if missing:
+        raise RuntimeError(
+            f"SCHEMA_VERSION（v{target}）与 MIGRATIONS 不同步：缺少 {missing} 的迁移定义。"
+            f"补上迁移或把版本号改回 v{current}，不会动数据文件"
+        )
     path = db_path(data_root)
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     try:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
-        for version in pending:
+        _verify(conn, current, path, version_file)  # 升级前：先确认现状与版本号相符
+        for version in (str(v) for v in range(int(current) + 1, int(target) + 1)):
             try:
                 _apply(conn, version)
             except Exception as exc:
@@ -132,11 +195,13 @@ def migrate(data_root: Path) -> str:
                     f"数据迁移到 schema v{version} 失败：{exc}。"
                     f"数据文件未损坏，备份路径 {path}，请勿删除后重试"
                 ) from exc
+        _verify(conn, target, path, version_file)  # 升级后：产物齐全才算成功
         conn.commit()
     finally:
         conn.close()
+    if current == target:
+        return target
     # 迁移全部成功后原子更新版本文件
-    version_file = _version_file(data_root)
     version_file.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(dir=version_file.parent, prefix="schema_version", suffix=".tmp")
     try:
