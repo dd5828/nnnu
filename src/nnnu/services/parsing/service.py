@@ -10,10 +10,13 @@
 同步函数由调用方经 asyncio.to_thread 调度（解析可能耗时数秒）。
 """
 
+import logging
 from pathlib import Path
 
 import fitz  # PyMuPDF：PDF 页文本提取
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 
 class ParsedPage(BaseModel):
@@ -32,6 +35,7 @@ class ParsedDocument(BaseModel):
 
 def parse_document(path: Path, mime: str) -> ParsedDocument:
     """按 MIME 选择引擎解析；异常统一转为 ok=False 结果（解析失败不致命）。"""
+    _warn_unsupported_engine()
     try:
         if mime == "application/pdf":
             return _parse_pdf(path)
@@ -42,6 +46,23 @@ def parse_document(path: Path, mime: str) -> ParsedDocument:
         return _parse_plain(path)
     except Exception as exc:  # 解析失败：上传仍成功，缓存标 error（§7.1 解析缓存清理入口）
         return ParsedDocument(ok=False, error=f"{type(exc).__name__}: {exc}")
+
+
+def _warn_unsupported_engine() -> None:
+    """kb.parse_engine 目前只有「自动」（按 MIME 选引擎）这一条路。
+
+    设置卡里留着这个下拉是为了 P14 接多引擎，选别的值不报错、按自动走，
+    但明确告警——免得用户以为换了引擎（尤其 PDF：markitdown 转出来没有页码，
+    而页码是引用的地基）。
+    """
+    from nnnu.services.settings.service import get_settings_service
+
+    try:
+        engine = str(get_settings_service().load_area("kb").get("parse_engine") or "")
+    except (KeyError, TypeError):
+        return
+    if engine:
+        logger.warning("kb.parse_engine=%s 暂未实现，按「自动」处理（P14 接多引擎）", engine)
 
 
 _OFFICE_MIMES = {

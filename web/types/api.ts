@@ -22,7 +22,7 @@ export interface SettingsFieldMeta {
   type: string;
   label_key: string;
   description_key: string | null;
-  effect: "instant" | "restart";
+  effect: "instant" | "restart" | "reindex";
   choices: string[] | null;
   current: unknown;
 }

@@ -1,9 +1,13 @@
 """设置 spec：字段级声明式定义。
 
-P0 最小集三区（appearance/network/system）；P2 加 models（§7.19 模型卡片）。
-每字段带类型、默认值、生效方式（instant|restart）与 i18n 键——P2 表单自动
+P0 最小集三区（appearance/network/system）；P2 加 models（§7.19 模型卡片）；
+P4 补 models 区的 embedding 三件套与 kb 区（切块/批量/解析引擎）。
+每字段带类型、默认值、生效方式（instant|restart|reindex）与 i18n 键——表单自动
 渲染直接消费本表。secret 类型不进设置 JSON（§5 配置铁律：密钥只进
 user-secrets 目录），明文只在草稿提交时经服务层转运一次。
+
+"reindex" 语义：改了不影响正在跑的检索，但已有索引不会自己变——要重建才对得上
+（前端据此提示「需要重建索引」，重建入口在知识中心）。
 """
 
 from dataclasses import dataclass
@@ -11,7 +15,7 @@ from typing import Any, Literal
 
 from nnnu.services.llm.provider_registry import build_registry
 
-Effect = Literal["instant", "restart"]
+Effect = Literal["instant", "restart", "reindex"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +27,9 @@ class SettingField:
     effect: Effect = "instant"
     choices: tuple[str, ...] | None = None
     description_key: str = ""
+    # 数值字段的取值区间（None = 不限制）
+    min_value: float | None = None
+    max_value: float | None = None
     # secret 字段专属：user-secrets 域与槽位（槽名取同区某个字段的值）
     secret_domain: str = "llm"
     secret_slot_of: str = "provider"
@@ -157,6 +164,8 @@ SPECS: dict[str, AreaSpec] = {
                 "float",
                 1.0,
                 "settings.models.temperature",
+                min_value=0.0,
+                max_value=2.0,
             ),
             SettingField(
                 "reasoning_effort",
@@ -194,6 +203,84 @@ SPECS: dict[str, AreaSpec] = {
                 "",
                 "settings.models.imageModel",
                 description_key="settings.models.imageModelDesc",
+            ),
+            # §7.9 嵌入：默认本地小模型（bge-small-zh-v1.5，首次使用下载），
+            # 想调远程 OpenAI 兼容端点就选 remote 并填 base_url
+            SettingField(
+                "embedding_provider",
+                "choice",
+                "",
+                "settings.models.embeddingProvider",
+                choices=("", "remote"),
+                description_key="settings.models.embeddingProviderDesc",
+            ),
+            SettingField(
+                "embedding_base_url",
+                "string",
+                "",
+                "settings.models.embeddingBaseUrl",
+                description_key="settings.models.embeddingBaseUrlDesc",
+            ),
+            SettingField(
+                "embedding_model",
+                "string",
+                "",
+                "settings.models.embeddingModel",
+                description_key="settings.models.embeddingModelDesc",
+            ),
+            SettingField(
+                "embedding_api_key",
+                "secret",
+                None,
+                "settings.models.embeddingApiKey",
+                description_key="settings.models.embeddingApiKeyDesc",
+                secret_domain="embedding",
+                secret_slot_of="embedding_provider",
+            ),
+        ),
+    ),
+    # §7.9 知识库：切块与嵌入的体量参数（改完要重建索引才生效）+ 解析引擎
+    "kb": AreaSpec(
+        "kb",
+        (
+            SettingField(
+                "chunk_size",
+                "int",
+                512,
+                "settings.kb.chunkSize",
+                effect="reindex",
+                description_key="settings.kb.chunkSizeDesc",
+                min_value=64,
+                max_value=2048,
+            ),
+            SettingField(
+                "chunk_overlap",
+                "int",
+                50,
+                "settings.kb.chunkOverlap",
+                effect="reindex",
+                description_key="settings.kb.chunkOverlapDesc",
+                min_value=0,
+                max_value=512,
+            ),
+            SettingField(
+                "embedding_batch_size",
+                "int",
+                32,
+                "settings.kb.embeddingBatchSize",
+                effect="reindex",
+                description_key="settings.kb.embeddingBatchSizeDesc",
+                min_value=1,
+                max_value=256,
+            ),
+            SettingField(
+                "parse_engine",
+                "choice",
+                "",
+                "settings.kb.parseEngine",
+                effect="reindex",
+                choices=("", "pymupdf", "markitdown"),
+                description_key="settings.kb.parseEngineDesc",
             ),
         ),
     ),

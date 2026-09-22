@@ -300,6 +300,11 @@ function FieldControl({
             （{t("settings.restartRequired")}）
           </span>
         )}
+        {field.effect === "reindex" && (
+          <span className="text-[10px] font-normal text-muted">
+            （{t("settings.reindexRequired")}）
+          </span>
+        )}
       </label>
       {description && <p className="mb-1 text-xs text-muted">{description}</p>}
       {field.type === "choice" ? (

@@ -322,3 +322,107 @@ async def test_probe_endpoint_uses_registry_base_url(client, monkeypatch):
     resp = await client.post("/api/v1/settings/probe", json={"provider": "deepseek"})
     assert resp.status_code == 200
     assert resp.json() == {"ok": True, "models": ["deepseek-chat"], "error": None}
+
+
+# ---- kb 区与 embedding 三件套（P4 §7.9） ----
+
+
+KB_DEFAULTS = {
+    "chunk_size": 512,
+    "chunk_overlap": 50,
+    "embedding_batch_size": 32,
+    "parse_engine": "",
+}
+MODELS_PATH = ("data", "user", "settings", "models.json")
+
+
+def _models_json(tmp_home) -> dict:
+    path = tmp_home
+    for part in MODELS_PATH:
+        path = path / part
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_kb_area_defaults(svc):
+    assert svc.load_area("kb") == KB_DEFAULTS
+
+
+async def test_kb_fields_are_reindex_effect(client):
+    """切块/批量参数改了不会自动重排索引：前端据此提示「需要重建索引」。"""
+    resp = await client.get("/api/v1/settings/kb")
+    fields = resp.json()["fields"]
+    assert [f["key"] for f in fields] == list(KB_DEFAULTS)
+    assert {f["effect"] for f in fields} == {"reindex"}
+
+
+def test_kb_range_validation(svc):
+    with pytest.raises(ValueError):
+        svc.save_area("kb", {"chunk_size": 16})  # 比 min_value 还小
+    with pytest.raises(ValueError):
+        svc.save_area("kb", {"chunk_overlap": 999})
+    with pytest.raises(ValueError):
+        svc.save_area("kb", {"chunk_size": "big"})
+    assert svc.save_area("kb", {"chunk_size": 256})["chunk_size"] == 256
+    assert svc.save_area("kb", {"chunk_overlap": 0})["chunk_overlap"] == 0
+
+
+def test_kb_invalid_value_falls_back_on_load(svc, tmp_home):
+    _write_area(tmp_home, "kb", {"chunk_size": 99999, "parse_engine": "llama_index"})
+    loaded = svc.load_area("kb")
+    assert loaded["chunk_size"] == 512
+    assert loaded["parse_engine"] == ""
+
+
+async def test_embedding_secret_goes_to_embedding_domain(svc, tmp_home):
+    """embedding_api_key 走 embedding 域，槽名跟 embedding_provider（留空 → default）。"""
+    svc.save_draft(
+        "models",
+        {
+            "embedding_provider": "remote",
+            "embedding_base_url": "https://api.example.com/v1",
+            "embedding_model": "bge-m3",
+            "embedding_api_key": "sk-embed-12345678",
+        },
+    )
+    store = get_secrets_store()
+    assert svc.load_draft("models")["embedding_api_key"] == "set"
+    assert store.get_pending("embedding", "remote") == "sk-embed-12345678"
+    assert store.get("embedding", "remote") is None  # 应用前不进正式槽
+
+    await svc.apply_draft("models")  # 不带 probe：嵌入端点在 P4 不探测
+    assert store.get("embedding", "remote") == "sk-embed-12345678"
+    raw = _models_json(tmp_home)
+    assert "embedding_api_key" not in raw  # §5 密钥铁律：绝不进设置 JSON
+    assert raw["embedding_provider"] == "remote"
+    assert raw["embedding_base_url"] == "https://api.example.com/v1"
+
+
+async def test_embedding_secret_summary_masked_in_api(client):
+    await client.put(
+        "/api/v1/settings/models/draft",
+        json={"values": {"embedding_provider": "remote", "embedding_api_key": "sk-embed-abc12345"}},
+    )
+    await client.post("/api/v1/settings/models/apply")
+
+    data = (await client.get("/api/v1/settings/models")).json()
+    assert data["secrets"]["embedding_api_key"] == {
+        "set": True,
+        "masked": "sk-e****2345",
+        "pending": False,
+    }
+    assert "sk-embed-abc12345" not in json.dumps(data)
+
+
+def test_parse_engine_warns_and_falls_back(tmp_home, caplog):
+    """设置卡里留了 parse_engine 给 P14，P4 选别的值按自动走并告警。"""
+    import logging
+
+    from nnnu.services.parsing.service import parse_document
+
+    get_settings_service().save_area("kb", {"parse_engine": "markitdown"})
+    path = tmp_home / "note.txt"
+    path.write_text("傅里叶变换", encoding="utf-8")
+    with caplog.at_level(logging.WARNING):
+        parsed = parse_document(path, "text/plain")
+    assert parsed.ok and "傅里叶变换" in parsed.text  # 照样解析出来
+    assert "parse_engine" in caplog.text

@@ -23,6 +23,7 @@ export default function SettingsPage() {
           title={t("settings.modelsTitle")}
           description={t("settings.modelsDesc")}
         />
+        <SettingsForm area="kb" title={t("settings.kbTitle")} description={t("settings.kbDesc")} />
         <SettingsForm
           area="chat"
           title={t("settings.chatTitle")}

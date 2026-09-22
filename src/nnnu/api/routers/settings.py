@@ -58,9 +58,11 @@ def _models_secret_summary(values: dict[str, Any]) -> dict[str, Any]:
     store = get_secrets_store()
     provider = str(values.get("provider") or "")
     search_provider = str(values.get("search_provider") or "").strip() or "default"
+    embedding_provider = str(values.get("embedding_provider") or "").strip() or "default"
     return {
         "api_key": store.summary("llm", provider),
         "search_api_key": store.summary("search", search_provider),
+        "embedding_api_key": store.summary("embedding", embedding_provider),
     }
 
 
@@ -92,6 +94,8 @@ async def _probe_models_candidate(candidate: dict[str, Any]) -> str | None:
     """apply 前的模型探测（§7.19）：失败返回文案，原配置与草稿都不动。
 
     provider 留空 = 未显式配置（回退 env/默认），没有可探测的目标，直接放行。
+    embedding_* 字段同区但不在此探测：嵌入端点要真发一次 /embeddings 才知道好歹，
+    P4 不做（本地模式还要先下模型），配置错了在第一次检索时以 503 暴露。
     """
     provider = str(candidate.get("provider") or "")
     if not provider:

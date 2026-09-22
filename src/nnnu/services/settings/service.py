@@ -46,6 +46,13 @@ def _defaults(spec: AreaSpec) -> dict[str, Any]:
     return {field.key: field.default for field in spec.fields if field.type != "secret"}
 
 
+def _check_range(field: SettingField, number: float) -> None:
+    if field.min_value is not None and number < field.min_value:
+        raise ValueError(f"{field.key} 不能小于 {field.min_value}")
+    if field.max_value is not None and number > field.max_value:
+        raise ValueError(f"{field.key} 不能大于 {field.max_value}")
+
+
 def _validate_field(field: SettingField, value: Any) -> Any:
     """校验并规整单个值，非法值抛 ValueError。"""
     if field.type == "choice":
@@ -56,13 +63,13 @@ def _validate_field(field: SettingField, value: Any) -> Any:
     if field.type == "int":
         if isinstance(value, bool) or not isinstance(value, int):
             raise ValueError(f"{field.key} 必须是整数")
+        _check_range(field, value)
         return value
     if field.type == "float":
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError(f"{field.key} 必须是数字")
         number = float(value)
-        if not 0 <= number <= 2:
-            raise ValueError(f"{field.key} 必须在 0 到 2 之间")
+        _check_range(field, number)
         return number
     if field.type == "bool":
         if not isinstance(value, bool):
