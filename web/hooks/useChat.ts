@@ -108,10 +108,49 @@ interface ChatState {
 const socket = new ChatSocket();
 let initialized = false;
 
+/** 服务器消息 → UI 消息：tool_calls 落库是 done 事件的 ToolTrace 形状
+ *（tool_name 键），与实时回合的 UiToolCall（name 键）不同，这里归一化。 */
+function toUiMessages(raw: RawMessage[]): UiMessage[] {
+  return raw.map((message) => ({
+    id: message.id,
+    role: message.role,
+    content: message.content ?? "",
+    thinking: message.thinking ?? null,
+    tool_calls: (message.tool_calls ?? []).map((call) => ({
+      name: String(call.tool_name ?? call.name ?? "tool"),
+      call_id: String(call.call_id ?? ""),
+      args: (call.args as Record<string, unknown>) ?? {},
+      ok: typeof call.ok === "boolean" ? call.ok : null,
+      summary: String(call.summary ?? ""),
+    })),
+    citations: message.citations ?? [],
+    cost: message.cost ?? null,
+    created_at: message.created_at,
+  }));
+}
+
+interface RawMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  thinking: string | null;
+  tool_calls: {
+    tool_name?: string;
+    name?: string;
+    call_id?: string;
+    args?: unknown;
+    ok?: unknown;
+    summary?: unknown;
+  }[];
+  citations: CitationSource[];
+  cost: { tokens: number; cost: number } | null;
+  created_at: number;
+}
+
 async function refreshMessages(set: (fn: (s: ChatState) => Partial<ChatState>) => void, sessionId: string): Promise<void> {
   try {
-    const detail = await apiFetch<{ messages: UiMessage[] }>(`/api/v1/sessions/${sessionId}`);
-    set(() => ({ messages: detail.messages ?? [] }));
+    const detail = await apiFetch<{ messages: RawMessage[] }>(`/api/v1/sessions/${sessionId}`);
+    set(() => ({ messages: toUiMessages(detail.messages ?? []) }));
   } catch {
     // 会话已被删除等：保留本地视图
   }
