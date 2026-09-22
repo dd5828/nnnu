@@ -196,6 +196,13 @@ class EmbeddingService:
             raise EmbeddingError(f"嵌入返回 {len(vectors)} 条，请求了 {total} 条")
         return vectors
 
+    async def provider(self) -> EmbeddingProvider:
+        """给检索引擎用的 provider：查询是一次性的，不走分批/进度/取消。
+
+        （索引构建走 embed_batch——批次与进度是构建侧才需要的语义。）
+        """
+        return await self._resolve_provider(on_progress=None, on_note=None, cancel=None)
+
     async def _embed_retrying(
         self, provider: EmbeddingProvider, batch: list[str], *, cancel: Event | None
     ) -> list[list[float]]:

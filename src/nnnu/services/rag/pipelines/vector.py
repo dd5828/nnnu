@@ -232,6 +232,7 @@ class VectorEngine(BaseEngine):
                     score=score_map.get(chunk_id, 0.0),
                     text=chunk.text,
                     page=chunk.page,
+                    metadata={"chunk_id": chunk.chunk_id},  # 跨 KB RRF 去重靠它
                 )
             )
         return hits
