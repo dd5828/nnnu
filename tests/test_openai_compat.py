@@ -7,6 +7,7 @@ import pytest
 
 from nnnu.services.llm.errors import (
     LLMAuthenticationError,
+    LLMError,
     LLMRateLimitError,
     LLMTransportError,
 )
@@ -184,6 +185,26 @@ async def test_error_status_mapping():
     with pytest.raises(LLMTransportError):
         await client500.complete(LLMRequest(messages=[], model="m"))
     await client500.aclose()
+
+
+async def test_stream_error_body_reaches_mapping():
+    """流式拿到非 200 时先读 body 再抛：上游写的原因（比如 422 的 details）要能带出来。
+
+    真实网络下流式响应体是没读过的，直接取 text 会抛 ResponseNotRead，
+    错误信息就只剩「崩溃」而不是「422 + 原因」。
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = b'{"error": {"message": "tool_calls must be followed by tool messages"}}'
+        return httpx.Response(422, stream=httpx.ByteStream(body))
+
+    client = OpenAICompatClient(SPEC, "m", api_key="k", transport=httpx.MockTransport(handler))
+    with pytest.raises(LLMError) as info:
+        async for _ in client.stream(LLMRequest(messages=[], model="m")):
+            pass
+    assert "422" in str(info.value)
+    assert "tool_calls must be followed" in str(info.value)
+    await client.aclose()
 
 
 def test_inline_think_filter_unit():

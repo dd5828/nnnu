@@ -37,6 +37,17 @@ def _truncate(text: str) -> str:
     return text[:MAX_ERROR_BODY_CHARS]
 
 
+def _safe_body(response: httpx.Response) -> str:
+    """错误响应体，读不出来就给空串（错误信息退化成状态码，但绝不崩）。
+
+    流式请求失败时 body 常常没被 read 过，取 text 会抛 httpx.ResponseNotRead。
+    """
+    try:
+        return _truncate(response.text)
+    except httpx.ResponseNotRead:
+        return ""
+
+
 def retry_after_seconds(response: httpx.Response) -> float | None:
     """Retry-After：数字秒或 HTTP 日期。"""
     raw = response.headers.get("retry-after")
@@ -61,7 +72,7 @@ def map_error(exc: Exception, provider: str | None = None) -> LLMError:
         return exc
     if isinstance(exc, httpx.HTTPStatusError):
         status = exc.response.status_code
-        body = _truncate(exc.response.text)
+        body = _safe_body(exc.response)
         if status == 401 or status == 403:
             return LLMAuthenticationError(f"{status} 密钥无效或无权限: {body}", provider=provider)
         if status == 429:

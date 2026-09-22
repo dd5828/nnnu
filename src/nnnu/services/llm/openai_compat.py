@@ -125,6 +125,9 @@ class OpenAICompatClient:
         try:
             async with self._client.stream("POST", self._chat_url(), json=payload) as response:
                 if response.status_code != 200:
+                    # 失败体要先读出来：真实网络下流式响应还没 read，
+                    # 错误映射取 text 会抛 ResponseNotRead，把上游原因盖成崩溃
+                    await response.aread()
                     raise httpx.HTTPStatusError(
                         f"LLM API {response.status_code}",
                         request=response.request,

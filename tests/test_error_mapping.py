@@ -80,6 +80,20 @@ def test_map_llm_error_passthrough():
     assert mapped.provider == "deepseek"
 
 
+def test_map_unread_streaming_body_does_not_crash():
+    """流式响应没读过 body：映射退化成只有状态码，不能抛 ResponseNotRead 把原因盖掉。"""
+    response = httpx.Response(
+        422,
+        stream=httpx.ByteStream(b'{"error": "bad tool_calls"}'),
+        request=httpx.Request("POST", "http://x"),
+    )
+    mapped = map_error(
+        httpx.HTTPStatusError("error 422", request=response.request, response=response)
+    )
+    assert isinstance(mapped, LLMError)
+    assert "422" in str(mapped)
+
+
 def test_map_unknown_non_network_not_retryable():
     mapped = map_error(ValueError("内部 bug"))
     assert isinstance(mapped, LLMError)
