@@ -44,7 +44,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/partners", key: "nav.partners", icon: MessageSquare },
   { href: "/agents", key: "nav.agents", icon: Bot },
   { href: "/playground", key: "nav.playground", icon: FlaskConical },
-  { href: "/settings", key: "nav.settings", icon: Settings },
+  { href: "/settings", key: "nav.settings", icon: Settings, enabled: true },
 ];
 
 const THEME_LABEL_KEYS: Record<string, string> = {
