@@ -142,6 +142,16 @@ def build_unified_context(
             context_flags.add("cron")
     except RuntimeError:
         pass  # cron 未装配（独立测试路径），视为无任务
+    # §7.2 工具开关：设置 chat 区与请求级配置合并（请求覆盖更具体，仅做并集/补集）
+    from nnnu.services.settings.service import get_settings_service
+
+    chat_settings = get_settings_service().load_area("chat")
+    forced = set(request.config.get("forced_tools", [])) | set(
+        chat_settings.get("tools_enabled", [])
+    )
+    suppressed = set(request.config.get("suppressed_tools", [])) | set(
+        chat_settings.get("tools_disabled", [])
+    )
     return UnifiedContext(
         session=SessionRef(id=session.id, title=session.title),
         capability=request.capability,
@@ -151,8 +161,8 @@ def build_unified_context(
         kb_refs=[KbRef(kb_id=kb_id) for kb_id in request.kb_ids],
         tool_flags=ToolMountFlags(
             context=context_flags,
-            forced=set(request.config.get("forced_tools", [])),
-            suppressed=set(request.config.get("suppressed_tools", [])),
+            forced=forced,
+            suppressed=suppressed,
         ),
         config=dict(request.config),
         persona=(

@@ -40,6 +40,27 @@ PROVIDER_CHOICES: tuple[str, ...] = ("", *[spec.id for spec in build_registry()]
 
 
 SPECS: dict[str, AreaSpec] = {
+    # §7.2 工具开关：tools_enabled 强制启用（等价 --tool），tools_disabled 禁用；
+    # exec 默认在禁用列表（§11.2 需用户显式开启）
+    "chat": AreaSpec(
+        "chat",
+        (
+            SettingField(
+                "tools_enabled",
+                "string_list",
+                [],
+                "settings.chat.toolsEnabled",
+                description_key="settings.chat.toolsEnabledDesc",
+            ),
+            SettingField(
+                "tools_disabled",
+                "string_list",
+                ["exec"],
+                "settings.chat.toolsDisabled",
+                description_key="settings.chat.toolsDisabledDesc",
+            ),
+        ),
+    ),
     "appearance": AreaSpec(
         "appearance",
         (
