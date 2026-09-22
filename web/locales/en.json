@@ -96,9 +96,9 @@
     },
     "chat": {
       "toolsEnabled": "Force-enable tools",
-      "toolsEnabledDesc": "One tool name per line. Toggleable tools are off by default — only ones listed here get mounted. Available: web_search, paper_search, github, brainstorm, reason, imagegen, videogen, exec",
+      "toolsEnabledDesc": "One tool name per line. For \"my condition isn't met but I want it anyway\" — e.g. mount cron with no scheduled jobs, or attachment_search with no attachments. Rarely needed: toggleable tools are already on.",
       "toolsDisabled": "Disable tools",
-      "toolsDisabledDesc": "One tool name per line; disabling wins over enabling (listed in both = disabled). exec sits here by default — to use it you must do both: delete it from this line and add it to the one above."
+      "toolsDisabledDesc": "One tool name per line; listed tools are not mounted for the turn (disabling wins over enabling). exec sits here by default — it runs commands on this machine, so delete the line only if you want it."
     },
     "appearanceTitle": "Appearance",
     "appearanceDesc": "Theme and language — takes effect instantly after Apply.",
@@ -107,7 +107,7 @@
     "chatTitle": "Chat",
     "chatDesc": "Tool toggles — Apply takes effect immediately; the next turn mounts tools per these switches.",
     "toolsTitle": "Tool catalog",
-    "toolsDesc": "Every built-in tool (click for its parameter schema). Always = mounted every turn; Context = mounted when its condition holds; Toggleable = must be listed in Force-enable above.",
+    "toolsDesc": "Every built-in tool (click for its parameter schema). Always = mounted every turn; Context = mounted when its condition holds; Toggleable = on by default, turns off when listed under Disable.",
     "toolsLoadFailed": "Could not load the tool list — is the backend running?",
     "mountAlways": "always",
     "mountContext": "context",

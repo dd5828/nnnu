@@ -96,9 +96,9 @@
     },
     "chat": {
       "toolsEnabled": "强制启用工具",
-      "toolsEnabledDesc": "一行一个工具名。可开关的工具默认都不挂载，列在这里才挂载。可填：web_search、paper_search、github、brainstorm、reason、imagegen、videogen、exec",
+      "toolsEnabledDesc": "一行一个工具名。用在「条件没命中但我就要用」的场合，比如没有定时任务也想让 cron 可用、没有附件也想用 attachment_search。日常用不到这行——可开关的工具本来就是开的。",
       "toolsDisabled": "禁用工具",
-      "toolsDisabledDesc": "一行一个工具名，禁用优先于启用（两边都写 = 禁用）。exec 默认在这行——想用得做两件事：从这行删掉，再加到上面那行。"
+      "toolsDisabledDesc": "一行一个工具名，列在这里的工具这一回合不挂载（禁用优先于启用）。exec 默认在这行——它会在这台机器上跑命令，要用就把它删掉。"
     },
     "appearanceTitle": "外观",
     "appearanceDesc": "主题与语言——点「应用」后立即生效。",
@@ -107,7 +107,7 @@
     "chatTitle": "对话",
     "chatDesc": "工具开关——改完点「应用」立即生效，下一回合就按新开关挂载。",
     "toolsTitle": "工具目录",
-    "toolsDesc": "全部内置工具（点开看参数 schema）。恒挂载=总在；按上下文=满足条件自动挂；可开关=要填进上面的启用列表。",
+    "toolsDesc": "全部内置工具（点开看参数 schema）。恒挂载=总在；按上下文=满足条件自动挂；可开关=默认就挂，填进禁用列表才关。",
     "toolsLoadFailed": "工具清单没取到——后端可能没起来。",
     "mountAlways": "恒挂载",
     "mountContext": "按上下文",

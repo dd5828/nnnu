@@ -1,7 +1,8 @@
 """工具协议（§6.3）：Level 1 插件——单函数工具，LLM 自主决定调用。
 
 挂载规则（ToolMountFlags + compute_mounted_tools，纯函数）：
-- user_toggleable：用户在设置/工具栏开关（默认不挂载）；
+- user_toggleable：默认挂载，用户在设置里关掉即不挂（缺省状态开箱可用，
+  与参考仓库"设置文件缺失 → 全部可开关工具回退为启用"的口径一致）；
 - context_gated：回合上下文条件命中时自动挂载（flags.context 由编排器计算）；
 - always：恒挂载；
 - forced 无条件追加（绕过所有门），suppressed 无条件移除；
@@ -80,9 +81,11 @@ class ToolMountFlags(BaseModel):
 
 
 def compute_mounted_tools(tools: Iterable[ToolDefinition], flags: ToolMountFlags) -> list[str]:
-    """挂载纯函数：(always ∪ context_gated∧命中 ∪ forced) − suppressed。
+    """挂载纯函数：(always ∪ user_toggleable ∪ context_gated∧命中 ∪ forced) − suppressed。
 
-    forced 未知名忽略并告警（不产生幻觉工具）；suppressed 优先于 forced。
+    user_toggleable 默认在挂载集里（用户关掉走 suppressed）；强制启用的意义在于把
+    上下文没命中的工具顶上来（如无定时任务也挂 cron，等价 --tool）。forced 未知名
+    忽略并告警（不产生幻觉工具）；suppressed 优先于 forced。
     """
     definitions = list(tools)
     known = {d.name for d in definitions}
@@ -90,7 +93,7 @@ def compute_mounted_tools(tools: Iterable[ToolDefinition], flags: ToolMountFlags
     for definition in definitions:
         if definition.name in flags.suppressed:
             continue
-        if definition.mount == ToolMount.ALWAYS:
+        if definition.mount in (ToolMount.ALWAYS, ToolMount.USER_TOGGLEABLE):
             mounted.append(definition.name)
         elif definition.mount == ToolMount.CONTEXT_GATED and definition.name in flags.context:
             mounted.append(definition.name)

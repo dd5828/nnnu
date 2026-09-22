@@ -96,12 +96,13 @@ test("⑦ 工具开关：设置里放行 exec 后，下一回合真能调起来"
   await page.goto("/settings");
   const card = page.locator("section").filter({ hasText: "禁用工具" });
   await expect(card.getByLabel("禁用工具")).toHaveValue("exec");
-  // 工具目录列出全部内置工具（含未挂载的 exec），点开是参数 schema
+  // 工具目录列出全部内置工具（含被禁用的 exec），点开是参数 schema
   const catalog = page.locator("section").filter({ hasText: "工具目录" });
   await expect(catalog.getByText("exec", { exact: true })).toBeVisible({ timeout: 10000 });
   await expect(catalog.getByText("code_execution", { exact: true })).toBeVisible();
-  await card.getByLabel("禁用工具").fill(""); // 从禁用列表里删掉
-  await card.getByLabel("强制启用工具").fill("exec"); // 再显式启用
+  // 联网搜索这类可开关工具默认就是挂着的，不在禁用列表里
+  await expect(catalog.getByText("web_search", { exact: true })).toBeVisible();
+  await card.getByLabel("禁用工具").fill(""); // 把 exec 从禁用列表删掉即放行
   await card.getByRole("button", { name: "应用" }).click();
   await expect(card.getByText("已应用")).toBeVisible({ timeout: 10000 });
 

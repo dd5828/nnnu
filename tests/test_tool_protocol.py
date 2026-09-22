@@ -15,9 +15,20 @@ def _def(name: str, mount: ToolMount) -> ToolDefinition:
     return ToolDefinition(name=name, description=f"desc {name}", parameters={}, mount=mount)
 
 
-def test_mount_always_included():
-    tools = [_def("ask_user", ToolMount.ALWAYS), _def("web_search", ToolMount.USER_TOGGLEABLE)]
-    assert compute_mounted_tools(tools, ToolMountFlags()) == ["ask_user"]
+def test_mount_default_surface():
+    """默认挂载面 = always ∪ user_toggleable；context_gated 未命中不出现。"""
+    tools = [
+        _def("ask_user", ToolMount.ALWAYS),
+        _def("web_search", ToolMount.USER_TOGGLEABLE),
+        _def("rag", ToolMount.CONTEXT_GATED),
+    ]
+    assert compute_mounted_tools(tools, ToolMountFlags()) == ["ask_user", "web_search"]
+
+
+def test_toggleable_tool_off_when_suppressed():
+    """可开关工具默认开；用户关掉（suppressed）即不挂载。"""
+    tools = [_def("web_search", ToolMount.USER_TOGGLEABLE)]
+    assert compute_mounted_tools(tools, ToolMountFlags(suppressed={"web_search"})) == []
 
 
 def test_mount_context_gated_hit_and_miss():
@@ -26,11 +37,11 @@ def test_mount_context_gated_hit_and_miss():
     assert compute_mounted_tools(tools, flags) == ["rag"]
 
 
-def test_forced_overrides_and_unknown_ignored():
-    tools = [_def("web_search", ToolMount.USER_TOGGLEABLE)]
-    flags = ToolMountFlags(forced={"web_search", "not_a_tool"})
-    # 未知名 forced 忽略（fail-closed，不产生幻觉工具）
-    assert compute_mounted_tools(tools, flags) == ["web_search"]
+def test_forced_mounts_context_tool_and_unknown_ignored():
+    tools = [_def("web_search", ToolMount.USER_TOGGLEABLE), _def("rag", ToolMount.CONTEXT_GATED)]
+    flags = ToolMountFlags(forced={"rag", "not_a_tool"})
+    # forced 把上下文未命中的工具顶上来；未知名忽略（fail-closed，不产生幻觉工具）
+    assert compute_mounted_tools(tools, flags) == ["web_search", "rag"]
 
 
 def test_suppressed_beats_forced_and_always():
