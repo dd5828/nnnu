@@ -117,3 +117,53 @@ test("⑦ 工具开关：设置里放行 exec 后，下一回合真能调起来"
   await expect(page.getByText("exec-ok").first()).toBeVisible({ timeout: 10000 });
   await expect(page.getByText("命令跑通了，输出 exec-ok。")).toBeVisible({ timeout: 10000 });
 });
+
+test("⑧ 知识库：建库上传到就绪，测试台检索命中第 1 页", async ({ page }) => {
+  const pdf = path.resolve(__dirname, ".artifacts", "sample.pdf");
+  await page.goto("/knowledge");
+  await page.getByTestId("kb-new").click();
+  await page.getByTestId("kb-name").fill("信号库");
+  await page.getByTestId("kb-file-input").setInputFiles(pdf);
+  await page.getByTestId("kb-create-submit").click();
+
+  // 向导：上传字节进度 → 索引进度 → 索引完成自动进详情页
+  await expect(page.getByTestId("kb-create-progress")).toBeVisible({ timeout: 20000 });
+  await page.waitForURL(/\/knowledge\/kb-/, { timeout: 60000 });
+  const row = page.getByTestId("doc-row").first();
+  await expect(row).toContainText("sample.pdf");
+  await expect(row.getByTestId("doc-status")).toHaveAttribute("data-status", "done", {
+    timeout: 30000,
+  });
+
+  // 检索测试台：混合检索命中，且命中带页码
+  await page.getByTestId("search-query").fill("傅里叶变换");
+  await page.getByTestId("search-mode").selectOption("hybrid");
+  await page.getByTestId("search-run").click();
+  const hit = page.getByTestId("search-hit").first();
+  await expect(hit).toBeVisible({ timeout: 20000 });
+  await expect(hit.getByTestId("hit-page")).toHaveText(/第 1 页/);
+  // 分数是 RRF 融合分，不该是 0（修过一次全 0 的坑）
+  await expect(hit).not.toContainText("分 0.0000");
+});
+
+test("⑨ 知识库引用可点：从引用面板跳进阅读器并定位页码", async ({ page }) => {
+  await openSession(page);
+  const box = page.locator("textarea").first();
+  await box.fill("查一下知识库里的傅里叶变换");
+  await box.press("Enter");
+  // 模型调 rag（有 ready 库才挂载）→ 引用面板出现
+  await expect(page.getByText("rag", { exact: true }).first()).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText("引用来源").first()).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText("知识库里说，傅里叶变换把时域信号分解为频域分量")).toBeVisible({
+    timeout: 15000,
+  });
+
+  // 点知识库引用 → 知识中心详情页 + 阅读器开到第 1 页
+  await page.getByTestId("citation-link").last().click();
+  await expect(page).toHaveURL(/\/knowledge\/kb-.*[?&]doc=.*[?&]page=1/, { timeout: 15000 });
+  const reader = page.getByTestId("reader");
+  await expect(reader).toBeVisible({ timeout: 15000 });
+  await expect(reader.getByText("第 1 页")).toBeVisible();
+  // PDF 走 iframe 页锚
+  await expect(reader.locator("iframe")).toHaveAttribute("src", /#page=1$/);
+});

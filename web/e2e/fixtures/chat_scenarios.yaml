@@ -59,3 +59,11 @@ steps:
   - chunks: ["命令跑通了，输出 exec-ok。"]
     finish_reason: stop
     usage: { prompt_tokens: 100, completion_tokens: 30 }
+  # Turn 8（测试⑨）：知识库检索——测试⑧ 已建好库，rag 工具这时挂着
+  - tool_calls:
+      - { id: rag-1, name: rag, arguments: '{"query": "傅里叶变换"}' }
+    finish_reason: tool_calls
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  - chunks: ["知识库里说，傅里叶变换把时域信号分解为频域分量（见引用）。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 100, completion_tokens: 30 }

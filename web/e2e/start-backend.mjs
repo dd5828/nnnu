@@ -36,7 +36,8 @@ execSync(
   { cwd: REPO, stdio: "inherit" }
 );
 
-// 3) 起 scripted 后端（NNNU_LLM_MOCK 让工厂返回脚本替身，零 API 成本）
+// 3) 起 scripted 后端（NNNU_LLM_MOCK 让工厂返回脚本替身，零 API 成本；
+//    嵌入也走替身，否则知识库场景会去下 95MB 的本地模型）
 const child = spawn(PYTHON, ["-m", "nnnu.api.run_server"], {
   cwd: REPO,
   stdio: "inherit",
@@ -45,6 +46,7 @@ const child = spawn(PYTHON, ["-m", "nnnu.api.run_server"], {
     NNNU_HOME: E2E_HOME,
     NNNU_LLM_MOCK: "scripted",
     NNNU_LLM_SCRIPT: path.join(__dirname, "fixtures", "chat_scenarios.yaml"),
+    NNNU_EMBEDDING_MOCK: "scripted",
     PYTHONIOENCODING: "utf-8",
   },
 });
