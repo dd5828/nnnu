@@ -79,6 +79,9 @@ def register_builtins() -> None:
         ReadWorkspaceFileTool,
         WriteWorkspaceFileTool,
     )
+    from nnnu.tools.builtin.paper_search_tool import PaperSearchTool
+    from nnnu.tools.builtin.web_fetch import WebFetchTool
+    from nnnu.tools.builtin.web_search import WebSearchTool
 
     get_capability_registry().register(ChatCapability.manifest, ChatCapability)
     get_tool_registry().register(AskUserTool())
@@ -88,6 +91,9 @@ def register_builtins() -> None:
     get_tool_registry().register(ListWorkspaceTool())
     get_tool_registry().register(ReadWorkspaceFileTool())
     get_tool_registry().register(WriteWorkspaceFileTool())
+    get_tool_registry().register(WebSearchTool())
+    get_tool_registry().register(PaperSearchTool())
+    get_tool_registry().register(WebFetchTool())
 
 
 def configure_logging(level: str | None = None) -> None:

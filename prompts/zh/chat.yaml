@@ -21,3 +21,6 @@ tool_descriptions:
   list_workspace: "列出 workspace 目录下的文件与子目录。"
   read_workspace_file: "读取 workspace 内的 UTF-8 文本文件内容。"
   write_workspace_file: "向 workspace 写入文本文件（会覆盖同名文件）。"
+  web_search: "联网搜索，返回带来源链接的结果列表。回答涉及近期事件、新闻或需要查证的事实时必须先用它。"
+  paper_search: "在 arXiv 上检索论文（关键词/标题/作者），返回标题、作者、年份、摘要与链接。"
+  web_fetch: "抓取指定网页并转成 Markdown 文本。需要阅读某篇网页的具体内容时使用（内网地址会被拒绝）。"

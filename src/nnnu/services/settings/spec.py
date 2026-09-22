@@ -23,6 +23,9 @@ class SettingField:
     effect: Effect = "instant"
     choices: tuple[str, ...] | None = None
     description_key: str = ""
+    # secret 字段专属：user-secrets 域与槽位（槽名取同区某个字段的值）
+    secret_domain: str = "llm"
+    secret_slot_of: str = "provider"
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,6 +142,29 @@ SPECS: dict[str, AreaSpec] = {
                 "",
                 "settings.models.reasoningEffort",
                 choices=("", "low", "medium", "high"),
+            ),
+            SettingField(
+                "search_provider",
+                "choice",
+                "",
+                "settings.models.searchProvider",
+                choices=("", "duckduckgo", "searxng", "bocha", "serpapi_compat"),
+                description_key="settings.models.searchProviderDesc",
+            ),
+            SettingField(
+                "search_base_url",
+                "string",
+                "",
+                "settings.models.searchBaseUrl",
+                description_key="settings.models.searchBaseUrlDesc",
+            ),
+            SettingField(
+                "search_api_key",
+                "secret",
+                None,
+                "settings.models.searchApiKey",
+                secret_domain="search",
+                secret_slot_of="search_provider",
             ),
         ),
     ),

@@ -52,12 +52,16 @@ def _fields_meta(area: str, values: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _models_secret_summary(values: dict[str, Any]) -> dict[str, Any]:
-    """models 区密钥摘要（按当前 provider 槽）：掩码 + 是否已配 + 是否有待应用候选。"""
+    """models 区密钥摘要（按各自 provider 槽）：掩码 + 是否已配 + 是否有待应用候选。"""
     from nnnu.services.secrets.store import get_secrets_store
 
+    store = get_secrets_store()
     provider = str(values.get("provider") or "")
-    summary = get_secrets_store().summary("llm", provider)
-    return {"api_key": summary}
+    search_provider = str(values.get("search_provider") or "").strip() or "default"
+    return {
+        "api_key": store.summary("llm", provider),
+        "search_api_key": store.summary("search", search_provider),
+    }
 
 
 def _resolve_probe_key(provider: str, body_key: str | None = None) -> str | None:

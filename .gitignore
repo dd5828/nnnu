@@ -1,5 +1,7 @@
 # 文档：全部 md 仅保留本地，不入库（用户要求）
 *.md
+# 例外：NOTICE.md 是 Apache-2.0 合规文件，必须随仓库分发（方案 §16.6）
+!NOTICE.md
 
 # 本地工具与 IDE
 .claude/

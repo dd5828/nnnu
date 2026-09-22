@@ -184,11 +184,11 @@ class SettingsService:
             if raw == SECRET_ACTION_CLEAR:
                 draft[field.key] = SECRET_ACTION_CLEAR
                 continue
-            # 明文新密钥 → pending 槽（槽名 = 合并后的 provider，apply 时同名 promote）
+            # 明文新密钥 → pending 槽（域/槽由字段声明，如 llm/api_key→provider、search→search_provider）
             from nnnu.services.secrets.store import get_secrets_store
 
             store = get_secrets_store()
-            store.set_pending("llm", str(merged.get("provider", "default")), raw)
+            store.set_pending(field.secret_domain, self._secret_slot(field, merged), raw)
             draft[field.key] = SECRET_ACTION_SET
         _draft_path(name).parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(_draft_path(name), draft)
@@ -204,10 +204,10 @@ class SettingsService:
             from nnnu.services.secrets.store import get_secrets_store
 
             store = get_secrets_store()
-            provider = self._draft_provider(name, draft)
+            merged = {**self.load_area(name), **dict(draft)}
             for field in _secret_fields(spec):
                 if draft.get(field.key) in (SECRET_ACTION_SET, SECRET_ACTION_CLEAR):
-                    store.clear_pending("llm", provider)
+                    store.clear_pending(field.secret_domain, self._secret_slot(field, merged))
         _draft_path(name).unlink(missing_ok=True)
 
     async def apply_draft(self, name: str, probe_fn: ProbeFn | None = None) -> dict[str, Any]:
@@ -235,21 +235,21 @@ class SettingsService:
         from nnnu.services.secrets.store import get_secrets_store
 
         store = get_secrets_store()
-        provider = self._draft_provider(name, draft)
         for field in _secret_fields(spec):
             action = draft.get(field.key)
+            slot = self._secret_slot(field, candidate)
             if action == SECRET_ACTION_SET:
-                store.promote("llm", provider)
+                store.promote(field.secret_domain, slot)
             elif action == SECRET_ACTION_CLEAR:
-                store.clear("llm", provider)
+                store.clear(field.secret_domain, slot)
         _draft_path(name).unlink(missing_ok=True)
         return self.load_area(name)
 
-    def _draft_provider(self, name: str, draft: dict[str, Any]) -> str:
-        """草稿生效后的 provider 槽名（密钥按 provider 分槽）。"""
-        if "provider" in draft:
-            return str(draft["provider"])
-        return str(self.load_area(name).get("provider", "default"))
+    @staticmethod
+    def _secret_slot(field: SettingField, merged: dict[str, Any]) -> str:
+        """secret 槽名：取同区 secret_slot_of 字段的值（如 provider / search_provider）；
+        字段留空时落 "default" 槽（读侧同规则对齐，见 services/search/service.py）。"""
+        return str(merged.get(field.secret_slot_of, "") or "default")
 
     def seed_missing(self) -> None:
         """只播种缺失的设置文件，绝不覆盖用户文件（挂入启动引导）。"""
