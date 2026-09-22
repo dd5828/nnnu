@@ -119,6 +119,10 @@ async def run(question: str) -> int:
 
 
 def main() -> None:
+    # 重定向输出时固定 UTF-8（dev.py 同款）：Windows GBK 控制台会因 ↔ 等字符崩溃
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8")
     question = " ".join(sys.argv[1:]) or "你好"
     sys.exit(asyncio.run(run(question)))
 
