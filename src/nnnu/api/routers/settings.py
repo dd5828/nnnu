@@ -42,6 +42,7 @@ def _fields_meta(area: str, values: dict[str, Any]) -> list[dict[str, Any]]:
             "key": field.key,
             "type": field.type,
             "label_key": field.label_key,
+            "description_key": field.description_key or None,
             "effect": field.effect,
             "choices": list(field.choices) if field.choices else None,
             "current": values.get(field.key) if field.type != "secret" else None,
@@ -162,8 +163,7 @@ async def get_draft(area: str):
         draft = get_settings_service().load_draft(area)
     except KeyError:
         return _error(404, "unknown_area", f"未知设置区 {area}")
-    if draft is None:
-        return _error(404, "no_draft", f"设置区 {area} 没有待应用的草稿")
+    # 无草稿 = 正常态，返回 null 而不是 404（前端轮询此接口，404 会刷 console 错误）
     return {"area": area, "draft": draft}
 
 

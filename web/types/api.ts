@@ -21,6 +21,7 @@ export interface SettingsFieldMeta {
   key: string;
   type: string;
   label_key: string;
+  description_key: string | null;
   effect: "instant" | "restart";
   choices: string[] | null;
   current: unknown;

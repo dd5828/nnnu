@@ -74,7 +74,35 @@
     },
     "system": {
       "logLevel": "Log level"
-    }
+    },
+    "models": {
+      "provider": "Provider",
+      "providerDesc": "Empty = follow NNNU_MODEL env / built-in default (DeepSeek)",
+      "baseUrl": "Base URL",
+      "baseUrlDesc": "Empty = provider default endpoint; required for custom",
+      "model": "Model",
+      "modelDesc": "Empty = provider's default model; free text supported",
+      "apiKey": "API key",
+      "apiKeyDesc": "Stored in user-secrets only, never written into settings JSON; replies show a mask only",
+      "temperature": "Temperature (0–2)",
+      "reasoningEffort": "Reasoning effort"
+    },
+    "appearanceTitle": "Appearance",
+    "appearanceDesc": "Theme and language — takes effect instantly after Apply.",
+    "modelsTitle": "Models",
+    "modelsDesc": "LLM connection — a connectivity probe runs on Apply; failure keeps the current config.",
+    "networkTitle": "Network",
+    "systemTitle": "System",
+    "draftSaved": "Draft saved — click Apply to take effect",
+    "applied": "Applied",
+    "working": "Working…",
+    "restartRequired": "restart required",
+    "choiceDefault": "Default (unset)",
+    "secretPlaceholder": "Not set / keep current",
+    "clearSecret": "Clear key",
+    "probeOk": "Connection OK",
+    "probeFailed": "Probe failed",
+    "testConnection": "Test connection"
   },
   "health": {
     "backend": "Backend",

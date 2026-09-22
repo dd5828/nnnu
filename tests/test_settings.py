@@ -260,9 +260,10 @@ async def test_models_draft_apply_flow(client, monkeypatch):
     data = resp.json()
     assert data["secrets"]["api_key"] == {"set": True, "masked": "sk-a****5678", "pending": False}
     assert "sk-api-key" not in json.dumps(data)
-    # 草稿已清
+    # 草稿已清（无草稿返回 200 + null，非 404）
     resp = await client.get("/api/v1/settings/models/draft")
-    assert resp.status_code == 404
+    assert resp.status_code == 200
+    assert resp.json()["draft"] is None
 
 
 async def test_models_apply_probe_failure_keeps_config_and_draft(client, monkeypatch):
@@ -280,6 +281,7 @@ async def test_models_apply_probe_failure_keeps_config_and_draft(client, monkeyp
     assert resp.json()["values"]["provider"] == ""
     resp = await client.get("/api/v1/settings/models/draft")
     assert resp.status_code == 200
+    assert resp.json()["draft"] == {"provider": "kimi", "model": "moonshot-v1-8k"}
 
 
 async def test_apply_without_draft_returns_409(client):

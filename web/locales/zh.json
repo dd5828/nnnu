@@ -74,7 +74,35 @@
     },
     "system": {
       "logLevel": "日志级别"
-    }
+    },
+    "models": {
+      "provider": "服务商",
+      "providerDesc": "留空 = 跟随 NNNU_MODEL 环境变量或内置默认（DeepSeek）",
+      "baseUrl": "接口地址",
+      "baseUrlDesc": "留空 = 用服务商默认地址；自定义端点必填",
+      "model": "模型",
+      "modelDesc": "留空 = 用服务商默认模型；支持手填任意模型名",
+      "apiKey": "API 密钥",
+      "apiKeyDesc": "只存 user-secrets，绝不写进设置 JSON；界面上永远只显示掩码",
+      "temperature": "温度（0–2）",
+      "reasoningEffort": "推理档位"
+    },
+    "appearanceTitle": "外观",
+    "appearanceDesc": "主题与语言——点「应用」后立即生效。",
+    "modelsTitle": "模型",
+    "modelsDesc": "LLM 接入——应用前会先探测连通性，失败保留原配置。",
+    "networkTitle": "网络",
+    "systemTitle": "系统",
+    "draftSaved": "草稿已保存——点「应用」生效",
+    "applied": "已应用",
+    "working": "处理中…",
+    "restartRequired": "需重启",
+    "choiceDefault": "默认（未设置）",
+    "secretPlaceholder": "未设置 / 保持当前值",
+    "clearSecret": "清除密钥",
+    "probeOk": "连接正常",
+    "probeFailed": "探测失败",
+    "testConnection": "测试连接"
   },
   "health": {
     "backend": "后端",
