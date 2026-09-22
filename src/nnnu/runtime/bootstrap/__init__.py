@@ -73,12 +73,14 @@ def register_builtins() -> None:
     from nnnu.tools.builtin.ask_user import AskUserTool
     from nnnu.tools.builtin.attachment_search import AttachmentSearchTool
     from nnnu.tools.builtin.code_execution import CodeExecutionTool
+    from nnnu.tools.builtin.cron_tool import CronTool
     from nnnu.tools.builtin.exec_tool import ExecTool
     from nnnu.tools.builtin.file_tools import (
         ListWorkspaceTool,
         ReadWorkspaceFileTool,
         WriteWorkspaceFileTool,
     )
+    from nnnu.tools.builtin.github_query import GithubQueryTool
     from nnnu.tools.builtin.paper_search_tool import PaperSearchTool
     from nnnu.tools.builtin.web_fetch import WebFetchTool
     from nnnu.tools.builtin.web_search import WebSearchTool
@@ -94,6 +96,8 @@ def register_builtins() -> None:
     get_tool_registry().register(WebSearchTool())
     get_tool_registry().register(PaperSearchTool())
     get_tool_registry().register(WebFetchTool())
+    get_tool_registry().register(CronTool())
+    get_tool_registry().register(GithubQueryTool())
 
 
 def configure_logging(level: str | None = None) -> None:

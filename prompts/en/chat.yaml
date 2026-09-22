@@ -24,3 +24,5 @@ tool_descriptions:
   web_search: "Search the web and return results with source links. Must be used first for recent events, news, or facts that need verification."
   paper_search: "Search papers on arXiv (keyword/title/author) and return title, authors, year, abstract and link."
   web_fetch: "Fetch a web page and convert it to Markdown text. Use it to read the content of a specific page (private/internal addresses are rejected)."
+  github: "Query GitHub repositories (README/file tree/specific file content). Use it to learn the real structure of an open-source project the user mentions."
+  cron: "Manage scheduled tasks: create (cron expression + prompt, runs as a new turn when due), list, or delete. Use it for requests like 'give me a question every morning'."

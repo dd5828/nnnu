@@ -13,7 +13,8 @@ from pathlib import Path
 # v2：P1 会话/消息/成本表（§8.2 + 偏离：usage_records 为 §6.9 成本汇总新增）
 # v3：P2 persona——自定义 persona 描述粘性存储（§7.1）
 # v4：P2 附件表（偏离：§8.2 无 attachments 表，§7.1 附件归档/清理需要）
-SCHEMA_VERSION = "4"
+# v5：P3 cron 定时任务表（§8.2 原样）
+SCHEMA_VERSION = "5"
 
 MIGRATIONS: dict[str, list[str]] = {
     "2": [
@@ -69,6 +70,18 @@ MIGRATIONS: dict[str, list[str]] = {
             created_at REAL NOT NULL
         )""",
         "CREATE INDEX IF NOT EXISTS idx_attachments_session ON attachments(session_id, created_at)",
+    ],
+    "5": [
+        """CREATE TABLE IF NOT EXISTS cron_jobs (
+            id TEXT PRIMARY KEY,
+            schedule TEXT NOT NULL,
+            prompt TEXT NOT NULL,
+            session_id TEXT,
+            enabled INTEGER DEFAULT 1,
+            last_run_at REAL,
+            next_run_at REAL,
+            created_at REAL
+        )""",
     ],
 }
 

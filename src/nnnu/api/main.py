@@ -71,7 +71,7 @@ def create_app() -> FastAPI:
         from nnnu.runtime.orchestrator import ChatOrchestrator
         from nnnu.runtime.registry.capability_registry import get_capability_registry
         from nnnu.runtime.registry.tool_registry import get_tool_registry
-        from nnnu.runtime.turn_runtime import TurnRuntimeManager
+        from nnnu.runtime.turn_runtime import TurnRequest, TurnRuntimeManager
         from nnnu.services.cost.service import CostService
         from nnnu.services.files.service import AttachmentsService
         from nnnu.services.sessions.db import Database
@@ -90,7 +90,25 @@ def create_app() -> FastAPI:
         _app.state.runtime = TurnRuntimeManager(
             sessions=session_manager, costs=cost_service, orchestrator=orchestrator
         )
+        # cron 调度：到点任务以新回合执行（§7.2），装配进 app.state 供工具层取用
+        from nnnu.services.cron.scheduler import CronService, set_cron_service
+
+        cron_service = CronService(db)
+        set_cron_service(cron_service)
+
+        async def cron_executor(job) -> str:
+            request = TurnRequest(message=job.prompt, session_id=job.session_id)
+            try:
+                await _app.state.runtime.start_turn(request)
+                return "ok"
+            except Exception as exc:
+                return f"error: {exc}"
+
+        cron_service.set_executor(cron_executor)
+        await cron_service.start()
+        _app.state.cron = cron_service
         yield
+        await cron_service.stop()
         await db.close()
 
     app = FastAPI(

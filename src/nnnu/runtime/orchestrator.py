@@ -131,10 +131,17 @@ def build_unified_context(
     if model_ref is None and request.model:
         provider_id, model = parse_model_ref(request.model)
         model_ref = ModelRef(provider=provider_id or "", model=model)
-    # §6.3 context_gated：有附件 → attachment_search 自动挂载
+    # §6.3 context_gated：有附件 → attachment_search；有定时任务 → cron
     context_flags: set[str] = set()
     if request.attachments:
         context_flags.add("attachment_search")
+    try:
+        from nnnu.services.cron.scheduler import get_cron_service
+
+        if get_cron_service().has_jobs():
+            context_flags.add("cron")
+    except RuntimeError:
+        pass  # cron 未装配（独立测试路径），视为无任务
     return UnifiedContext(
         session=SessionRef(id=session.id, title=session.title),
         capability=request.capability,
