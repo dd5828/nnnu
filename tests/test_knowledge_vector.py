@@ -98,6 +98,29 @@ async def test_hybrid_scores_are_rrf_fusion_scores(tmp_path):
     assert hits[0].text.startswith("傅里叶")
 
 
+async def test_lexical_hit_wins_tie_in_hybrid(tmp_path):
+    """查专有名词/页码标识这类词面唯一的东西：字面命中的块得排第一。
+
+    两路各出一个第一名时 RRF 会并列同分（都是 1/61），这时该让「字面确实出现」
+    压过「语义相近」。曾经把向量列表放前面，同分就让语义那边抢先了。
+    """
+    chunks = [
+        _chunk("kbdoc-a", 0, "植物学附录：页码标识 PAGEID137。", 137),
+        _chunk("kbdoc-b", 0, "傅里叶变换把时域信号分解为频域分量。", 12),
+        _chunk("kbdoc-c", 0, "滤波与频谱分析在工程中很常见。", 52),
+    ]
+    embedder = TopicEmbedder()
+    engine, index_dir = await _build(tmp_path, chunks, embedder)
+
+    # 向量那边按主题排序（b/c 同主题并列靠前，a 无关垫底），词法那边只有 a 命中
+    hits = await engine.query(
+        index_dir, "PAGEID137", kb_id="kb-1", top_k=1, mode="hybrid", embedder=embedder
+    )
+    assert hits
+    assert hits[0].page == 137
+    assert hits[0].text.startswith("植物学附录")
+
+
 async def test_excluded_docs_filtered_in_both_modes(tmp_path):
     chunks = [
         _chunk("kbdoc-a", 0, "傅里叶变换。", 1),

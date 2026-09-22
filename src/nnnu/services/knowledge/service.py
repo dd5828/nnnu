@@ -307,7 +307,7 @@ class KBService:
             *(self.search(item.id, query, mode=mode, top_k=top_k) for item in targets)
         )
         keyed: dict[str, Hit] = {}
-        ranked_lists: list[list[str]] = []
+        lists: list[tuple[int, list[str]]] = []
         for hits in per_kb:
             ids: list[str] = []
             for hit in hits:
@@ -315,11 +315,14 @@ class KBService:
                 keyed[key] = hit
                 ids.append(key)
             if ids:
-                ranked_lists.append(ids)
-        if not ranked_lists:
+                lists.append((_best_lexical_rank(hits), ids))
+        if not lists:
             return []
+        # 全局融合也只吃名次，两库各自的第一名会并列同分——同分时让有字面命中的库排前面
+        # （排序只影响并列的先后，不改任何一路的名次权重）
+        lists.sort(key=lambda pair: pair[0])
         merged: list[Hit] = []
-        for key, score in rrf_fuse(ranked_lists)[: max(1, int(top_k))]:
+        for key, score in rrf_fuse([ids for _, ids in lists])[: max(1, int(top_k))]:
             merged.append(keyed[key].model_copy(update={"score": score}))
         return merged
 
@@ -798,6 +801,19 @@ def _restore_docs(manifest: KbManifest, *, note: str) -> None:
         else:
             doc.status = DOC_ERROR
             doc.note = "" if was == DOC_ERROR else note
+
+
+_NO_LEXICAL_RANK = 1 << 30  # 没有字面命中的库：全局融合同分时排在有命中的库后面
+
+
+def _best_lexical_rank(hits: list[Hit]) -> int:
+    """一组命中里最好的词法名次（没有字面命中就给个大数，排到最后）。"""
+    ranks = [
+        int(hit.metadata["lexical_rank"])
+        for hit in hits
+        if isinstance(hit.metadata.get("lexical_rank"), int)
+    ]
+    return min(ranks) if ranks else _NO_LEXICAL_RANK
 
 
 class _Throttle:

@@ -156,6 +156,26 @@ async def test_rag_merges_all_ready_kbs(tmp_path, tmp_home):
     assert "《信号处理》" in result.output and "《生物笔记》" in result.output
 
 
+async def test_exact_token_hit_wins_across_kbs(tmp_path, tmp_home):
+    """查专有名词：字面命中的那个库排前面（全局 RRF 同分时靠它裁决）。
+
+    两个库各自的第一名在全局融合里都是 1/61，纯按名次分不出高下；
+    没有字面命中的库不该压过真正命中的库。
+    """
+    service = _service(tmp_home / "data")
+    decoy, _ = await _kb_with_doc(service, tmp_path, "信号处理", SIGNAL_TEXT)  # 不含这个词
+    token_kb, _ = await _kb_with_doc(service, tmp_path, "页码手册", "附录里的页码标识 PAGEID137。")
+
+    # 库目录是按 id 字符串排的（近似随机），钉死成「干扰库在前」才断言得动
+    manifests = {item.id: item for item in service.list_kbs()}
+    service.list_kbs = lambda: [manifests[decoy.id], manifests[token_kb.id]]  # type: ignore[method-assign]
+
+    result = await RagSearchTool().run(_ctx("PAGEID137", top_k=5))
+
+    assert result.detail["sources"][0]["kb"] == token_kb.id
+    assert "《页码手册》" in result.output.splitlines()[1]
+
+
 async def test_rag_no_hit_and_bad_args(tmp_home):
     """没有 ready 库 / 空 query 的兜底文案；模型瞎填 mode 不报错。"""
     _service(tmp_home / "data")  # 装配了服务，但一个库都没有

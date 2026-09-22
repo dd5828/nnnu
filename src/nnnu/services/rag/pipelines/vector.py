@@ -163,13 +163,17 @@ class VectorEngine(BaseEngine):
         lexical = loaded.bm25.search(
             query, top_k * CANDIDATE_MULTIPLIER, excluded_docs=excluded_docs
         )
-        fused = rrf_fuse([ranked, [chunk_id for chunk_id, _ in lexical]])
+        lexical_ids = [chunk_id for chunk_id, _ in lexical]
+        # 词法名次放前面：RRF 只吃名次，两路各有一个第一名时会并列同分，
+        # 同分该让「字面确实出现」压过「语义相近」——查错误码、专有名词全靠这个
+        fused = rrf_fuse([lexical_ids, ranked])
         # 命中分是 RRF 融合分（不是余弦，量级 ~1/61），查询侧展示与排序都用它
         return self._to_hits(
             loaded,
             kb_id,
             [chunk_id for chunk_id, _ in fused[:top_k]],
             dict(fused),
+            lexical_ranks={chunk_id: rank for rank, chunk_id in enumerate(lexical_ids, start=1)},
         )
 
     async def _vector_rank(
@@ -224,13 +228,20 @@ class VectorEngine(BaseEngine):
         kb_id: str,
         ranked: list[str],
         scores: dict[str, float] | None,
+        *,
+        lexical_ranks: dict[str, int] | None = None,
     ) -> list[Hit]:
         score_map = scores or {}
+        rank_map = lexical_ranks or {}
         hits: list[Hit] = []
         for chunk_id in ranked:
             chunk = loaded.by_id.get(chunk_id)
             if chunk is None:
                 continue
+            metadata: dict[str, Any] = {"chunk_id": chunk.chunk_id}  # 跨 KB RRF 去重靠它
+            if chunk_id in rank_map:
+                # 词法名次：跨 KB 融合同分时，有字面命中的库排前面（见 search_all_ready）
+                metadata["lexical_rank"] = rank_map[chunk_id]
             hits.append(
                 Hit(
                     doc_id=chunk.doc_id,
@@ -238,7 +249,7 @@ class VectorEngine(BaseEngine):
                     score=score_map.get(chunk_id, 0.0),
                     text=chunk.text,
                     page=chunk.page,
-                    metadata={"chunk_id": chunk.chunk_id},  # 跨 KB RRF 去重靠它
+                    metadata=metadata,
                 )
             )
         return hits
