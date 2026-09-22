@@ -21,13 +21,14 @@ dependencies = [
     "markitdown>=0.1.7",  # §4 文档解析默认引擎（P2 附件解析提前引入，P4 KB 复用）
     "PyMuPDF>=1.28",  # §4 PDF 解析与页级引用（P2 附件页码定位）
     "python-multipart>=0.0.12",  # 附件上传 multipart 表单（FastAPI 依赖）
+    "numpy>=1.26",  # §7.9 知识库向量索引与余弦检索
 ]
 
 [project.optional-dependencies]
 # 链式分组（参考仓库 extras 组织方式）：核心依赖即默认安装，
 # server 为空别名占位（对齐未来 CLI-only 拆分），重依赖随对应阶段填充。
 server = []
-rag = []
+rag = ["onnxruntime>=1.18"]  # §7.9 本地 ONNX 嵌入；不装则只能用远程嵌入端点
 math-animator = []
 partners = ["nnnu[server]"]
 dev = [

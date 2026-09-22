@@ -138,9 +138,39 @@ class OpenAICompatClient:
             # 状态码错误统一经错误映射转 typed 异常（调用方按类型决定重试策略）
             raise map_error(exc, provider=self._spec.id) from exc
 
+    async def embed(self, texts: list[str], *, model: str | None = None) -> list[list[float]]:
+        """POST /embeddings：批量文本 → 向量（顺序按 data[i].index 还原）。
+
+        P4 嵌入服务复用本客户端，认证/超时/错误映射与聊天完全一致；
+        返回的向量**未归一化**（OpenAI 语义如此），归一化由调用方负责。
+        """
+        payload: dict[str, Any] = {"model": model or self._model, "input": texts}
+        try:
+            response = await self._client.post(self._embedding_url(), json=payload)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise map_error(exc, provider=self._spec.id) from exc
+        except httpx.TimeoutException as exc:
+            raise LLMTimeoutError(f"嵌入请求超时: {exc}") from exc
+        except httpx.HTTPError as exc:
+            raise map_error(exc, provider=self._spec.id) from exc
+        body = response.json()
+        data = body.get("data") if isinstance(body, dict) else None
+        if not isinstance(data, list):
+            raise map_error(
+                ValueError(f"嵌入响应缺少 data 字段: {str(body)[:200]}"), provider=self._spec.id
+            )
+        ordered = sorted(data, key=lambda item: int(item.get("index", 0)))
+        return [list(item.get("embedding") or []) for item in ordered]
+
     def _chat_url(self) -> str:
-        base = (self._spec.base_url or "").rstrip("/")
-        return f"{base}/chat/completions"
+        return f"{self._base()}/chat/completions"
+
+    def _embedding_url(self) -> str:
+        return f"{self._base()}/embeddings"
+
+    def _base(self) -> str:
+        return (self._spec.base_url or "").rstrip("/")
 
     def _build_payload(self, request: LLMRequest) -> dict[str, Any]:
         payload: dict[str, Any] = {
