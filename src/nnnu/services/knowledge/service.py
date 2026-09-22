@@ -375,6 +375,23 @@ class KBService:
             return
         await asyncio.wait_for(asyncio.shield(task), timeout)
 
+    async def shutdown(self) -> None:
+        """关闭：取消还在跑的构建任务，不等它们做完。
+
+        一次 200 页的构建可能要几分钟，停机不该被它拖住；版本目录的原子协议
+        保证「指针永远指向完整版本」，残留的半成品与 build 字段交给下次启动的
+        recover_stale() 收拾（和进程被杀的恢复路径是同一套）。
+        """
+        tasks = [task for task in self._tasks.values() if not task.done()]
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._tasks.clear()
+        self._cancel.clear()
+        self._locks.clear()
+        self._rebuild.clear()
+
     async def _worker(self, kb_id: str) -> None:
         """循环把待办文档做完；构建期间新加的文档会在下一轮被拾起来。"""
         try:

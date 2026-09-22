@@ -17,6 +17,7 @@ from nnnu.api.routers import (
     chat,
     cost,
     health,
+    knowledge,
     plugins,
     sessions,
     settings,
@@ -107,7 +108,29 @@ def create_app() -> FastAPI:
         cron_service.set_executor(cron_executor)
         await cron_service.start()
         _app.state.cron = cron_service
+        # 知识库（§7.9）：嵌入服务 + KB 服务装配进单例与 app.state，
+        # 启动时 recover_stale 收掉上次进程留下的半成品构建（幂等）
+        from nnnu.services.embedding.service import (
+            EmbeddingService,
+            set_embedding_service,
+        )
+        from nnnu.services.knowledge.service import KBService, set_kb_service
+
+        data_root = runtime_home.get_data_root()
+        embedding = EmbeddingService()
+        set_embedding_service(embedding)
+        kb_service = KBService(data_root, embedder=embedding)
+        set_kb_service(kb_service)
+        _app.state.kb = kb_service
+        try:
+            await kb_service.recover_stale()
+        except Exception:  # 恢复失败不该拦住启动：库各自的 manifest 仍是权威
+            logger.exception("知识库启动恢复失败，继续启动")
         yield
+        await kb_service.shutdown()
+        set_kb_service(None)
+        set_embedding_service(None)
+        await embedding.aclose()
         await cron_service.stop()
         await db.close()
 
@@ -141,6 +164,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(settings.router)
     app.include_router(attachments.router)
+    app.include_router(knowledge.router)
     app.include_router(plugins.router)
     app.include_router(chat.router)
     app.include_router(sessions.router)
