@@ -1,11 +1,15 @@
 """设置 spec：字段级声明式定义。
 
-P0 最小集三区（appearance/network/system）；每字段带类型、默认值、
-生效方式（instant|restart）与 i18n 键——P2 表单自动渲染直接消费本表。
+P0 最小集三区（appearance/network/system）；P2 加 models（§7.19 模型卡片）。
+每字段带类型、默认值、生效方式（instant|restart）与 i18n 键——P2 表单自动
+渲染直接消费本表。secret 类型不进设置 JSON（§5 配置铁律：密钥只进
+user-secrets 目录），明文只在草稿提交时经服务层转运一次。
 """
 
 from dataclasses import dataclass
 from typing import Any, Literal
+
+from nnnu.services.llm.provider_registry import build_registry
 
 Effect = Literal["instant", "restart"]
 
@@ -13,7 +17,7 @@ Effect = Literal["instant", "restart"]
 @dataclass(frozen=True, slots=True)
 class SettingField:
     key: str
-    type: str  # "string" | "int" | "bool" | "choice" | "string_list"
+    type: str  # "string" | "int" | "float" | "bool" | "choice" | "string_list" | "secret"
     default: Any
     label_key: str  # 前端 locales 键
     effect: Effect = "instant"
@@ -25,6 +29,11 @@ class SettingField:
 class AreaSpec:
     name: str
     fields: tuple[SettingField, ...]
+
+
+# 模型卡片 provider 选项："" = 未显式配置（跟随环境变量 NNNU_MODEL 或内置默认）、
+# 注册表全部内置 provider + 自定义端点（§7.19）
+PROVIDER_CHOICES: tuple[str, ...] = ("", *[spec.id for spec in build_registry()], "custom")
 
 
 SPECS: dict[str, AreaSpec] = {
@@ -82,6 +91,54 @@ SPECS: dict[str, AreaSpec] = {
                 "settings.system.logLevel",
                 effect="restart",
                 choices=("debug", "info", "warning", "error"),
+            ),
+        ),
+    ),
+    # §7.19 模型卡片：LLM 接入（embedding/search/TTS 等随 P3/P4 追加同区字段）
+    "models": AreaSpec(
+        "models",
+        (
+            SettingField(
+                "provider",
+                "choice",
+                "",
+                "settings.models.provider",
+                choices=PROVIDER_CHOICES,
+                description_key="settings.models.providerDesc",
+            ),
+            SettingField(
+                "base_url",
+                "string",
+                "",
+                "settings.models.baseUrl",
+                description_key="settings.models.baseUrlDesc",
+            ),
+            SettingField(
+                "model",
+                "string",
+                "",
+                "settings.models.model",
+                description_key="settings.models.modelDesc",
+            ),
+            SettingField(
+                "api_key",
+                "secret",
+                None,
+                "settings.models.apiKey",
+                description_key="settings.models.apiKeyDesc",
+            ),
+            SettingField(
+                "temperature",
+                "float",
+                1.0,
+                "settings.models.temperature",
+            ),
+            SettingField(
+                "reasoning_effort",
+                "choice",
+                "",
+                "settings.models.reasoningEffort",
+                choices=("", "low", "medium", "high"),
             ),
         ),
     ),

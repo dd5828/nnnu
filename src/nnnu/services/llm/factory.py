@@ -4,14 +4,15 @@
 1. install_scripted() 注入（测试：每测试独享脚本）；
 2. env NNNU_LLM_MOCK=scripted + NNNU_LLM_SCRIPT（进程级 YAML 脚本，
    供 dev.py 演示与验收②离线预演）→ 进程内单例；
-3. 真实：resolve_provider → OpenAICompatClient。
+3. 真实：resolve_model_config（settings > env > 内置默认）→ OpenAICompatClient。
 
-模型解析："provider:model" 前缀格式或显式参数；密钥仅取环境变量（.env 兜底），
+密钥：user-secrets（§7.19 草稿-应用落库）> 环境变量（.env 兜底），
 永不落配置 JSON；非本地端点缺 key 抛 LLMConfigError。
 """
 
 import logging
 import os
+from dataclasses import dataclass
 from typing import Callable
 
 from nnnu.services.llm.env import load_dotenv
@@ -22,12 +23,28 @@ from nnnu.services.llm.provider_registry import (
     ProviderSpec,
     build_registry,
     default_model,
+    find_by_id,
     find_model,
     resolve_provider,
 )
 from nnnu.services.llm.scripted import ScriptedLLM
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_MODEL_REF = "deepseek:deepseek-chat"  # 未配置时的内置默认（env NNNU_MODEL 可覆盖）
+
+
+@dataclass(frozen=True, slots=True)
+class ModelConfig:
+    """一回合模型接入的完整参数（§7.19 模型卡片应用产物）。"""
+
+    provider_id: str
+    model: str
+    base_url: str | None
+    api_key: str | None
+    temperature: float
+    reasoning_effort: str | None
+
 
 _scripted_factory: Callable[[], LLMClient] | None = None
 _env_scripted: ScriptedLLM | None = None
@@ -50,6 +67,68 @@ def parse_model_ref(model: str) -> tuple[str | None, str]:
         provider, _, rest = model.partition(":")
         return provider, rest
     return None, model
+
+
+def resolve_model_config(
+    *,
+    override_provider: str | None = None,
+    override_model: str | None = None,
+) -> ModelConfig:
+    """模型配置解析（§7.19）：settings models 区 > 请求覆盖 > env NNNU_MODEL > 内置默认。
+
+    - settings 里 provider 为空 = 用户没配过 → 走 P1 的 env/默认回退；
+    - base_url 留空用注册表默认，custom 必须填；
+    - 密钥：user-secrets（按 provider 分槽）> spec 声明的环境变量；本地 provider 免密钥。
+    """
+    from nnnu.services.secrets.store import get_secrets_store
+    from nnnu.services.settings.service import get_settings_service
+
+    values = get_settings_service().load_area("models")
+    provider_id = override_provider or str(values.get("provider") or "")
+    model = override_model or str(values.get("model") or "")
+    base_url = str(values.get("base_url") or "").strip() or None
+    temperature = float(values.get("temperature") or 1.0)
+    reasoning_effort = str(values.get("reasoning_effort") or "") or None
+
+    specs = build_registry()
+    spec: ProviderSpec | None
+    if provider_id:
+        if provider_id == "custom":
+            if not base_url:
+                raise LLMConfigError("自定义端点必须填 base_url（设置页模型卡片）")
+            spec = ProviderSpec(id="custom", label="自定义端点", base_url=base_url)
+        else:
+            spec = find_by_id(specs, provider_id)
+            if spec is None:
+                raise LLMConfigError(f"未知 provider {provider_id}")
+            if base_url is None:
+                base_url = spec.base_url
+        model = model or default_model(spec) or ""
+        if not model:
+            raise LLMConfigError(f"provider {provider_id} 没有内置模型，请在设置页填写模型名")
+    else:
+        # 未显式配置 provider：env NNNU_MODEL → 内置默认（P1 行为）
+        env_provider, env_model = parse_model_ref(os.environ.get("NNNU_MODEL") or DEFAULT_MODEL_REF)
+        spec = find_by_id(specs, env_provider or "")
+        if spec is None:
+            raise LLMConfigError(f"无法识别 provider {env_provider}，请检查 NNNU_MODEL 环境变量")
+        provider_id = spec.id
+        model = model or env_model or default_model(spec) or ""
+        if not model:
+            raise LLMConfigError(f"provider {spec.id} 未声明模型，请显式指定模型名")
+        base_url = spec.base_url
+
+    api_key = get_secrets_store().get("llm", provider_id)
+    if api_key is None and spec.api_key_env:
+        api_key = os.environ.get(spec.api_key_env)
+    return ModelConfig(
+        provider_id=provider_id,
+        model=model,
+        base_url=base_url,
+        api_key=api_key,
+        temperature=temperature,
+        reasoning_effort=reasoning_effort,
+    )
 
 
 def resolve_spec_and_model(
@@ -109,14 +188,25 @@ def create_client(
     parsed_provider, parsed_model = parse_model_ref(model)
     provider_id = provider_id or parsed_provider
     model = parsed_model
-    spec, resolved_model = resolve_spec_and_model(
-        provider_id=provider_id, base_url=base_url, api_key=api_key, model=model
-    )
+    if provider_id == "custom":
+        # 自定义端点不进静态注册表（§7.19）：base_url 即身份，spec 现场合成
+        if not base_url:
+            raise LLMConfigError("自定义端点必须填 base_url（设置页模型卡片）")
+        spec = ProviderSpec(id="custom", label="自定义端点", base_url=base_url)
+        resolved_model = model
+    else:
+        spec, resolved_model = resolve_spec_and_model(
+            provider_id=provider_id, base_url=base_url, api_key=api_key, model=model
+        )
     resolved_key = _resolve_api_key(spec, api_key)
     if resolved_key is None and not spec.is_local:
+        if spec.api_key_env:
+            raise LLMConfigError(
+                f"provider {spec.id} 缺少 API key：请设置环境变量 {spec.api_key_env}"
+                "（或仓库根 .env 开发兜底），密钥永不写入设置 JSON"
+            )
         raise LLMConfigError(
-            f"provider {spec.id} 缺少 API key：请设置环境变量 {spec.api_key_env}"
-            "（或仓库根 .env 开发兜底），密钥永不写入设置 JSON"
+            f"provider {spec.id} 缺少 API key：请在设置页模型卡片填写（密钥永不写入设置 JSON）"
         )
     client = OpenAICompatClient(spec, resolved_model, api_key=resolved_key)
     logger.info("LLM 客户端就绪 provider=%s model=%s", spec.id, resolved_model)

@@ -9,7 +9,6 @@ from __future__ import annotations
 import base64
 import json
 import logging
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -19,7 +18,7 @@ from nnnu.core.capability_protocol import BaseCapability, CapabilityManifest
 from nnnu.core.stream_bus import StreamBus
 from nnnu.runtime import home
 from nnnu.services.i18n.prompts import get_prompt_manager
-from nnnu.services.llm.factory import create_client, parse_model_ref
+from nnnu.services.llm.factory import create_client, resolve_model_config
 from nnnu.services.llm.provider_registry import build_registry, find_by_id, find_model
 from nnnu.services.llm.reasoning import build_reasoning_kwargs
 from nnnu.services.sessions.models import Message
@@ -28,8 +27,6 @@ if TYPE_CHECKING:
     from nnnu.core.context import UnifiedContext
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_MODEL_REF = "deepseek:deepseek-chat"  # P1 默认（env NNNU_MODEL 可覆盖）
 
 # 附件注入上限（§7.1：注入是给模型直读的摘要，全量检索走 attachment_search）
 PAGE_INJECT_MAX_CHARS = 2000  # 每页注入上限
@@ -79,12 +76,13 @@ class ChatCapability(BaseCapability):
             persona=persona_text,
         )
 
-        # 2) 模型解析（附件注入需要 provider/model 判断视觉能力）
+        # 2) 模型解析（§7.19：settings > 请求覆盖 > env > 默认；附件注入需要 provider/model 判断视觉能力）
         model_ref = ctx.model
-        if model_ref is None:
-            provider_id, model = parse_model_ref(os.environ.get("NNNU_MODEL") or DEFAULT_MODEL_REF)
-        else:
-            provider_id, model = model_ref.provider, model_ref.model
+        mc = resolve_model_config(
+            override_provider=model_ref.provider if model_ref else None,
+            override_model=model_ref.model if model_ref else None,
+        )
+        provider_id, model = mc.provider_id, mc.model
 
         # 3) 历史组装：system + 会话历史 + 当前用户消息（含附件注入，§7.1）
         history = [{"role": "system", "content": system_prompt}]
@@ -92,7 +90,9 @@ class ChatCapability(BaseCapability):
         history.append(await self._build_user_message(ctx, bus, provider_id, model))
 
         # 4) 客户端
-        client = create_client(model, provider_id=provider_id)
+        client = create_client(
+            model, provider_id=provider_id, base_url=mc.base_url, api_key=mc.api_key
+        )
 
         # 5) 循环依赖
         config = ctx.config
@@ -104,8 +104,8 @@ class ChatCapability(BaseCapability):
             max_rounds=config.get("max_rounds", 20),
             max_output_tokens=config.get("max_output_tokens", 4096),
             token_budget=config.get("token_budget", 32000),
-            temperature=config.get("temperature"),
-            reasoning_effort=config.get("reasoning_effort"),
+            temperature=config.get("temperature", mc.temperature),
+            reasoning_effort=config.get("reasoning_effort", mc.reasoning_effort),
             thinking_extra=build_reasoning_kwargs(
                 provider_id=provider_id or "",
                 model=model,
