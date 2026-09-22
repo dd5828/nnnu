@@ -15,10 +15,12 @@ export class ApiError extends Error {
 }
 
 export async function apiFetch<T = unknown>(path: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(path, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-  });
+  // JSON 字符串才标 Content-Type；FormData 交给浏览器自动带 multipart 边界
+  const headers: Record<string, string> = { ...(init?.headers as Record<string, string>) };
+  if (typeof init?.body === "string" && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+  const resp = await fetch(path, { ...init, headers });
   if (!resp.ok) {
     let code = "http_error";
     let message = resp.statusText;

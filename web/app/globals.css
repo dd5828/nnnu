@@ -89,3 +89,96 @@ body {
   background: var(--background);
   color: var(--foreground);
 }
+
+/* ── Markdown 正文样式（无 typography 插件，手写最小集；KaTeX 自带样式） ── */
+.markdown-body {
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.markdown-body > *:first-child {
+  margin-top: 0;
+}
+.markdown-body > *:last-child {
+  margin-bottom: 0;
+}
+.markdown-body p {
+  margin: 0.5rem 0;
+}
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  font-weight: 600;
+  margin: 1rem 0 0.5rem;
+}
+.markdown-body h1 {
+  font-size: 1.25rem;
+}
+.markdown-body h2 {
+  font-size: 1.15rem;
+}
+.markdown-body h3 {
+  font-size: 1.05rem;
+}
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0.5rem 0;
+  padding-left: 1.4rem;
+}
+.markdown-body ul {
+  list-style: disc;
+}
+.markdown-body ol {
+  list-style: decimal;
+}
+.markdown-body li {
+  margin: 0.15rem 0;
+}
+.markdown-body blockquote {
+  margin: 0.5rem 0;
+  padding: 0.1rem 0.9rem;
+  border-left: 3px solid var(--border);
+  color: var(--muted);
+}
+.markdown-body code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--accent);
+  border-radius: 4px;
+  padding: 0.1rem 0.35rem;
+}
+.markdown-body pre {
+  margin: 0.6rem 0;
+  padding: 0.75rem 0.9rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+}
+.markdown-body pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.85rem;
+}
+.markdown-body table {
+  margin: 0.6rem 0;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--border);
+  padding: 0.3rem 0.6rem;
+}
+.markdown-body th {
+  background: var(--accent);
+}
+.markdown-body hr {
+  margin: 0.9rem 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+.markdown-body img {
+  max-width: 100%;
+  border-radius: 8px;
+}
