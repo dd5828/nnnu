@@ -16,3 +16,8 @@ personas:
 tool_descriptions:
   ask_user: "回合中途向用户提问澄清（question 必填，options 为可选项数组）。"
   attachment_search: "在用户上传的附件（PDF 等文档）中检索段落，返回带页码的命中片段；回答涉及附件内容时优先用它，引用时标注附件名与页码。"
+  code_execution: "在沙箱中执行 Python 代码并返回 stdout。计算、数据处理、画图、验证想法时用它。代码写完整的可运行脚本（可用 matplotlib 等常用库），默认 30 秒超时、不可联网。"
+  exec: "在本机执行 shell 命令（工作目录锁定在 workspace 内）。默认关闭，用户显式开启才可用。"
+  list_workspace: "列出 workspace 目录下的文件与子目录。"
+  read_workspace_file: "读取 workspace 内的 UTF-8 文本文件内容。"
+  write_workspace_file: "向 workspace 写入文本文件（会覆盖同名文件）。"

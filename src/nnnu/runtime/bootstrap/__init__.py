@@ -72,10 +72,22 @@ def register_builtins() -> None:
     from nnnu.runtime.registry.tool_registry import get_tool_registry
     from nnnu.tools.builtin.ask_user import AskUserTool
     from nnnu.tools.builtin.attachment_search import AttachmentSearchTool
+    from nnnu.tools.builtin.code_execution import CodeExecutionTool
+    from nnnu.tools.builtin.exec_tool import ExecTool
+    from nnnu.tools.builtin.file_tools import (
+        ListWorkspaceTool,
+        ReadWorkspaceFileTool,
+        WriteWorkspaceFileTool,
+    )
 
     get_capability_registry().register(ChatCapability.manifest, ChatCapability)
     get_tool_registry().register(AskUserTool())
     get_tool_registry().register(AttachmentSearchTool())
+    get_tool_registry().register(CodeExecutionTool())
+    get_tool_registry().register(ExecTool())
+    get_tool_registry().register(ListWorkspaceTool())
+    get_tool_registry().register(ReadWorkspaceFileTool())
+    get_tool_registry().register(WriteWorkspaceFileTool())
 
 
 def configure_logging(level: str | None = None) -> None:

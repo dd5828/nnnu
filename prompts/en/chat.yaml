@@ -16,3 +16,8 @@ personas:
 tool_descriptions:
   ask_user: "Ask the user a clarifying question mid-turn (question required; options is an optional list)."
   attachment_search: "Search paragraphs inside user-uploaded attachments (PDFs etc.), returning page-numbered hit snippets; prefer it when answering about attachment content and cite the attachment name and page when referencing."
+  code_execution: "Run Python code in a sandbox and return stdout. Use it for computation, data processing, plotting, or verifying ideas. Write complete runnable scripts (common libraries like matplotlib are available); 30s timeout by default, no network."
+  exec: "Run a shell command on the host machine (working directory locked to workspace). Disabled by default; available only after the user explicitly enables it."
+  list_workspace: "List files and subdirectories inside the workspace directory."
+  read_workspace_file: "Read a UTF-8 text file inside the workspace."
+  write_workspace_file: "Write a text file into the workspace (overwrites an existing file of the same name)."
