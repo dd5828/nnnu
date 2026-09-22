@@ -11,6 +11,8 @@ export default function ToolCallCard({ call }: { call: UiToolCall }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const running = call.ok === null;
+  const imageDataUri = call.detail?.image_data_uri;
+  const imageUrl = call.detail?.image_url;
   return (
     <div className="mb-2 overflow-hidden rounded-lg border border-border/70 bg-surface text-sm">
       <button
@@ -43,6 +45,24 @@ export default function ToolCallCard({ call }: { call: UiToolCall }) {
       </button>
       {open && (
         <div className="space-y-1 border-t border-border/70 px-3 py-2">
+          {Boolean(imageDataUri) && (
+            // eslint-disable-next-line @next/next/no-img-element -- 生成图是 data URI，next/image 优化不适用
+            <img
+              src={String(imageDataUri)}
+              alt={call.name}
+              className="my-1 max-h-72 rounded-lg border border-border"
+            />
+          )}
+          {Boolean(imageUrl) && (
+            <a
+              href={String(imageUrl)}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-primary underline"
+            >
+              {String(imageUrl)}
+            </a>
+          )}
           <div className="text-xs text-muted">
             <span className="font-medium">{t("chat.toolArgs")}</span>
             <pre className="mt-0.5 max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono">

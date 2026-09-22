@@ -366,7 +366,9 @@ async def run_agent_loop(
                         session_id=bus.session_id or "",
                         language=ctx.language,
                         config=ctx.config,
-                        metadata=ctx.metadata,
+                        # cost_tracker 注入：工具内次级 LLM 调用（brainstorm/reason 等）
+                        # 的用量并入本回合成本（§6.9）
+                        metadata={**ctx.metadata, "cost_tracker": ctx.cost},
                         args=args,
                     )
                     result = await deps.tools.run(call.name, tool_ctx)

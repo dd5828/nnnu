@@ -1,0 +1,13 @@
+# Tool helper prompts (§5 prompt rule: secondary LLM calls for brainstorm/reason etc.)
+brainstorm: |
+  Topic: {topic}
+
+  Brainstorm around this topic: list {num_ideas} different ideas or angles (breadth-first,
+  make ideas as diverse as possible), each with a one-sentence rationale.
+  Output a numbered list directly, no preamble or extra remarks.
+
+reason: |
+  Question: {question}
+
+  Reason about this question rigorously: step-by-step derivation, note assumptions and
+  uncertainties where relevant, and end with a clear conclusion. Answer in {language}.

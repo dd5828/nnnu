@@ -72,6 +72,7 @@ def register_builtins() -> None:
     from nnnu.runtime.registry.tool_registry import get_tool_registry
     from nnnu.tools.builtin.ask_user import AskUserTool
     from nnnu.tools.builtin.attachment_search import AttachmentSearchTool
+    from nnnu.tools.builtin.brainstorm import BrainstormTool
     from nnnu.tools.builtin.code_execution import CodeExecutionTool
     from nnnu.tools.builtin.cron_tool import CronTool
     from nnnu.tools.builtin.exec_tool import ExecTool
@@ -81,7 +82,9 @@ def register_builtins() -> None:
         WriteWorkspaceFileTool,
     )
     from nnnu.tools.builtin.github_query import GithubQueryTool
+    from nnnu.tools.builtin.media_gen_tool import ImageGenTool, VideoGenTool
     from nnnu.tools.builtin.paper_search_tool import PaperSearchTool
+    from nnnu.tools.builtin.reason import ReasonTool
     from nnnu.tools.builtin.web_fetch import WebFetchTool
     from nnnu.tools.builtin.web_search import WebSearchTool
 
@@ -98,6 +101,10 @@ def register_builtins() -> None:
     get_tool_registry().register(WebFetchTool())
     get_tool_registry().register(CronTool())
     get_tool_registry().register(GithubQueryTool())
+    get_tool_registry().register(BrainstormTool())
+    get_tool_registry().register(ReasonTool())
+    get_tool_registry().register(ImageGenTool())
+    get_tool_registry().register(VideoGenTool())
 
 
 def configure_logging(level: str | None = None) -> None:

@@ -28,6 +28,7 @@ export interface UiToolCall {
   args: Record<string, unknown>;
   ok: boolean | null; // null = 执行中
   summary: string;
+  detail: Record<string, unknown> | null; // 结构化展示数据（如 imagegen 的 data URI）
 }
 
 export interface UiMessage {
@@ -118,6 +119,7 @@ function toUiMessages(raw: RawMessage[]): UiMessage[] {
       args: (call.args as Record<string, unknown>) ?? {},
       ok: typeof call.ok === "boolean" ? call.ok : null,
       summary: String(call.summary ?? ""),
+      detail: null, // 落库形状无 detail（实时回合才带）
     })),
     citations: message.citations ?? [],
     cost: message.cost ?? null,
@@ -217,6 +219,7 @@ function bindSocket(
             args: (payload.args as Record<string, unknown>) ?? {},
             ok: null,
             summary: "",
+            detail: null,
           };
           set(() => ({ active: next }));
         }
@@ -232,6 +235,7 @@ function bindSocket(
               ...call,
               ok: Boolean(payload.ok),
               summary: String(payload.summary ?? ""),
+              detail: (payload.detail as Record<string, unknown>) ?? null,
             };
             set(() => ({ active: next }));
           }

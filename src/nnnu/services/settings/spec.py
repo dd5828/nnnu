@@ -166,6 +166,13 @@ SPECS: dict[str, AreaSpec] = {
                 secret_domain="search",
                 secret_slot_of="search_provider",
             ),
+            SettingField(
+                "image_model",
+                "string",
+                "",
+                "settings.models.imageModel",
+                description_key="settings.models.imageModelDesc",
+            ),
         ),
     ),
 }
