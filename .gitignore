@@ -32,6 +32,10 @@ data/
 web/node_modules/
 web/.next/
 web/out/
+web/.e2e-home/
+web/e2e/.artifacts/
+web/playwright-report/
+web/test-results/
 
 # 系统
 Thumbs.db

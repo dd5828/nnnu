@@ -7,6 +7,7 @@
 - from_yaml 载入夹具脚本（tests/fixtures/scripts/*.yaml）。
 """
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,6 +31,7 @@ class ScriptedStep:
     tool_calls: list[LLMToolCall] = field(default_factory=list)
     finish_reason: str = "stop"
     usage: dict[str, int] = field(default_factory=dict)
+    delay_ms: int = 0  # 思考块之后、正文/工具调用之前的停顿（E2E 停表与流式窗口用）
 
 
 class ScriptedLLM:
@@ -72,6 +74,8 @@ class ScriptedLLM:
 
         for thinking_piece in step.thinking:
             yield LLMChunk(thinking=thinking_piece)
+        if step.delay_ms:
+            await asyncio.sleep(step.delay_ms / 1000)
         # 工具调用在正文流开始前一次性给出（OpenAI 语义：text 与 tool_calls 不混流）
         for index, call in enumerate(step.tool_calls):
             yield LLMChunk(
@@ -124,6 +128,7 @@ class ScriptedLLM:
                     tool_calls=tool_calls,
                     finish_reason=item.get("finish_reason", "stop"),
                     usage=dict(item.get("usage", {})),
+                    delay_ms=int(item.get("delay_ms", 0)),
                 )
             )
         return cls(steps)

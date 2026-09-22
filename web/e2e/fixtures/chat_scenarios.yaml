@@ -1,0 +1,37 @@
+# P2 #9 E2E 脚本（§14 验收②离线预演）：一个会话串行跑完 7.1 全部验收场景。
+# 步骤按 LLM 调用序消费（ScriptedLLM）；每回合=一条用户消息（重新生成复用原消息）。
+steps:
+  # Turn 1（测试①）：流式一问一答——思考块 + KaTeX 公式 + 成本
+  - thinking: ["用户想了解傅里叶变换，先梳理核心概念"]
+    delay_ms: 1500
+    chunks:
+      - "傅里叶变换把时域信号分解为频域分量。"
+      - "对照一个公式：$E=mc^2$。"
+    finish_reason: stop
+    usage: {prompt_tokens: 120, completion_tokens: 80}
+  # Turn 2（测试②）：模型调 ask_user → 用户选「工程应用」→ 最终回答
+  - tool_calls:
+      - {id: ask-1, name: ask_user, arguments: '{"question": "你想深入了解哪个方向？", "options": ["数学推导", "工程应用"]}'}
+    finish_reason: tool_calls
+    usage: {prompt_tokens: 100, completion_tokens: 30}
+  - chunks: ["好，我们看工程应用方向：傅里叶变换广泛用于信号滤波和图像压缩。"]
+    finish_reason: stop
+    usage: {prompt_tokens: 100, completion_tokens: 30}
+  # Turn 3（测试③）：重新生成——同一条用户消息重跑出新答案
+  - chunks: ["重新生成的回答：傅里叶变换把时域信号分解为频域分量。"]
+    finish_reason: stop
+    usage: {prompt_tokens: 100, completion_tokens: 30}
+  # Turn 4（测试④）：停止——8s 停顿留出停表窗口，用户在完成前点停止
+  - thinking: ["这个问题需要仔细推导"]
+    delay_ms: 8000
+    chunks: ["这是一段会被中途停止的回答。"]
+    finish_reason: stop
+    usage: {prompt_tokens: 100, completion_tokens: 30}
+  # Turn 5（测试⑤）：附件检索引用——模型先调 attachment_search 再带引用回答
+  - tool_calls:
+      - {id: att-1, name: attachment_search, arguments: '{"query": "傅里叶变换"}'}
+    finish_reason: tool_calls
+    usage: {prompt_tokens: 100, completion_tokens: 30}
+  - chunks: ["根据你上传的文档，傅里叶变换把时域信号分解为频域分量（见引用）。"]
+    finish_reason: stop
+    usage: {prompt_tokens: 100, completion_tokens: 30}
