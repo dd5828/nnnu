@@ -128,9 +128,14 @@ class ChatCapability(BaseCapability):
 
     @staticmethod
     def _session_history(ctx: UnifiedContext) -> list[dict]:
-        """会话历史 → OpenAI 消息格式（§6.8；含上次 assistant 的思考与工具轨迹）。
+        """会话历史 → OpenAI 消息格式（§6.8；只回放纯文本，不回放工具轨迹）。
 
         当前消息按 id 过滤（编排器可能已落库），由调用方经 _build_user_message 追加。
+
+        **不要回放 tool_calls**：落库的那份是给界面看的轨迹（tool_name/call_id/ok/
+        summary），形状不是线格式；而且 OpenAI 契约里带 tool_calls 的 assistant 后面
+        必须紧跟配套的 role="tool" 应答，照原样回放会被上游直接 422 打回。
+        上一回合的工具结果早已并进本轮回答，回放 content 就够了。
         """
         history: list[dict] = []
         messages: list[Message] = ctx.metadata.get("session_messages", [])
@@ -139,11 +144,9 @@ class ChatCapability(BaseCapability):
                 continue
             if message.role == "user":
                 history.append({"role": "user", "content": message.content})
-            elif message.role == "assistant":
-                entry: dict = {"role": "assistant", "content": message.content}
-                if message.tool_calls:
-                    entry["tool_calls"] = message.tool_calls
-                history.append(entry)
+            elif message.role == "assistant" and message.content:
+                # 纯工具回合的 assistant 没有正文，回放空 content 会被上游判非法
+                history.append({"role": "assistant", "content": message.content})
         return history
 
     async def _build_user_message(
