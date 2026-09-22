@@ -68,6 +68,36 @@ async def test_hybrid_differs_from_pure_vector(tmp_path):
     assert "kbdoc-c" not in {hit.doc_id for hit in vector_hits + hybrid_hits}
 
 
+async def test_hybrid_scores_are_rrf_fusion_scores(tmp_path):
+    """混合模式的分数得是 RRF 融合分：曾经漏传成 0，前端全是 0.0000。"""
+    chunks = [
+        _chunk("kbdoc-a", 0, "傅里叶变换把时域信号分解为频域分量。", 1),
+        _chunk("kbdoc-b", 0, "频谱分析中，滤波与时域波形的关系值得一说。", 2),
+        _chunk("kbdoc-c", 0, "植物学：光合作用转化光能。", 3),
+    ]
+    embedder = TopicEmbedder()
+    engine, index_dir = await _build(tmp_path, chunks, embedder)
+
+    hits = await engine.query(
+        index_dir,
+        "傅里叶变换 时域信号",
+        kb_id="kb-1",
+        top_k=3,
+        mode="hybrid",
+        embedder=embedder,
+    )
+
+    assert hits
+    scores = [hit.score for hit in hits]
+    assert all(score > 0 for score in scores)  # 每命中都得有融合分，不是 0
+    assert scores == sorted(scores, reverse=True)  # 按分降序
+    # 两条通路都排第一的块拿 2/(60+1)；只被一路命中的顶多 1/61
+    assert max(scores) <= 2 / 61
+    assert min(scores) >= 1 / (60 + len(chunks))  # 最差也就排到末位
+    # 两路都命中的「傅里叶」块排第一：双路命中胜过单路，融合真的在起作用
+    assert hits[0].text.startswith("傅里叶")
+
+
 async def test_excluded_docs_filtered_in_both_modes(tmp_path):
     chunks = [
         _chunk("kbdoc-a", 0, "傅里叶变换。", 1),

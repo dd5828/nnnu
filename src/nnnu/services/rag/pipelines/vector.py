@@ -164,7 +164,13 @@ class VectorEngine(BaseEngine):
             query, top_k * CANDIDATE_MULTIPLIER, excluded_docs=excluded_docs
         )
         fused = rrf_fuse([ranked, [chunk_id for chunk_id, _ in lexical]])
-        return self._to_hits(loaded, kb_id, [chunk_id for chunk_id, _ in fused[:top_k]], None)
+        # 命中分是 RRF 融合分（不是余弦，量级 ~1/61），查询侧展示与排序都用它
+        return self._to_hits(
+            loaded,
+            kb_id,
+            [chunk_id for chunk_id, _ in fused[:top_k]],
+            dict(fused),
+        )
 
     async def _vector_rank(
         self,
