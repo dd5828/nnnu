@@ -6,11 +6,7 @@ import { create } from "zustand";
 import { useLanguageStore } from "@/i18n/language-store";
 import { apiFetch } from "@/lib/api";
 import { ChatSocket, type SocketStatus } from "@/lib/ws";
-import type {
-  CitationSource,
-  CostSummaryPayload,
-  StreamEventEnvelope,
-} from "@/types/stream";
+import type { CitationSource, CostSummaryPayload, StreamEventEnvelope } from "@/types/stream";
 
 export interface AttachmentRef {
   id: string;
@@ -147,7 +143,10 @@ interface RawMessage {
   created_at: number;
 }
 
-async function refreshMessages(set: (fn: (s: ChatState) => Partial<ChatState>) => void, sessionId: string): Promise<void> {
+async function refreshMessages(
+  set: (fn: (s: ChatState) => Partial<ChatState>) => void,
+  sessionId: string
+): Promise<void> {
   try {
     const detail = await apiFetch<{ messages: RawMessage[] }>(`/api/v1/sessions/${sessionId}`);
     set(() => ({ messages: toUiMessages(detail.messages ?? []) }));
@@ -156,7 +155,10 @@ async function refreshMessages(set: (fn: (s: ChatState) => Partial<ChatState>) =
   }
 }
 
-function bindSocket(set: (fn: (s: ChatState) => Partial<ChatState>) => void, get: () => ChatState): void {
+function bindSocket(
+  set: (fn: (s: ChatState) => Partial<ChatState>) => void,
+  get: () => ChatState
+): void {
   socket.onStatus((status) => set(() => ({ socketStatus: status })));
   socket.onEvent((env: StreamEventEnvelope) => {
     const payload = env.payload as Record<string, unknown>;
@@ -181,7 +183,9 @@ function bindSocket(set: (fn: (s: ChatState) => Partial<ChatState>) => void, get
         break;
       case "thinking_delta":
         if (turn && env.turn_id === turn.turnId) {
-          set(() => ({ active: { ...turn, thinking: turn.thinking + ((payload.text as string) ?? "") } }));
+          set(() => ({
+            active: { ...turn, thinking: turn.thinking + ((payload.text as string) ?? "") },
+          }));
         }
         break;
       case "thinking_done":
@@ -191,12 +195,16 @@ function bindSocket(set: (fn: (s: ChatState) => Partial<ChatState>) => void, get
         break;
       case "content_delta":
         if (turn && env.turn_id === turn.turnId) {
-          set(() => ({ active: { ...turn, content: turn.content + ((payload.text as string) ?? "") } }));
+          set(() => ({
+            active: { ...turn, content: turn.content + ((payload.text as string) ?? "") },
+          }));
         }
         break;
       case "content_done":
         if (turn && env.turn_id === turn.turnId) {
-          set(() => ({ active: { ...turn, content: (payload.full_text as string) ?? turn.content } }));
+          set(() => ({
+            active: { ...turn, content: (payload.full_text as string) ?? turn.content },
+          }));
         }
         break;
       case "tool_call": {
@@ -232,7 +240,9 @@ function bindSocket(set: (fn: (s: ChatState) => Partial<ChatState>) => void, get
       }
       case "citation":
         if (turn && env.turn_id === turn.turnId) {
-          set(() => ({ active: { ...turn, citations: (payload.sources as CitationSource[]) ?? [] } }));
+          set(() => ({
+            active: { ...turn, citations: (payload.sources as CitationSource[]) ?? [] },
+          }));
         }
         break;
       case "ask_user":
@@ -286,7 +296,9 @@ function bindSocket(set: (fn: (s: ChatState) => Partial<ChatState>) => void, get
   });
 }
 
-async function refreshSessions(set: (fn: (s: ChatState) => Partial<ChatState>) => void): Promise<void> {
+async function refreshSessions(
+  set: (fn: (s: ChatState) => Partial<ChatState>) => void
+): Promise<void> {
   try {
     const data = await apiFetch<{ sessions: SessionMeta[] }>("/api/v1/sessions");
     set(() => ({ sessions: data.sessions ?? [] }));

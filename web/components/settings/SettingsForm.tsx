@@ -21,7 +21,11 @@ interface ProbeResponse {
   error: string | null;
 }
 
-type FormStatus = { kind: "idle" } | { kind: "busy" } | { kind: "ok"; message: string } | { kind: "error"; message: string };
+type FormStatus =
+  | { kind: "idle" }
+  | { kind: "busy" }
+  | { kind: "ok"; message: string }
+  | { kind: "error"; message: string };
 
 export default function SettingsForm({ area, title, description }: SettingsFormProps) {
   const { t } = useI18n();
@@ -184,7 +188,9 @@ export default function SettingsForm({ area, title, description }: SettingsFormP
       {probe && (
         <div
           className={`mt-4 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs ${
-            probe.ok ? "border-success/40 bg-success/10 text-success" : "border-danger/40 bg-danger/10 text-danger"
+            probe.ok
+              ? "border-success/40 bg-success/10 text-success"
+              : "border-danger/40 bg-danger/10 text-danger"
           }`}
         >
           {probe.ok ? (
@@ -202,7 +208,11 @@ export default function SettingsForm({ area, title, description }: SettingsFormP
       {status.kind !== "idle" && (
         <div
           className={`mt-3 flex items-center gap-2 text-xs ${
-            status.kind === "error" ? "text-danger" : status.kind === "ok" ? "text-success" : "text-muted"
+            status.kind === "error"
+              ? "text-danger"
+              : status.kind === "ok"
+                ? "text-success"
+                : "text-muted"
           }`}
         >
           {status.kind === "busy" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
@@ -223,7 +233,11 @@ export default function SettingsForm({ area, title, description }: SettingsFormP
             disabled={probing}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm transition-colors hover:bg-accent disabled:opacity-50"
           >
-            {probing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlugZap className="h-3.5 w-3.5" />}
+            {probing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <PlugZap className="h-3.5 w-3.5" />
+            )}
             {t("settings.testConnection")}
           </button>
         )}
@@ -279,18 +293,22 @@ function FieldControl({
 
   return (
     <div className="block">
-      <label
-        htmlFor={inputId}
-        className="mb-1 flex items-baseline gap-2 text-sm font-medium"
-      >
+      <label htmlFor={inputId} className="mb-1 flex items-baseline gap-2 text-sm font-medium">
         {label}
         {field.effect === "restart" && (
-          <span className="text-[10px] font-normal text-muted">（{t("settings.restartRequired")}）</span>
+          <span className="text-[10px] font-normal text-muted">
+            （{t("settings.restartRequired")}）
+          </span>
         )}
       </label>
       {description && <p className="mb-1 text-xs text-muted">{description}</p>}
       {field.type === "choice" ? (
-        <select id={inputId} className={inputClass} value={String(value ?? "")} onChange={(e) => onChange(e.target.value)}>
+        <select
+          id={inputId}
+          className={inputClass}
+          value={String(value ?? "")}
+          onChange={(e) => onChange(e.target.value)}
+        >
           {field.choices?.map((choice) => (
             <option key={choice} value={choice}>
               {choice === "" ? t("settings.choiceDefault") : choice}
@@ -345,7 +363,9 @@ function FieldControl({
             id={inputId}
             type="password"
             className={inputClass}
-            placeholder={typeof value === "string" && value ? value : t("settings.secretPlaceholder")}
+            placeholder={
+              typeof value === "string" && value ? value : t("settings.secretPlaceholder")
+            }
             onChange={(e) => onChange(e.target.value)}
             autoComplete="off"
           />

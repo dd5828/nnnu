@@ -52,7 +52,10 @@ export class ChatSocket {
   /** 连接（幂等：已连/正在连时无操作）；sessionId 供重连后 resume 用。 */
   connect(sessionId: string | null = null): void {
     this.sessionId = sessionId;
-    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+    if (
+      this.ws &&
+      (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)
+    ) {
       return;
     }
     this.manuallyClosed = false;

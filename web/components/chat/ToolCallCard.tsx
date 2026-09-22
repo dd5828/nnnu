@@ -28,9 +28,7 @@ export default function ToolCallCard({ call }: { call: UiToolCall }) {
         <Wrench className="h-3.5 w-3.5 text-muted" />
         <span className="font-mono text-xs font-medium">{call.name}</span>
         {!running && (
-          <span
-            className={`text-xs ${call.ok ? "text-success" : "text-danger"}`}
-          >
+          <span className={`text-xs ${call.ok ? "text-success" : "text-danger"}`}>
             {call.ok ? t("chat.toolOk") : t("chat.toolFailed")}
           </span>
         )}
@@ -38,7 +36,9 @@ export default function ToolCallCard({ call }: { call: UiToolCall }) {
           <span className="min-w-0 flex-1 truncate text-left text-muted">{call.summary}</span>
         )}
         <ChevronDown
-          className={`ml-auto h-3.5 w-3.5 text-muted transition-transform ${open ? "" : "-rotate-90"}`}
+          className={`ml-auto h-3.5 w-3.5 text-muted transition-transform ${
+            open ? "" : "-rotate-90"
+          }`}
         />
       </button>
       {open && (

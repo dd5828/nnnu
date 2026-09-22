@@ -66,13 +66,14 @@ export default function SessionList() {
               }
             }}
             className={`group flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1.5 text-sm transition-colors ${
-              session.id === sessionId
-                ? "bg-accent font-medium"
-                : "hover:bg-accent/50"
+              session.id === sessionId ? "bg-accent font-medium" : "hover:bg-accent/50"
             }`}
           >
             {editingId === session.id ? (
-              <span className="flex min-w-0 flex-1 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+              <span
+                className="flex min-w-0 flex-1 items-center gap-1"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <input
                   value={editingTitle}
                   onChange={(e) => setEditingTitle(e.target.value)}
@@ -86,7 +87,11 @@ export default function SessionList() {
                   className="w-full rounded border border-border bg-surface px-1.5 py-0.5 text-sm outline-none"
                   autoFocus
                 />
-                <button type="button" onClick={() => commitRename(session.id)} className="text-success">
+                <button
+                  type="button"
+                  onClick={() => commitRename(session.id)}
+                  className="text-success"
+                >
                   <Check className="h-3.5 w-3.5" />
                 </button>
                 <button type="button" onClick={() => setEditingId(null)} className="text-muted">

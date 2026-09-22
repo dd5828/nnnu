@@ -39,7 +39,10 @@ export default function Composer() {
           method: "POST",
           body: form,
         });
-        setAttachments((prev) => [...prev, { id: record.id, name: record.name, mime: record.mime }]);
+        setAttachments((prev) => [
+          ...prev,
+          { id: record.id, name: record.name, mime: record.mime },
+        ]);
       }
     } catch (error) {
       setUploadError(t("chat.uploadFailed", { msg: String(error) }));

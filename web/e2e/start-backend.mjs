@@ -28,7 +28,11 @@ writeFileSync(
 );
 // 2) 样例 PDF（附件引用场景用；输出到本目录 .artifacts/）
 execSync(
-  `"${PYTHON}" ${path.join(__dirname, "fixtures", "make_pdf.py")} ${path.join(__dirname, ".artifacts", "sample.pdf")}`,
+  `"${PYTHON}" ${path.join(__dirname, "fixtures", "make_pdf.py")} ${path.join(
+    __dirname,
+    ".artifacts",
+    "sample.pdf"
+  )}`,
   { cwd: REPO, stdio: "inherit" }
 );
 
