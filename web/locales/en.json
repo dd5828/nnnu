@@ -44,7 +44,12 @@
     "deleteConfirm": "Delete this session?",
     "connected": "Connected",
     "reconnecting": "Reconnecting…",
-    "closed": "Offline"
+    "closed": "Offline",
+    "knowledge": "Knowledge",
+    "knowledgeCount": "{n} knowledge bases",
+    "knowledgeHint": "Questions in this session search the selected knowledge bases; none selected means no retrieval",
+    "selectKnowledgeBases": "Select knowledge bases",
+    "noKnowledgeBases": "No searchable knowledge base yet"
   },
   "nav": {
     "home": "Home",

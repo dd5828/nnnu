@@ -16,9 +16,9 @@ def _def(name: str, mount: ToolMount) -> ToolDefinition:
     return ToolDefinition(name=name, description=f"desc {name}", parameters={}, mount=mount)
 
 
-def _turn_ctx(message: str = "hi") -> UnifiedContext:
-    """缺省设置下的回合上下文（设置文件不存在即全默认）。"""
-    request = TurnRequest(message=message)
+def _turn_ctx(message: str = "hi", *, kb_ids: list[str] | None = None) -> UnifiedContext:
+    """缺省设置下的回合上下文（设置文件不存在即全默认；kb_ids 不传就当没选库）。"""
+    request = TurnRequest(message=message, kb_ids=kb_ids or [])
     session = Session(id="sess-1", title="t")
     user_message = Message(id="msg-1", session_id="sess-1", role="user", content=message)
     return build_unified_context(request, session, user_message, [user_message], language="zh")
@@ -40,7 +40,7 @@ async def test_exec_suppressed_by_default(tmp_home):
 
 
 async def test_default_turn_mounts_toggleable_tools_but_not_exec(tmp_home):
-    """缺省状态开箱可用：可开关工具挂上，exec 不挂（§11.2）；无 KB 的 rag 也不挂。"""
+    """缺省状态开箱可用：可开关工具挂上，exec 不挂（§11.2）；没选库的 rag 也不挂（§7.9）。"""
     ctx = _turn_ctx()
     tools = [
         _def("ask_user", ToolMount.ALWAYS),
@@ -49,6 +49,15 @@ async def test_default_turn_mounts_toggleable_tools_but_not_exec(tmp_home):
         _def("rag", ToolMount.CONTEXT_GATED),
     ]
     assert compute_mounted_tools(tools, ctx.tool_flags) == ["ask_user", "web_search"]
+
+
+async def test_rag_mounts_only_when_kb_selected(tmp_home):
+    """§7.9：rag 跟着用户选择走——选了库才命中上下文门，默认不检索知识库。"""
+    tools = [_def("rag", ToolMount.CONTEXT_GATED)]
+    assert compute_mounted_tools(tools, _turn_ctx().tool_flags) == []
+    assert compute_mounted_tools(tools, _turn_ctx(kb_ids=["kb-1"]).tool_flags) == ["rag"]
+    # 取消选择（空列表）就是不挂——不是"搜全部库"
+    assert compute_mounted_tools(tools, _turn_ctx(kb_ids=[]).tool_flags) == []
 
 
 def test_cron_mounts_with_zero_jobs(tmp_home):

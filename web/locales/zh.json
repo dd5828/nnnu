@@ -44,7 +44,12 @@
     "deleteConfirm": "确定删除这个会话？",
     "connected": "已连接",
     "reconnecting": "重连中…",
-    "closed": "未连接"
+    "closed": "未连接",
+    "knowledge": "知识库",
+    "knowledgeCount": "{n} 个知识库",
+    "knowledgeHint": "选中后本会话的提问会查这些知识库；不选则不检索",
+    "selectKnowledgeBases": "选择知识库",
+    "noKnowledgeBases": "还没有可检索的知识库"
   },
   "nav": {
     "home": "首页",

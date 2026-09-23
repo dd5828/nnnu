@@ -43,13 +43,30 @@ class ToolSet:
     """循环对已挂载工具的唯一视图：名称/schema/执行，全部 fail-closed。"""
 
     def __init__(
-        self, tools: dict[str, BaseTool], descriptions: dict[str, str] | None = None
+        self,
+        tools: dict[str, BaseTool],
+        descriptions: dict[str, str] | None = None,
+        parameter_overrides: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         self._tools = tools
         self._descriptions = descriptions or {}
+        # 每回合的参数覆盖（如 rag 的 kb_name enum = 本回合挂载的库名）。
+        # 只作用在本 ToolSet 上：工具是注册表单例，改类级 definition 会跨会话互相串。
+        self._parameter_overrides = parameter_overrides or {}
 
     def names(self) -> list[str]:
         return list(self._tools)
+
+    def _parameters_for(self, name: str, tool: BaseTool) -> dict[str, Any]:
+        base = tool.definition.parameters
+        override = self._parameter_overrides.get(name)
+        if not override:
+            return base
+        return {
+            **base,
+            **override,
+            "properties": {**base.get("properties", {}), **override.get("properties", {})},
+        }
 
     def json_schemas(self) -> list[dict[str, Any]]:
         schemas: list[dict[str, Any]] = []
@@ -61,7 +78,7 @@ class ToolSet:
                     "function": {
                         "name": name,
                         "description": self._descriptions.get(name, definition.description),
-                        "parameters": definition.parameters,
+                        "parameters": self._parameters_for(name, tool),
                     },
                 }
             )

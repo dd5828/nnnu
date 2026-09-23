@@ -67,6 +67,14 @@ class ChatCapability(BaseCapability):
                 prompts=prompts,
                 lang=ctx.language,
             )
+        # 知识库（§7.9）：会话选中的库 → 库名→id 映射，名字同时进系统提示与 rag 的 enum
+        kb_names, rag_kbs = self._resolve_kb_names(ctx)
+        ctx.metadata["rag_kbs"] = rag_kbs
+        kb_note = (
+            prompts.render("chat", ctx.language, "kb_note", kbs=", ".join(kb_names))
+            if kb_names
+            else ""
+        )
         system_prompt = prompts.render(
             "chat",
             ctx.language,
@@ -74,6 +82,7 @@ class ChatCapability(BaseCapability):
             tools=tool_lines,
             language={"zh": "中文", "en": "English"}.get(ctx.language, ctx.language),
             persona=persona_text,
+            kb_note=kb_note,
         )
 
         # 2) 模型解析（§7.19：settings > 请求覆盖 > env > 默认；附件注入需要 provider/model 判断视觉能力）
@@ -98,7 +107,12 @@ class ChatCapability(BaseCapability):
         config = ctx.config
         deps = LoopDeps(
             client=client,
-            tools=ToolSet(mounted, descriptions),
+            tools=ToolSet(
+                mounted,
+                descriptions,
+                # rag 的 kb_name 只能取本回合挂载的库名（schema enum 收口，模型没得猜）
+                parameter_overrides={"rag": {"properties": {"kb_name": {"enum": kb_names}}}},
+            ),
             model=model,
             provider=provider_id or "",
             max_rounds=config.get("max_rounds", 20),
@@ -125,6 +139,37 @@ class ChatCapability(BaseCapability):
                 citations=outcome.citations,
                 tool_calls=outcome.tool_calls,
             )
+
+    @staticmethod
+    def _resolve_kb_names(ctx: UnifiedContext) -> tuple[list[str], dict[str, str]]:
+        """会话选中的知识库 →（库名列表，保持选择顺序；库名 → kb_id 映射）。
+
+        只认 ready 且有活跃版本的库（删了/没建完的一律当没选，fail-closed）；
+        重名时后选中的覆盖前者，列表里只留一个。
+        """
+        from nnnu.services.knowledge.service import get_kb_service
+        from nnnu.services.knowledge.types import KB_READY
+
+        if not ctx.kb_refs:
+            return [], {}
+        try:
+            service = get_kb_service()
+        except RuntimeError:
+            return [], {}
+        names: list[str] = []
+        mapping: dict[str, str] = {}
+        for ref in ctx.kb_refs:
+            try:
+                manifest = service.get_kb(ref.kb_id)
+            except Exception:
+                logger.warning("知识库 %s 解析失败，按未挂载处理", ref.kb_id, exc_info=True)
+                continue
+            if manifest is None or manifest.status != KB_READY or manifest.active_version <= 0:
+                continue
+            if manifest.name not in mapping:
+                names.append(manifest.name)
+            mapping[manifest.name] = ref.kb_id
+        return names, mapping
 
     @staticmethod
     def _session_history(ctx: UnifiedContext) -> list[dict]:

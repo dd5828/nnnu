@@ -1,9 +1,11 @@
 "use client";
 
-/** 输入区（§7.21）：textarea（Enter 发送 / Shift+Enter 换行，中文输入法守卫）+ 附件上传 + 发送/停止。 */
+/** 输入区（§7.21）：textarea（Enter 发送 / Shift+Enter 换行，中文输入法守卫）
+ *  + 知识库选择（§7.9）+ 附件上传 + 发送/停止。 */
 
 import { useRef, useState } from "react";
 import { CircleStop, Paperclip, Send, X } from "lucide-react";
+import KnowledgeSelector from "@/components/chat/KnowledgeSelector";
 import { useChatStore, type AttachmentRef } from "@/hooks/useChat";
 import { useI18n } from "@/hooks/useI18n";
 import { apiFetch } from "@/lib/api";
@@ -105,6 +107,7 @@ export default function Composer() {
         )}
         {uploadError && <div className="mb-2 text-xs text-danger">{uploadError}</div>}
         <div className="flex items-end gap-2 rounded-2xl border border-border bg-surface p-2 focus-within:border-primary/50">
+          <KnowledgeSelector />
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}

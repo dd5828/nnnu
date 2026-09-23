@@ -238,6 +238,18 @@ class TurnRuntimeManager:
 
     # ---- 回合执行 ----
 
+    async def _apply_kb_selection(self, request: TurnRequest, session) -> None:
+        """知识库选择（§7.9，粘性对齐上游）：显式带 kb_ids 的请求全量替换并落库（前端
+        每条消息都带当前选择，所以空列表就是"取消选择"）；没带 kb_ids 的请求（regenerate、
+        cron 回合、老客户端）沿用会话里的选择，不回写。落库失败不阻断回合。"""
+        if "kb_ids" in request.model_fields_set:
+            try:
+                await self._sessions.set_kb_ids(session.id, list(request.kb_ids))
+            except Exception:
+                logger.warning("知识库选择持久化失败 session=%s", session.id, exc_info=True)
+        else:
+            request.kb_ids = list(session.kb_ids)
+
     async def _run_turn(self, execution: _TurnExecution) -> None:
         """回合主流程：上下文 → 编排器 → 持久化 → 收尾（单出口收尾，防重复落库）。"""
         request = execution.request
@@ -255,6 +267,7 @@ class TurnRuntimeManager:
                 execution.bus.session_id = session.id  # bus 创建时 session 未知，此处回填
                 # 新会话同样注册：resume（按 session 订阅）依赖此映射找到活动回合
                 self._active_by_session[session.id] = execution.turn_id
+                await self._apply_kb_selection(request, session)
                 # session 解析后重入日志上下文：后续日志带真实 session_id
                 with turn_log_context(execution.turn_id, session.id):
                     await self._run_turn_body(execution, request, session, relay)

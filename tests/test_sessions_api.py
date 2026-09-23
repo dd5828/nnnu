@@ -59,3 +59,37 @@ async def test_regenerate_endpoint(client):
         await asyncio.sleep(0.05)
     assert contents == ["问题", "版本2"]
     uninstall_scripted()
+
+
+async def test_kb_selection_is_sticky_per_session(client):
+    """§7.9：带 kb_ids 的回合全量替换并落库；之后的回合不带也沿用（regenerate 不误清）。"""
+    install_scripted(lambda: ScriptedLLM([ScriptedStep(chunks=["回答"])]))
+    chat = await client.post(
+        "/api/v1/chat",
+        json={"session_id": "sess-kb", "message": "问题", "kb_ids": ["kb-1", "kb-2"]},
+    )
+    assert chat.status_code == 200
+    detail = await client.get("/api/v1/sessions/sess-kb")
+    assert detail.json()["kb_ids"] == ["kb-1", "kb-2"]
+
+    # regenerate 构造的 TurnRequest 不带 kb_ids：沿用会话现值，不清空
+    regen = await client.post("/api/v1/sessions/sess-kb/regenerate")
+    assert regen.status_code == 200
+
+    import asyncio
+
+    for _ in range(50):
+        detail = await client.get("/api/v1/sessions/sess-kb")
+        if len(detail.json()["messages"]) == 2:
+            break
+        await asyncio.sleep(0.05)
+    assert detail.json()["kb_ids"] == ["kb-1", "kb-2"]
+
+    # 显式空列表 = 用户点掉了全部芯片（全量替换成空，而不是"什么都不改"）
+    again = await client.post(
+        "/api/v1/chat", json={"session_id": "sess-kb", "message": "再问", "kb_ids": []}
+    )
+    assert again.status_code == 200
+    detail = await client.get("/api/v1/sessions/sess-kb")
+    assert detail.json()["kb_ids"] == []
+    uninstall_scripted()

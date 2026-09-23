@@ -81,6 +81,14 @@ class SessionManager:
         )
         return await self.get_session(session_id)
 
+    async def set_kb_ids(self, session_id: str, kb_ids: list[str]) -> Session | None:
+        """全量替换会话选中的知识库（§7.9 粘性；空列表 = 取消选择）。"""
+        await self._db.execute(
+            "UPDATE sessions SET kb_ids = ?, updated_at = ? WHERE id = ?",
+            (_dumps(list(kb_ids)), time.time(), session_id),
+        )
+        return await self.get_session(session_id)
+
     async def touch_session(self, session_id: str) -> None:
         await self._db.execute(
             "UPDATE sessions SET updated_at = ? WHERE id = ?", (time.time(), session_id)

@@ -131,19 +131,16 @@ def build_unified_context(
     if model_ref is None and request.model:
         provider_id, model = parse_model_ref(request.model)
         model_ref = ModelRef(provider=provider_id or "", model=model)
-    # §6.3 context_gated：有附件 → attachment_search；有 ready 知识库 → rag
-    # （cron 曾按"有定时任务"门控，但那是死锁——任务的唯一入口就是 cron 工具本身，
-    #  零任务时工具不挂 → 永远建不了第一个任务；现改为可开关工具默认挂载）
+    # §6.3 context_gated：有附件 → attachment_search；用户选了知识库 → rag
+    # （rag 曾经"存在任意 ready 库就挂"，等于默认搜遍全部库；现改为用户按会话显式选择，
+    #  没选就不挂，对齐上游 DeepTutor。cron 曾按"有定时任务"门控，但那是死锁——
+    #  任务的唯一入口就是 cron 工具本身，零任务时工具不挂 → 永远建不了第一个任务，
+    #  现改为可开关工具默认挂载）
     context_flags: set[str] = set()
     if request.attachments:
         context_flags.add("attachment_search")
-    try:
-        from nnnu.services.knowledge.service import get_kb_service
-
-        if get_kb_service().has_ready_kb():
-            context_flags.add("rag")
-    except RuntimeError:
-        pass  # KB 服务未装配，视为没有知识库（fail-closed）
+    if request.kb_ids:
+        context_flags.add("rag")
     # §7.2 工具开关：设置 chat 区与请求级配置合并（请求覆盖更具体，仅做并集/补集）
     from nnnu.services.settings.service import get_settings_service
 

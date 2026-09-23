@@ -148,10 +148,14 @@ test("⑧ 知识库：建库上传到就绪，测试台检索命中第 1 页", a
 
 test("⑨ 知识库引用可点：从引用面板跳进阅读器并定位页码", async ({ page }) => {
   await openSession(page);
+  // 先在输入区选库（§7.9：不选就不挂 rag，默认不检索知识库）
+  await page.getByTestId("kb-selector").click();
+  await page.getByTestId("kb-option").filter({ hasText: "信号库" }).click();
+  await expect(page.getByTestId("kb-selector")).toContainText("信号库");
   const box = page.locator("textarea").first();
   await box.fill("查一下知识库里的傅里叶变换");
   await box.press("Enter");
-  // 模型调 rag（有 ready 库才挂载）→ 引用面板出现
+  // 模型调 rag（选了库才挂载）→ 引用面板出现
   await expect(page.getByText("rag", { exact: true }).first()).toBeVisible({ timeout: 15000 });
   await expect(page.getByText("引用来源").first()).toBeVisible({ timeout: 15000 });
   await expect(page.getByText("知识库里说，傅里叶变换把时域信号分解为频域分量")).toBeVisible({

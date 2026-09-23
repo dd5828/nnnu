@@ -87,12 +87,15 @@ interface ChatState {
   messages: UiMessage[];
   active: ActiveTurn | null;
   topError: string | null;
+  /** 会话级知识库选择（§7.9 粘性）：随每条消息发给后端，由后端全量替换并落库 */
+  kbIds: string[];
 
   init: () => void;
   refreshSessions: () => Promise<void>;
   ensureSession: () => Promise<string>;
   newSession: () => Promise<void>;
   selectSession: (id: string) => Promise<void>;
+  setKbIds: (ids: string[]) => void;
   renameSession: (id: string, title: string) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
   send: (text: string, attachments: AttachmentRef[]) => Promise<void>;
@@ -145,13 +148,21 @@ interface RawMessage {
   created_at: number;
 }
 
+/** hydrateKb：切会话时顺带水合库选择；回合结束的重取不带——用户可能刚改过选择，
+ * 服务器那边还是本回合发过去的旧值，回灌会把用户的改动抹掉。 */
 async function refreshMessages(
   set: (fn: (s: ChatState) => Partial<ChatState>) => void,
-  sessionId: string
+  sessionId: string,
+  { hydrateKb = false }: { hydrateKb?: boolean } = {}
 ): Promise<void> {
   try {
-    const detail = await apiFetch<{ messages: RawMessage[] }>(`/api/v1/sessions/${sessionId}`);
-    set(() => ({ messages: toUiMessages(detail.messages ?? []) }));
+    const detail = await apiFetch<{ messages: RawMessage[]; kb_ids?: string[] }>(
+      `/api/v1/sessions/${sessionId}`
+    );
+    set(() => ({
+      messages: toUiMessages(detail.messages ?? []),
+      ...(hydrateKb ? { kbIds: detail.kb_ids ?? [] } : {}),
+    }));
   } catch {
     // 会话已被删除等：保留本地视图
   }
@@ -318,6 +329,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   messages: [],
   active: null,
   topError: null,
+  kbIds: [],
 
   init: () => {
     if (initialized) {
@@ -340,7 +352,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       body: JSON.stringify({ capability: "chat", language: useLanguageStore.getState().lang }),
     });
     socket.setSession(session.id);
-    set(() => ({ sessionId: session.id, messages: [], active: null }));
+    set(() => ({ sessionId: session.id, messages: [], active: null, kbIds: [] }));
     await refreshSessions(set);
   },
 
@@ -354,6 +366,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       body: JSON.stringify({ capability: "chat", language: useLanguageStore.getState().lang }),
     });
     socket.setSession(session.id);
+    // 不动 kbIds：空状态页上用户可以先把库选好再发第一条消息，
+    // 这里清掉的话选择会被静默吞掉（会话建出来时选择照常随消息下发）
     set(() => ({ sessionId: session.id }));
     await refreshSessions(set);
     return session.id;
@@ -366,8 +380,10 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     }
     socket.setSession(id);
     set(() => ({ sessionId: id, active: null, topError: null }));
-    await refreshMessages(set, id);
+    await refreshMessages(set, id, { hydrateKb: true });
   },
+
+  setKbIds: (ids: string[]) => set(() => ({ kbIds: ids })),
 
   renameSession: async (id: string, title: string) => {
     await apiFetch(`/api/v1/sessions/${id}`, {
@@ -381,7 +397,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     await apiFetch(`/api/v1/sessions/${id}`, { method: "DELETE" });
     if (get().sessionId === id) {
       socket.setSession(null);
-      set(() => ({ sessionId: null, messages: [], active: null }));
+      set(() => ({ sessionId: null, messages: [], active: null, kbIds: [] }));
     }
     await refreshSessions(set);
   },
@@ -408,6 +424,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       session_id: sid,
       message: text,
       attachments: attachments.map((a) => ({ id: a.id, name: a.name, mime: a.mime })),
+      // 知识库选择随消息全量下发（§7.9 粘性）：空数组也是明确意思——取消全部选择
+      kb_ids: get().kbIds,
       language: useLanguageStore.getState().lang,
     });
   },
