@@ -101,7 +101,7 @@ class PaperSearchTool(BaseTool):
             "required": ["query"],
         },
         mount=ToolMount.USER_TOGGLEABLE,
-        cost_hint="arXiv 检索（免费 API）",
+        cost_hint="tools.cost.paper_search",  # 双语键：chat.yaml tool_cost_hints
     )
 
     async def run(self, ctx: ToolContext) -> ToolResult:

@@ -45,7 +45,7 @@ class CodeExecutionTool(BaseTool):
             "required": ["code"],
         },
         mount=ToolMount.ALWAYS,  # §6.3 context_gated 语义"有沙箱"：子进程沙箱恒在，等效恒挂载
-        cost_hint="执行受沙箱限制（超时/输出上限/目录锁定）",
+        cost_hint="tools.cost.code_execution",  # 双语键：chat.yaml tool_cost_hints
     )
 
     async def run(self, ctx: ToolContext) -> ToolResult:

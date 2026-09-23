@@ -67,7 +67,7 @@ class WebFetchTool(BaseTool):
             "required": ["url"],
         },
         mount=ToolMount.ALWAYS,  # §6.3：始终 → web_fetch
-        cost_hint="抓取公网网页（超时 10s，内网地址拒绝）",
+        cost_hint="tools.cost.web_fetch",  # 双语键：chat.yaml tool_cost_hints
     )
 
     async def run(self, ctx: ToolContext) -> ToolResult:

@@ -236,7 +236,7 @@ def _recording_llm(captured: list[ScriptedLLM]):
     return factory
 
 
-async def test_chat_turn_injects_kb_note_and_enum(client, tmp_path):
+async def test_chat_turn_injects_kb_note_and_enum(client, tmp_path, repo_prompts):
     """REST 聊天带 kb_ids：系统提示点名库、rag 的 kb_name enum 收口到该库。"""
     embedding_service.install_embedding_stub(lambda: TopicEmbedder())
     kb_id = await _rest_kb(client, tmp_path, "信号处理", SIGNAL_TEXT)
@@ -260,7 +260,7 @@ async def test_chat_turn_injects_kb_note_and_enum(client, tmp_path):
     assert rag_schema["function"]["parameters"]["properties"]["kb_name"]["enum"] == ["信号处理"]
 
 
-async def test_chat_without_selection_mounts_no_rag(client, tmp_path):
+async def test_chat_without_selection_mounts_no_rag(client, tmp_path, repo_prompts):
     """有 ready 库但没选：rag 不挂、系统提示不提库（默认不检索知识库）。"""
     embedding_service.install_embedding_stub(lambda: TopicEmbedder())
     await _rest_kb(client, tmp_path, "信号处理", SIGNAL_TEXT)

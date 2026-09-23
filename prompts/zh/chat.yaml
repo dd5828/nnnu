@@ -34,3 +34,16 @@ tool_descriptions:
   reason: "对难题做一次专门的深度推理（独立推理块），逐步推导并给出结论。数学证明、逻辑难题、复杂分析时用它。"
   imagegen: "根据描述生成图片（保存到 workspace/generated/）。用户说「画一张/生成一张图」时用它。"
   videogen: "视频生成（当前暂不支持，会返回明确提示；优先尝试 imagegen 或其他方式满足用户）。"
+# 工具卡上的成本/限制提示（§7.2）：设置页「工具目录」按当前语言取用
+tool_cost_hints:
+  web_search: "联网搜索（按提供商计费/耗时）"
+  paper_search: "arXiv 检索（免费 API）"
+  web_fetch: "抓取公网网页（超时 10s，内网地址拒绝）"
+  code_execution: "执行受沙箱限制（超时/输出上限/目录锁定）"
+  exec: "本机命令执行（默认禁用，设置里显式开启才可用）"
+  github: "GitHub API 查询（公开仓库免 token）"
+  cron: "定时任务（到点自动发起新回合，消耗 token）"
+  brainstorm: "额外一次 LLM 调用（按当前模型计费）"
+  reason: "额外一次深度推理调用（较贵）"
+  imagegen: "图像生成（按图像模型计费，较贵）"
+  videogen: "视频生成（尚未支持，随后续阶段补齐）"

@@ -23,7 +23,7 @@ class ReasonTool(BaseTool):
             "required": ["question"],
         },
         mount=ToolMount.USER_TOGGLEABLE,
-        cost_hint="额外一次深度推理调用（较贵）",
+        cost_hint="tools.cost.reason",  # 双语键：chat.yaml tool_cost_hints
     )
 
     async def run(self, ctx: ToolContext) -> ToolResult:

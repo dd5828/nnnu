@@ -26,7 +26,7 @@ class ImageGenTool(BaseTool):
             "required": ["prompt"],
         },
         mount=ToolMount.USER_TOGGLEABLE,
-        cost_hint="图像生成（按图像模型计费，较贵）",
+        cost_hint="tools.cost.imagegen",  # 双语键：chat.yaml tool_cost_hints
     )
 
     async def run(self, ctx: ToolContext) -> ToolResult:
@@ -63,7 +63,7 @@ class VideoGenTool(BaseTool):
             "required": ["prompt"],
         },
         mount=ToolMount.USER_TOGGLEABLE,
-        cost_hint="视频生成（尚未支持，随后续阶段补齐）",
+        cost_hint="tools.cost.videogen",  # 双语键：chat.yaml tool_cost_hints
     )
 
     async def run(self, ctx: ToolContext) -> ToolResult:

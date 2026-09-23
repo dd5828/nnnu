@@ -2,6 +2,7 @@
 
 import hashlib
 import math
+from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -12,6 +13,22 @@ def tmp_home(tmp_path, monkeypatch):
     """把 NNNU_HOME 指向临时目录，隔离真实 data/。"""
     monkeypatch.setenv("NNNU_HOME", str(tmp_path))
     return tmp_path
+
+
+REPO_PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
+
+
+@pytest.fixture
+def repo_prompts(monkeypatch):
+    """把提示词根钉在仓库 prompts/ 上：断言提示词文本的用例靠它拿真实模板。
+
+    tmp_home 把 NNNU_HOME 挪到临时目录后，加载器的兜底路径是「安装位置往上三层」——
+    可编辑安装（本地开发）正好是仓库根，非可编辑安装（CI、pip install）落到
+    site-packages 就探不到，渲染静默返回空串。别让断言跟着装法变。
+    """
+    from nnnu.runtime import home
+
+    monkeypatch.setattr(home, "get_prompts_root", lambda *args, **kwargs: REPO_PROMPTS)
 
 
 @pytest.fixture

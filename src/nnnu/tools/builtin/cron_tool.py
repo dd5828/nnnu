@@ -38,7 +38,7 @@ class CronTool(BaseTool):
             "required": ["action"],
         },
         mount=ToolMount.USER_TOGGLEABLE,
-        cost_hint="定时任务（到点自动发起新回合，消耗 token）",
+        cost_hint="tools.cost.cron",  # 双语键：chat.yaml tool_cost_hints
     )
 
     async def run(self, ctx: ToolContext) -> ToolResult:

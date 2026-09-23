@@ -30,7 +30,7 @@ class ExecTool(BaseTool):
             "required": ["command"],
         },
         mount=ToolMount.USER_TOGGLEABLE,
-        cost_hint="本机命令执行（默认禁用，设置里显式开启才可用）",
+        cost_hint="tools.cost.exec",  # 双语键：chat.yaml tool_cost_hints
     )
 
     async def run(self, ctx: ToolContext) -> ToolResult:

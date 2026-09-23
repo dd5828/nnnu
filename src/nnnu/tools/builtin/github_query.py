@@ -55,7 +55,7 @@ class GithubQueryTool(BaseTool):
             "required": ["repo", "what"],
         },
         mount=ToolMount.USER_TOGGLEABLE,
-        cost_hint="GitHub API 查询（公开仓库免 token）",
+        cost_hint="tools.cost.github",  # 双语键：chat.yaml tool_cost_hints
     )
 
     async def run(self, ctx: ToolContext) -> ToolResult:

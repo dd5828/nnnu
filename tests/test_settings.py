@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from nnnu.services.audit import read_audit
 from nnnu.services.llm.probe import ProbeResult
 from nnnu.services.secrets.store import get_secrets_store
 from nnnu.services.settings.service import (
@@ -322,6 +323,53 @@ async def test_probe_endpoint_uses_registry_base_url(client, monkeypatch):
     resp = await client.post("/api/v1/settings/probe", json={"provider": "deepseek"})
     assert resp.status_code == 200
     assert resp.json() == {"ok": True, "models": ["deepseek-chat"], "error": None}
+
+
+# ---- 设置变更落审计（§11.6：「设置变更」） ----
+
+
+def _audit_text(tmp_home) -> str:
+    return (tmp_home / "data" / "system" / "audit.log").read_text(encoding="utf-8")
+
+
+def _audited(action: str) -> list[dict]:
+    return [entry for entry in read_audit() if entry.get("action") == action]
+
+
+def test_save_area_is_audited_with_keys_not_values(svc, tmp_home):
+    svc.save_area("appearance", {"theme": "dark"})
+    entries = _audited("settings_save")
+    assert [entry["area"] for entry in entries] == ["appearance"]
+    assert entries[0]["keys"] == ["theme"]
+    assert "dark" not in _audit_text(tmp_home)  # 只记区名与键名，值不进审计
+
+
+async def test_apply_draft_is_audited_without_secret_plaintext(svc, tmp_home):
+    async def ok_probe(candidate):
+        return None
+
+    svc.save_draft(
+        "models",
+        {"provider": "deepseek", "model": "deepseek-chat", "api_key": "sk-audit-key-12345678"},
+    )
+    await svc.apply_draft("models", probe_fn=ok_probe)
+    entry = _audited("settings_apply")[-1]
+    assert entry["area"] == "models"
+    assert entry["keys"] == ["model", "provider"]  # secret 字段不进 keys
+    assert entry["secrets"] == ["api_key"]  # 只记哪个 secret 被设/被清
+    assert "sk-audit-key" not in _audit_text(tmp_home)
+
+
+async def test_probe_failure_leaves_no_apply_record(svc, tmp_home):
+    """探测失败 = 一个字节都没改，审计里不该出现 apply。"""
+    svc.save_draft("models", {"provider": "kimi", "model": "moonshot-v1-8k"})
+
+    async def fail_probe(candidate):
+        return "端点返回 HTTP 500"
+
+    with pytest.raises(ProbeError):
+        await svc.apply_draft("models", probe_fn=fail_probe)
+    assert _audited("settings_apply") == []
 
 
 # ---- kb 区与 embedding 三件套（P4 §7.9） ----

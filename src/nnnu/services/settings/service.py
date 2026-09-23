@@ -7,7 +7,9 @@
 - secret 字段明文永不落设置 JSON：只存 user-secrets（经 SecretsStore），
   草稿里只记动作标记（set/clear），API 回显只给掩码；
 - 草稿-应用：改动先存 draft → apply 时校验（models 区先探测）→ 成功才
-  写正式文件并 promote 密钥，失败保留草稿与原配置。
+  写正式文件并 promote 密钥，失败保留草稿与原配置；
+- 落盘的改动记审计（§11.6「设置变更」）：只记区名与改动的键名，值一概不记
+  （密钥明文、乃至普通配置内容都没必要进 audit.log）。存草稿不算变更，应用才算。
 """
 
 import json
@@ -16,6 +18,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from nnnu.runtime import home
+from nnnu.services.audit import audit_log
 from nnnu.services.settings.atomic import atomic_write_json
 from nnnu.services.settings.spec import SPECS, AreaSpec, SettingField
 
@@ -149,6 +152,7 @@ class SettingsService:
             if field.key in values:
                 current[field.key] = _validate_field(field, values[field.key])
         atomic_write_json(_area_path(name), current)
+        audit_log("settings_save", area=name, keys=sorted(values))
         return self.load_area(name)
 
     # ---- 草稿-应用两段式（§7.19） ----
@@ -250,6 +254,18 @@ class SettingsService:
             elif action == SECRET_ACTION_CLEAR:
                 store.clear(field.secret_domain, slot)
         _draft_path(name).unlink(missing_ok=True)
+        audit_log(
+            "settings_apply",
+            area=name,
+            keys=sorted(
+                field.key for field in spec.fields if field.type != "secret" and field.key in draft
+            ),
+            secrets=sorted(
+                field.key
+                for field in _secret_fields(spec)
+                if draft.get(field.key) in (SECRET_ACTION_SET, SECRET_ACTION_CLEAR)
+            ),
+        )
         return self.load_area(name)
 
     @staticmethod

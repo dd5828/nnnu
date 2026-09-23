@@ -23,7 +23,7 @@ class WebSearchTool(BaseTool):
             "required": ["query"],
         },
         mount=ToolMount.USER_TOGGLEABLE,
-        cost_hint="联网搜索（按提供商计费/耗时）",
+        cost_hint="tools.cost.web_search",  # 双语键：chat.yaml tool_cost_hints
     )
 
     async def run(self, ctx: ToolContext) -> ToolResult:

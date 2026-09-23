@@ -34,3 +34,16 @@ tool_descriptions:
   reason: "Run a dedicated deep-reasoning pass (separate reasoning block): step-by-step derivation with a clear conclusion. Use it for proofs, logic puzzles, or complex analysis."
   imagegen: "Generate an image from a description (saved to workspace/generated/). Use it when the user says 'draw/picture/generate an image'."
   videogen: "Video generation (not supported yet; returns a clear message. Prefer imagegen or other ways to satisfy the user)."
+# Cost/limit hints shown on tool cards (§7.2): the settings tool catalog picks them by language
+tool_cost_hints:
+  web_search: "Web search (billed/latency per provider)"
+  paper_search: "arXiv search (free API)"
+  web_fetch: "Fetch public pages (10s timeout; private addresses rejected)"
+  code_execution: "Runs under sandbox limits (timeout/output cap/locked directory)"
+  exec: "Host command execution (disabled by default; enable it in settings)"
+  github: "GitHub API queries (no token needed for public repos)"
+  cron: "Scheduled tasks (each run starts a new turn and burns tokens)"
+  brainstorm: "One extra LLM call (billed at the current model's rate)"
+  reason: "One extra deep-reasoning call (pricier)"
+  imagegen: "Image generation (billed by the image model; expensive)"
+  videogen: "Video generation (not supported yet; coming in a later stage)"

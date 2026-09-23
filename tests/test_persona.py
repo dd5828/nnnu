@@ -107,7 +107,7 @@ def _system_prompt_of(llm: ScriptedLLM) -> str:
     return llm.calls[0].messages[0]["content"]
 
 
-async def test_preset_persona_injected_into_system_prompt(client):
+async def test_preset_persona_injected_into_system_prompt(client, repo_prompts):
     captured: ScriptedLLM | None = None
 
     def factory() -> ScriptedLLM:

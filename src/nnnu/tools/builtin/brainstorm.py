@@ -20,7 +20,7 @@ class BrainstormTool(BaseTool):
             "required": ["topic"],
         },
         mount=ToolMount.USER_TOGGLEABLE,
-        cost_hint="额外一次 LLM 调用（按当前模型计费）",
+        cost_hint="tools.cost.brainstorm",  # 双语键：chat.yaml tool_cost_hints
     )
 
     async def run(self, ctx: ToolContext) -> ToolResult:
