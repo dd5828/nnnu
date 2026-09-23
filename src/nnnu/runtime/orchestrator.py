@@ -131,17 +131,12 @@ def build_unified_context(
     if model_ref is None and request.model:
         provider_id, model = parse_model_ref(request.model)
         model_ref = ModelRef(provider=provider_id or "", model=model)
-    # §6.3 context_gated：有附件 → attachment_search；有定时任务 → cron；有 ready 知识库 → rag
+    # §6.3 context_gated：有附件 → attachment_search；有 ready 知识库 → rag
+    # （cron 曾按"有定时任务"门控，但那是死锁——任务的唯一入口就是 cron 工具本身，
+    #  零任务时工具不挂 → 永远建不了第一个任务；现改为可开关工具默认挂载）
     context_flags: set[str] = set()
     if request.attachments:
         context_flags.add("attachment_search")
-    try:
-        from nnnu.services.cron.scheduler import get_cron_service
-
-        if get_cron_service().has_jobs():
-            context_flags.add("cron")
-    except RuntimeError:
-        pass  # cron 未装配（独立测试路径），视为无任务
     try:
         from nnnu.services.knowledge.service import get_kb_service
 

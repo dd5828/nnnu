@@ -2,6 +2,7 @@
 
 模型写代码（NL 意图 → 代码由模型完成），本工具只负责安全执行；
 执行环境锁在 data/workspace/，超时/输出上限/环境白名单见 services/sandbox。
+联网默认关闭：allow_network 只是"请求"，总开关在设置 chat 区 sandbox_network（§11.2）。
 """
 
 from nnnu.core.tool_protocol import BaseTool, ToolContext, ToolDefinition, ToolMount, ToolResult
@@ -38,7 +39,7 @@ class CodeExecutionTool(BaseTool):
                 "allow_network": {
                     "type": "boolean",
                     "default": False,
-                    "description": "是否允许访问网络（默认关闭）",
+                    "description": "请求联网（默认关闭；需用户在设置里开启「沙箱允许联网」才生效）",
                 },
             },
             "required": ["code"],
@@ -52,6 +53,8 @@ class CodeExecutionTool(BaseTool):
             code=str(ctx.args.get("code", "")),
             timeout_s=float(ctx.args.get("timeout_seconds", 30)),
             allow_network=bool(ctx.args.get("allow_network", False)),
+            turn_id=ctx.turn_id,
+            session_id=ctx.session_id,
         )
         result = await get_sandbox_service().run(request)
         if result.error:

@@ -104,9 +104,11 @@
     },
     "chat": {
       "toolsEnabled": "Force-enable tools",
-      "toolsEnabledDesc": "One tool name per line. For \"my condition isn't met but I want it anyway\" — e.g. mount cron with no scheduled jobs, or attachment_search with no attachments. Rarely needed: toggleable tools are already on.",
+      "toolsEnabledDesc": "One tool name per line. For \"my condition isn't met but I want it anyway\" — e.g. attachment_search with no attachments. Rarely needed: toggleable tools are already on.",
       "toolsDisabled": "Disable tools",
-      "toolsDisabledDesc": "One tool name per line; listed tools are not mounted for the turn (disabling wins over enabling). exec sits here by default — it runs commands on this machine, so delete the line only if you want it."
+      "toolsDisabledDesc": "One tool name per line; listed tools are not mounted for the turn (disabling wins over enabling). exec sits here by default — it runs commands on this machine, so delete the line only if you want it.",
+      "sandboxNetwork": "Allow sandbox network",
+      "sandboxNetworkDesc": "Lets code_execution and exec reach the network (off by default). Code still has to request network itself per call; credentials and proxy variables never enter the sandbox."
     },
     "kb": {
       "chunkSize": "Chunk size (chars)",

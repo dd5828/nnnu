@@ -49,7 +49,8 @@ PROVIDER_CHOICES: tuple[str, ...] = ("", *[spec.id for spec in build_registry()]
 SPECS: dict[str, AreaSpec] = {
     # §7.2 工具开关：可开关工具默认挂载，tools_disabled 用来关掉；tools_enabled
     # 是强制启用（等价 --tool），给"上下文没命中也要用"的场合；
-    # exec 默认在禁用列表（§11.2 需用户显式开启）
+    # exec 默认在禁用列表（§11.2 需用户显式开启）；
+    # sandbox_network 是沙箱联网总开关（§11.2 网络默认关闭、用户可开）
     "chat": AreaSpec(
         "chat",
         (
@@ -66,6 +67,14 @@ SPECS: dict[str, AreaSpec] = {
                 ["exec"],
                 "settings.chat.toolsDisabled",
                 description_key="settings.chat.toolsDisabledDesc",
+            ),
+            # §11.2「网络默认关闭、用户可开」：沙箱（code_execution/exec）联网总开关
+            SettingField(
+                "sandbox_network",
+                "bool",
+                False,
+                "settings.chat.sandboxNetwork",
+                description_key="settings.chat.sandboxNetworkDesc",
             ),
         ),
     ),

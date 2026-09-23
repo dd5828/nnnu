@@ -5,7 +5,7 @@ adapted from DeepTutor (Apache-2.0) deeptutor/services/cron/service.py ——
 - 仅 5 段 cron 表达式（§8.2 cron_jobs.schedule 即表达式）；
 - 持久化走 cron_jobs 表（§8.2 原样）；
 - 执行器由外部注入（lifespan 接 TurnRuntime.start_turn，到点以新回合执行）；
-- 内存缓存任务集合（has_jobs 同步查询，供 context_gated 挂载判断）。
+- 内存缓存任务集合（has_jobs 同步查询，给"有没有启用的任务"这类判断用）。
 """
 
 import asyncio
@@ -166,7 +166,7 @@ class CronService:
         self._executor = executor
 
     def has_jobs(self) -> bool:
-        """同步查询（内存缓存）：供 context_gated 挂载判断。"""
+        """同步查询（内存缓存）：是否有启用中的任务。"""
         return any(job.enabled for job in self._jobs.values())
 
     async def load_jobs(self) -> None:

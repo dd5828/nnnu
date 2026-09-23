@@ -104,9 +104,11 @@
     },
     "chat": {
       "toolsEnabled": "强制启用工具",
-      "toolsEnabledDesc": "一行一个工具名。用在「条件没命中但我就要用」的场合，比如没有定时任务也想让 cron 可用、没有附件也想用 attachment_search。日常用不到这行——可开关的工具本来就是开的。",
+      "toolsEnabledDesc": "一行一个工具名。用在「条件没命中但我就要用」的场合，比如没有附件也想用 attachment_search。日常用不到这行——可开关的工具本来就是开的。",
       "toolsDisabled": "禁用工具",
-      "toolsDisabledDesc": "一行一个工具名，列在这里的工具这一回合不挂载（禁用优先于启用）。exec 默认在这行——它会在这台机器上跑命令，要用就把它删掉。"
+      "toolsDisabledDesc": "一行一个工具名，列在这里的工具这一回合不挂载（禁用优先于启用）。exec 默认在这行——它会在这台机器上跑命令，要用就把它删掉。",
+      "sandboxNetwork": "沙箱允许联网",
+      "sandboxNetworkDesc": "开启后 code_execution 与 exec 才能访问网络（默认关闭）。调用代码仍然要自己请求联网；凭据和代理变量依旧不进沙箱。"
     },
     "kb": {
       "chunkSize": "切块长度（字数）",

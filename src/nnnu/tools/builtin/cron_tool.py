@@ -1,6 +1,9 @@
 """cron 工具（§7.2）：创建/删除/列出定时任务，到点以新回合执行。
 
-context_gated：用户已有启用中的定时任务时挂载（§6.3"有定时任务 → cron"）。
+user_toggleable：默认挂载、用户可在设置里禁用。§6.3 原写 context_gated
+（"有定时任务 → cron"），但任务的唯一创建入口就是这个工具本身——按"有任务才挂"
+会死锁在零任务状态，模型永远看不到它（参考仓库把它列在 always_on 里，见
+`deeptutor/agents/_shared/tool_composition.py`）。
 任务内容在到点时作为用户消息发起新回合（执行器由 lifespan 接 TurnRuntime）。
 """
 
@@ -34,7 +37,7 @@ class CronTool(BaseTool):
             },
             "required": ["action"],
         },
-        mount=ToolMount.CONTEXT_GATED,
+        mount=ToolMount.USER_TOGGLEABLE,
         cost_hint="定时任务（到点自动发起新回合，消耗 token）",
     )
 

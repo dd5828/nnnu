@@ -3,8 +3,10 @@
 import pytest
 
 from nnnu.core.tool_protocol import ToolContext
+from nnnu.services.audit import read_audit
 from nnnu.services.sandbox.service import SandboxError, get_sandbox_service, reset_sandbox_service
-from nnnu.services.sandbox.spec import ExecRequest
+from nnnu.services.sandbox.spec import ExecRequest, ExecResult
+from nnnu.services.settings.service import get_settings_service
 from nnnu.tools.builtin.code_execution import CodeExecutionTool
 from nnnu.tools.builtin.exec_tool import ExecTool
 from nnnu.tools.builtin.file_tools import (
@@ -12,6 +14,8 @@ from nnnu.tools.builtin.file_tools import (
     ReadWorkspaceFileTool,
     WriteWorkspaceFileTool,
 )
+
+PRINT_PROXY = "import os; print('proxy=', os.environ.get('http_proxy'))"
 
 
 @pytest.fixture(autouse=True)
@@ -161,3 +165,75 @@ async def test_read_missing_file(tmp_home):
     result = await ReadWorkspaceFileTool().run(_ctx(path="nope.txt"))
     assert result.ok is False
     assert "不存在" in result.output
+
+
+# ---- 联网总开关与执行审计（§11.2 / §11.6） ----
+
+
+async def test_network_off_by_default(tmp_home, monkeypatch):
+    """§11.2 网络默认关闭：模型请求了也不放行（代理变量进不去）。"""
+    monkeypatch.setenv("http_proxy", "http://proxy.local:8080")
+    result = await get_sandbox_service().run(ExecRequest(code=PRINT_PROXY, allow_network=True))
+    assert "proxy= None" in result.stdout
+
+
+async def test_network_opens_with_setting(tmp_home, monkeypatch):
+    """§11.2 用户可开：设置里开「沙箱允许联网」后，请求联网的代码才拿到代理变量。"""
+    monkeypatch.setenv("http_proxy", "http://proxy.local:8080")
+    get_settings_service().save_area("chat", {"sandbox_network": True})
+    result = await get_sandbox_service().run(ExecRequest(code=PRINT_PROXY, allow_network=True))
+    assert "proxy= http://proxy.local:8080" in result.stdout
+
+
+async def test_network_setting_does_not_force_network(tmp_home, monkeypatch):
+    """开了总开关也不强推：没请求联网的代码依旧拿不到代理变量（调用方只能收紧）。"""
+    monkeypatch.setenv("http_proxy", "http://proxy.local:8080")
+    get_settings_service().save_area("chat", {"sandbox_network": True})
+    result = await get_sandbox_service().run(ExecRequest(code=PRINT_PROXY))
+    assert "proxy= None" in result.stdout
+
+
+async def test_code_execution_tool_follows_network_setting(tmp_home, monkeypatch):
+    """工具层接线：allow_network 参数经服务层总开关放行。"""
+    monkeypatch.setenv("http_proxy", "http://proxy.local:8080")
+    get_settings_service().save_area("chat", {"sandbox_network": True})
+    result = await CodeExecutionTool().run(_ctx(code=PRINT_PROXY, allow_network=True))
+    assert result.ok is True
+    assert "proxy= http://proxy.local:8080" in result.output
+
+
+async def test_exec_tool_requests_network(tmp_home, monkeypatch):
+    """exec 没有联网参数：请求恒为"要"，放行与否全看服务层读到的总开关（§11.2）。"""
+    captured: dict[str, bool] = {}
+
+    async def fake_run(request):
+        captured["allow_network"] = request.allow_network
+        return ExecResult(ok=True, exit_code=0, duration_s=0.0)
+
+    monkeypatch.setattr(get_sandbox_service(), "run", fake_run)
+    await ExecTool().run(_ctx(command="echo hi"))
+    assert captured["allow_network"] is True
+
+
+async def test_sandbox_execution_is_audited(tmp_home):
+    """§11.6：每次沙箱执行落一条审计，且能追到回合与会话。"""
+    result = await CodeExecutionTool().run(_ctx(code="print('audited')"))
+    assert result.ok is True
+    entries = [e for e in read_audit() if e.get("action") == "sandbox_exec"]
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry["kind"] == "code"
+    assert entry["ok"] is True
+    assert entry["exit_code"] == 0
+    assert "audited" in entry["target"]
+    assert entry["turn_id"] == "turn-test"
+    assert entry["session_id"] == "sess-test"
+
+
+async def test_denied_sandbox_run_is_audited(tmp_home):
+    """越界被拒也算一次执行尝试，审计同样留痕。"""
+    await get_sandbox_service().run(ExecRequest(code="print(1)", cwd_relative="../../"))
+    entries = [e for e in read_audit() if e.get("action") == "sandbox_exec"]
+    assert len(entries) == 1
+    assert entries[0]["ok"] is False
+    assert "越界" in (entries[0]["error"] or "")

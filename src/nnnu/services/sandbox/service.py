@@ -4,7 +4,9 @@
 - 服务门面持有配额与限制参数，工具层只跟 spec.py 的 ExecRequest/ExecResult 打交道；
 - 超时/输出超限时杀整棵进程树（Windows taskkill /T，POSIX 进程组）；
 - 工作目录路径归一化后必须落在 workspace 内（防目录穿越，fail-closed）；
-- 环境变量白名单：凭据/代理一律不进沙箱。
+- 环境变量白名单：凭据/代理一律不进沙箱；网络由设置里「沙箱允许联网」总开关放行
+  （默认关闭，模型请求只能在此基础上收紧，不能自行放开——§11.2）；
+- 每次执行（含越界/配额拒绝）落一条审计（§11.6）。
 """
 
 import asyncio
@@ -31,6 +33,7 @@ logger = logging.getLogger(__name__)
 ENV_WHITELIST = ("PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "PYTHONIOENCODING", "PYTHONUTF8")
 PROXY_VARS = ("http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY")
 RUNS_DIR_NAME = ".sandbox-runs"  # 脚本/命令暂存目录（workspace 内隐藏目录）
+AUDIT_TARGET_MAX_CHARS = 200  # 审计里留的代码/命令片段长度上限
 
 
 class SandboxError(Exception):
@@ -51,6 +54,39 @@ def _resolve_cwd(cwd_relative: str) -> Path:
     except ValueError:
         raise SandboxError(f"工作目录越界：{cwd_relative!r} 不在 workspace 内") from None
     return candidate
+
+
+def _network_allowed_by_settings() -> bool:
+    """§11.2「网络默认关闭、用户可开」：读设置 chat 区 sandbox_network（fail-closed）。"""
+    try:
+        from nnnu.services.settings.service import get_settings_service
+
+        return bool(get_settings_service().load_area("chat").get("sandbox_network", False))
+    except Exception as exc:  # noqa: BLE001 —— 门控读不到一律当关闭
+        logger.warning("沙箱联网设置读取失败（%s），按关闭处理", exc)
+        return False
+
+
+def _audit(request: ExecRequest, result: ExecResult) -> None:
+    """§11.6：沙箱执行落审计（越界/配额拒绝也算一次执行尝试）。"""
+    from nnnu.services.audit import audit_log
+
+    is_code = request.code is not None
+    target = (request.code or request.command or "")[:AUDIT_TARGET_MAX_CHARS]
+    audit_log(
+        "sandbox_exec",
+        kind="code" if is_code else "command",
+        target=target,
+        cwd=request.cwd_relative,
+        network=request.allow_network,
+        ok=result.ok,
+        exit_code=result.exit_code,
+        duration_s=round(result.duration_s, 2),
+        truncated=result.truncated,
+        error=result.error,
+        turn_id=request.turn_id,
+        session_id=request.session_id,
+    )
 
 
 def _build_env(allow_network: bool, extra: dict[str, str]) -> dict[str, str]:
@@ -116,17 +152,26 @@ class SandboxService:
             return ExecResult(ok=False, error="code 与 command 至少提供一个")
         if not 0 < request.timeout_s <= MAX_TIMEOUT_S:
             request.timeout_s = DEFAULT_TIMEOUT_S
+        # §11.2：网络默认关闭——调用方只能在用户开了总开关的前提下收紧，不能自行放开
+        if request.allow_network and not _network_allowed_by_settings():
+            request.allow_network = False
         try:
             cwd = _resolve_cwd(request.cwd_relative)
         except SandboxError as exc:
-            return ExecResult(ok=False, error=str(exc))
+            return self._audited(request, ExecResult(ok=False, error=str(exc)))
         try:
             self._check_rate()
         except SandboxError as exc:
-            return ExecResult(ok=False, error=str(exc))
+            return self._audited(request, ExecResult(ok=False, error=str(exc)))
 
         async with self._semaphore:
-            return await self._execute(request, cwd)
+            return self._audited(request, await self._execute(request, cwd))
+
+    @staticmethod
+    def _audited(request: ExecRequest, result: ExecResult) -> ExecResult:
+        """审计登记后原样返回结果（所有出口都经由它，保证不漏记）。"""
+        _audit(request, result)
+        return result
 
     async def _execute(self, request: ExecRequest, cwd: Path) -> ExecResult:
         started = time.monotonic()

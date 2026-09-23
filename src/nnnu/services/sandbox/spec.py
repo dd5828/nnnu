@@ -29,6 +29,8 @@ class ExecRequest:
     allow_network: bool = False
     cwd_relative: str = ""  # 相对 data/workspace/ 的子目录
     env: dict[str, str] = field(default_factory=dict)  # 白名单之外的显式附加
+    turn_id: str = ""  # 审计留痕用（哪个回合跑的）
+    session_id: str = ""  # 审计留痕用（哪次会话跑的）
 
 
 @dataclass(slots=True)
