@@ -89,10 +89,25 @@ async def test_record_explicit_title_wins_and_is_truncated(client):
     assert len(record["title"]) == 120
 
 
+async def test_record_accepts_question_type(client):
+    """批二把「题目」记录类型补上了（批一预留的坑）：出题回合可以存进笔记本。"""
+    notebook = await _new_notebook(client)
+    created = await client.post(
+        f"/api/v1/notebooks/{notebook['id']}/records",
+        json={
+            "type": "question",
+            "content_md": "### 第 1 题\n\n求 $x^2$ 的导数",
+            "source_ref": "sess-q",
+        },
+    )
+    assert created.status_code == 200, created.text
+    assert created.json()["type"] == "question"
+
+
 @pytest.mark.parametrize(
     "body,code",
     [
-        ({"type": "question", "content_md": "题"}, "invalid_record"),  # 批一不收题目类型
+        ({"type": "quiz", "content_md": "题"}, "invalid_record"),  # 白名单外的类型
         ({"type": "note", "content_md": "   "}, "invalid_record"),  # 空内容
     ],
 )

@@ -104,8 +104,9 @@ def test_db_path_layout(tmp_home):
 def test_version_without_migration_definition_aborts(tmp_home, monkeypatch):
     # 事故复现：SCHEMA_VERSION 改大了但 MIGRATIONS 里没有对应条目 →
     # 迁移一条不跑、版本号却被推高（"no such table" 的根因）。必须硬中止。
-    monkeypatch.setitem(MIGRATIONS, "5", [])
-    monkeypatch.setattr("nnnu.services.sessions.schema.SCHEMA_VERSION", "7")
+    monkeypatch.setattr(
+        "nnnu.services.sessions.schema.SCHEMA_VERSION", str(int(SCHEMA_VERSION) + 1)
+    )
     with pytest.raises(RuntimeError, match="与 MIGRATIONS 不同步"):
         migrate(tmp_home / "data")
     assert not _version_file(tmp_home).exists()
@@ -177,3 +178,54 @@ def test_migrate_v5_to_v6_keeps_existing_rows(tmp_home):
     finally:
         conn.close()
     assert row == ("旧会话",)
+
+
+def _columns(tmp_home, table: str) -> set[str]:
+    conn = sqlite3.connect(db_path(tmp_home / "data"))
+    try:
+        return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+    finally:
+        conn.close()
+
+
+def test_fresh_install_creates_question_tables(tmp_home):
+    assert migrate(tmp_home / "data") == SCHEMA_VERSION
+    assert {"questions", "question_attempts"} <= _table_names(tmp_home)
+    # §8.2 的四列是偏离补的：题型/知识点/难度/来源会话
+    assert {"type", "knowledge_point", "difficulty", "session_id"} <= _columns(
+        tmp_home, "questions"
+    )
+    assert {"score", "correct", "feedback", "source"} <= _columns(tmp_home, "question_attempts")
+
+
+def test_migrate_v6_to_v7_keeps_existing_rows(tmp_home):
+    # 模拟 P5 批一状态：v6 库里有会话与笔记本，升到 v7 后两者都还在、新表就位
+    data = tmp_home / "data"
+    (data / "system").mkdir(parents=True)
+    _version_file(tmp_home).write_text("6\n", encoding="utf-8")
+    path = db_path(data)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    try:
+        for level in ("2", "3", "4", "5", "6"):
+            for statement in MIGRATIONS[level]:
+                conn.execute(statement)
+        conn.execute("INSERT INTO notebooks (id, name, description) VALUES ('nb-v6', '旧本', NULL)")
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert migrate(data) == SCHEMA_VERSION
+    assert {"questions", "question_attempts"} <= _table_names(tmp_home)
+    conn = sqlite3.connect(path)
+    try:
+        assert conn.execute("SELECT name FROM notebooks WHERE id = 'nb-v6'").fetchone() == ("旧本",)
+        # 建表时默认值就位：老行（如果有）不需要回填也能读
+        conn.execute("INSERT INTO questions (id, stem, answer) VALUES ('q-v7', '题面', 'A')")
+        row = conn.execute(
+            "SELECT type, knowledge_point, difficulty, mastery FROM questions WHERE id = 'q-v7'"
+        ).fetchone()
+        conn.commit()
+    finally:
+        conn.close()
+    assert row == ("single", "", "medium", 0.0)

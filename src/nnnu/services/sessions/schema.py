@@ -15,7 +15,9 @@ from pathlib import Path
 # v4：P2 附件表（偏离：§8.2 无 attachments 表，§7.1 附件归档/清理需要）
 # v5：P3 cron 定时任务表（§8.2 原样）
 # v6：P5 批一 笔记本与记录表（§8.2 原样）
-SCHEMA_VERSION = "6"
+# v7：P5 批二 题库——§8.2 questions 原样 + 偏离补四列（题型/知识点/难度/来源会话），
+#     另加 question_attempts 作答表（§7.4「保留作答与解析」；§8.2 没有这张表）
+SCHEMA_VERSION = "7"
 
 MIGRATIONS: dict[str, list[str]] = {
     "2": [
@@ -103,6 +105,39 @@ MIGRATIONS: dict[str, list[str]] = {
         "CREATE INDEX IF NOT EXISTS idx_notebook_records_notebook "
         "ON notebook_records(notebook_id, created_at)",
     ],
+    "7": [
+        """CREATE TABLE IF NOT EXISTS questions (
+            id TEXT PRIMARY KEY,
+            stem TEXT NOT NULL,
+            options TEXT NOT NULL DEFAULT '[]',
+            answer TEXT NOT NULL,
+            explanation TEXT,
+            source TEXT,
+            tags TEXT DEFAULT '[]',
+            mastery REAL DEFAULT 0,
+            wrong_count INTEGER DEFAULT 0,
+            last_attempt_at REAL,
+            created_at REAL,
+            type TEXT NOT NULL DEFAULT 'single',
+            knowledge_point TEXT NOT NULL DEFAULT '',
+            difficulty TEXT NOT NULL DEFAULT 'medium',
+            session_id TEXT
+        )""",
+        """CREATE TABLE IF NOT EXISTS question_attempts (
+            id TEXT PRIMARY KEY,
+            question_id TEXT NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+            session_id TEXT,
+            answer TEXT NOT NULL DEFAULT '',
+            correct INTEGER NOT NULL DEFAULT 0,
+            score REAL NOT NULL DEFAULT 0,
+            feedback TEXT,
+            source TEXT NOT NULL DEFAULT 'auto',
+            created_at REAL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_questions_kp ON questions(knowledge_point, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_question_attempts_q "
+        "ON question_attempts(question_id, created_at)",
+    ],
 }
 
 # 每级迁移应落地的产物——启动自检清单（见 _verify）。
@@ -114,6 +149,7 @@ EXPECTED_TABLES: dict[str, tuple[str, ...]] = {
     "4": ("attachments",),
     "5": ("cron_jobs",),
     "6": ("notebooks", "notebook_records"),
+    "7": ("questions", "question_attempts"),
 }
 
 EXPECTED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {

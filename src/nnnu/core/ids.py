@@ -3,7 +3,21 @@
 import secrets
 
 # §8.2 约定：ID 用「模块前缀-{8位随机}」；随阶段推进按需扩展
-KNOWN_PREFIXES = ("sess", "msg", "turn", "evt", "ask", "att", "cron", "kb", "kbdoc", "nb", "nbr")
+KNOWN_PREFIXES = (
+    "sess",
+    "msg",
+    "turn",
+    "evt",
+    "ask",
+    "att",
+    "cron",
+    "kb",
+    "kbdoc",
+    "nb",
+    "nbr",
+    "q",
+    "qa",
+)
 
 
 def new_id(prefix: str) -> str:

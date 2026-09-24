@@ -19,6 +19,7 @@ class Database:
         self._path = path
         self._conn: aiosqlite.Connection | None = None
         self._lock = asyncio.Lock()
+        self._in_transaction = False
 
     async def connect(self) -> None:
         self._conn = await aiosqlite.connect(self._path)
@@ -40,7 +41,8 @@ class Database:
     async def execute(self, sql: str, params: tuple = ()) -> aiosqlite.Cursor:
         conn = self._require_conn()
         cursor = await conn.execute(sql, params)
-        await conn.commit()
+        if not self._in_transaction:  # 事务内由 transaction() 统一提交，早提交会破坏原子性
+            await conn.commit()
         return cursor
 
     async def fetch_all(self, sql: str, params: tuple = ()) -> list[dict[str, Any]]:
@@ -56,10 +58,14 @@ class Database:
         return dict(row) if row is not None else None
 
     async def transaction(self, fn: Callable[[], Awaitable[T]]) -> T:
-        """写事务：锁内 BEGIN IMMEDIATE → fn → COMMIT/ROLLBACK。fn 内勿再开事务。"""
+        """写事务：锁内 BEGIN IMMEDIATE → fn → COMMIT/ROLLBACK。fn 内勿再开事务。
+
+        事务期间 execute 不自行提交（见 _in_transaction），读取走 fetch_* 即可。
+        """
         async with self._lock:
             conn = self._require_conn()
             await conn.execute("BEGIN IMMEDIATE")
+            self._in_transaction = True
             try:
                 result = await fn()
                 await conn.commit()
@@ -67,3 +73,5 @@ class Database:
             except BaseException:
                 await conn.rollback()
                 raise
+            finally:
+                self._in_transaction = False

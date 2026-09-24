@@ -15,7 +15,7 @@ MAX_TITLE_CHARS = 120
 MAX_CONTENT_CHARS = 200_000  # 一份解答/一次问答的正文上限（防手滑贴进整本书）
 
 # 记录类型白名单：请求里的 type 落库前必须在这里面
-RECORD_TYPES: tuple[str, ...] = ("chat", "solve", "note")
+RECORD_TYPES: tuple[str, ...] = ("chat", "solve", "note", "question")
 
 # 取正文首行当标题时要剥掉的 markdown 装饰
 _TITLE_STRIP_CHARS = "#*-— \t"
