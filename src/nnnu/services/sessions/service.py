@@ -97,6 +97,14 @@ class SessionManager:
         )
         return await self.get_session(session_id)
 
+    async def set_capability(self, session_id: str, capability: str) -> Session | None:
+        """设置会话能力（§6.4 粘性：回合显式带了 capability 就记下来，切走再回来还在）。"""
+        await self._db.execute(
+            "UPDATE sessions SET capability = ?, updated_at = ? WHERE id = ?",
+            (capability, time.time(), session_id),
+        )
+        return await self.get_session(session_id)
+
     async def touch_session(self, session_id: str) -> None:
         await self._db.execute(
             "UPDATE sessions SET updated_at = ? WHERE id = ?", (time.time(), session_id)

@@ -18,6 +18,7 @@ from nnnu.api.routers import (
     cost,
     health,
     knowledge,
+    notebooks,
     plugins,
     sessions,
     settings,
@@ -75,6 +76,7 @@ def create_app() -> FastAPI:
         from nnnu.runtime.turn_runtime import TurnRequest, TurnRuntimeManager
         from nnnu.services.cost.service import CostService
         from nnnu.services.files.service import AttachmentsService
+        from nnnu.services.notebooks.service import NotebookService
         from nnnu.services.sessions.db import Database
         from nnnu.services.sessions.schema import db_path
         from nnnu.services.sessions.service import SessionManager
@@ -88,6 +90,7 @@ def create_app() -> FastAPI:
         )
         _app.state.db = db
         _app.state.attachments = AttachmentsService(db, runtime_home.get_data_root())
+        _app.state.notebooks = NotebookService(db)
         _app.state.runtime = TurnRuntimeManager(
             sessions=session_manager, costs=cost_service, orchestrator=orchestrator
         )
@@ -98,7 +101,12 @@ def create_app() -> FastAPI:
         set_cron_service(cron_service)
 
         async def cron_executor(job) -> str:
-            request = TurnRequest(message=job.prompt, session_id=job.session_id)
+            # 能力跟着任务绑定的会话走：挂在解题会话上的定时任务不该跑成聊天
+            request = TurnRequest(
+                message=job.prompt,
+                session_id=job.session_id,
+                capability=await _app.state.runtime.session_capability(job.session_id),
+            )
             try:
                 await _app.state.runtime.start_turn(request)
                 return "ok"
@@ -165,6 +173,7 @@ def create_app() -> FastAPI:
     app.include_router(settings.router)
     app.include_router(attachments.router)
     app.include_router(knowledge.router)
+    app.include_router(notebooks.router)
     app.include_router(plugins.router)
     app.include_router(chat.router)
     app.include_router(sessions.router)

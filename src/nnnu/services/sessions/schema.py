@@ -14,7 +14,8 @@ from pathlib import Path
 # v3：P2 persona——自定义 persona 描述粘性存储（§7.1）
 # v4：P2 附件表（偏离：§8.2 无 attachments 表，§7.1 附件归档/清理需要）
 # v5：P3 cron 定时任务表（§8.2 原样）
-SCHEMA_VERSION = "5"
+# v6：P5 批一 笔记本与记录表（§8.2 原样）
+SCHEMA_VERSION = "6"
 
 MIGRATIONS: dict[str, list[str]] = {
     "2": [
@@ -83,6 +84,25 @@ MIGRATIONS: dict[str, list[str]] = {
             created_at REAL
         )""",
     ],
+    "6": [
+        """CREATE TABLE IF NOT EXISTS notebooks (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            created_at REAL
+        )""",
+        """CREATE TABLE IF NOT EXISTS notebook_records (
+            id TEXT PRIMARY KEY,
+            notebook_id TEXT NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
+            type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            content_md TEXT NOT NULL,
+            source_ref TEXT,
+            created_at REAL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_notebook_records_notebook "
+        "ON notebook_records(notebook_id, created_at)",
+    ],
 }
 
 # 每级迁移应落地的产物——启动自检清单（见 _verify）。
@@ -93,6 +113,7 @@ EXPECTED_TABLES: dict[str, tuple[str, ...]] = {
     "2": ("sessions", "messages", "usage_records"),
     "4": ("attachments",),
     "5": ("cron_jobs",),
+    "6": ("notebooks", "notebook_records"),
 }
 
 EXPECTED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
