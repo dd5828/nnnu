@@ -19,7 +19,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from nnnu.core.context import Attachment, SessionRef
 from nnnu.core.events import StreamEventType
@@ -68,6 +68,33 @@ class TurnRequest(BaseModel):
     model: str | None = None
     # 运行时内部标志：regenerate 复用原 user 消息，不重复落库（§6.8）
     persist_user_message: bool = True
+
+    @field_validator("model", mode="before")
+    @classmethod
+    def _validate_model(cls, value: object) -> str | None:
+        """会话级模型选择（§6.10）：null/空串 = 清除（跟随设置默认）；非空必须是
+        'provider:model' 且 provider 在册——选择器只可能产出规范串，其余按坏客户端
+        fail-fast（与附件数量校验同一条线）。模型名不在注册表快照里则放行：
+        快照不是白名单（§6.10），兼容端点上的自有模型照样能用。"""
+        # 惰性导入，同 build_unified_context
+        from nnnu.services.llm.factory import normalize_model_ref
+
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("model 必须是 'provider:model' 字符串（null = 跟随设置默认）")
+        text = value.strip()
+        if not text:
+            return None
+        normalized = normalize_model_ref(text)
+        if normalized is None:
+            from nnnu.services.llm.provider_registry import build_registry
+
+            known = "、".join(f"{spec.id}:…" for spec in build_registry())
+            raise ValueError(
+                f"未知模型引用 {value!r}：需 'provider:model'，provider 取 {known} 之一"
+            )
+        return normalized
 
     @model_validator(mode="after")
     def _validate_attachments(self) -> "TurnRequest":
@@ -250,6 +277,28 @@ class TurnRuntimeManager:
         else:
             request.kb_ids = list(session.kb_ids)
 
+    async def _apply_model_selection(self, request: TurnRequest, session) -> None:
+        """模型选择（§6.10，粘性对齐上游）：显式带 model 的请求全量替换并落库（null/空串 =
+        清除，回到设置默认）；没带 model 的请求（regenerate、cron 回合、老客户端）沿用
+        会话里的选择。会话里存的旧值若已不可用（provider 不在册/模型为空），告警后丢弃
+        回退设置默认——粘性值不该把会话搞死。落库失败不阻断回合（同 _apply_kb_selection）。"""
+        from nnnu.services.llm.factory import normalize_model_ref
+
+        if "model" in request.model_fields_set:
+            ref = normalize_model_ref(request.model)
+            try:
+                await self._sessions.set_model(session.id, ref)
+            except Exception:
+                logger.warning("模型选择持久化失败 session=%s", session.id, exc_info=True)
+            request.model = ref
+        else:
+            ref = normalize_model_ref(session.model)
+            if session.model and ref is None:
+                logger.warning(
+                    "会话 %s 存的模型 %r 已不可用，回退设置默认", session.id, session.model
+                )
+            request.model = ref
+
     async def _run_turn(self, execution: _TurnExecution) -> None:
         """回合主流程：上下文 → 编排器 → 持久化 → 收尾（单出口收尾，防重复落库）。"""
         request = execution.request
@@ -268,6 +317,7 @@ class TurnRuntimeManager:
                 # 新会话同样注册：resume（按 session 订阅）依赖此映射找到活动回合
                 self._active_by_session[session.id] = execution.turn_id
                 await self._apply_kb_selection(request, session)
+                await self._apply_model_selection(request, session)
                 # session 解析后重入日志上下文：后续日志带真实 session_id
                 with turn_log_context(execution.turn_id, session.id):
                     await self._run_turn_body(execution, request, session, relay)

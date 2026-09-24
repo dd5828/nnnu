@@ -49,7 +49,14 @@
     "knowledgeCount": "{n} 个知识库",
     "knowledgeHint": "选中后本会话的提问会查这些知识库；不选则不检索",
     "selectKnowledgeBases": "选择知识库",
-    "noKnowledgeBases": "还没有可检索的知识库"
+    "noKnowledgeBases": "还没有可检索的知识库",
+    "selectModel": "选择模型",
+    "followDefault": "跟随设置默认",
+    "modelCurrent": "当前：{model}",
+    "modelHint": "本会话后续回合都用选中的模型；默认跟随设置",
+    "modelDefaultTag": "默认",
+    "modelMissingKey": "未配置密钥（去设置页模型卡片填写）",
+    "modelEmpty": "没有可选的模型"
   },
   "nav": {
     "home": "首页",

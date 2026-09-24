@@ -198,3 +198,32 @@ test("⑩ 知识库 Markdown 预览：正文渲染成 DOM，不再是解析文�
   await expect(reader.locator("pre")).toHaveCount(0);
   await expect(reader.getByTestId("reader-download")).toBeVisible();
 });
+
+test("⑪ 模型选择：会话级粘性，切走再回来仍在，可清回默认", async ({ page }) => {
+  await page.goto("/");
+  // 新开会话：上一个会话在⑨里挂了知识库，粘性会跟过来，不掺和这条用例
+  await page.getByRole("button", { name: "新对话" }).click();
+  const box = page.locator("textarea").first();
+  await expect(box).toBeVisible();
+
+  // 选中一个模型（默认列表里 deepseek 行可点：start-backend 已 seed 假密钥）
+  await page.getByTestId("model-selector").click();
+  await page.locator('[data-testid="model-option"][data-value="deepseek:deepseek-chat"]').click();
+  await expect(page.getByTestId("model-selector")).toContainText("deepseek-chat");
+
+  // 粘性靠回合落库（§6.10）：发一条
+  await box.fill("换个模型再问一次");
+  await box.press("Enter");
+  await expect(page.getByText("模型选择验证回答。")).toBeVisible({ timeout: 15000 });
+
+  // 切到老会话（它没选过模型）再切回来：显示来自库里水合，不是内存残留
+  await page.locator("aside").getByText(SESSION_TITLE, { exact: false }).first().click();
+  await expect(page.getByTestId("model-selector")).toContainText("跟随设置默认");
+  await page.locator("aside").getByText("换个模型再问一次").first().click();
+  await expect(page.getByTestId("model-selector")).toContainText("deepseek-chat");
+
+  // 显式清回默认
+  await page.getByTestId("model-selector").click();
+  await page.getByTestId("model-option-default").click();
+  await expect(page.getByTestId("model-selector")).toContainText("跟随设置默认");
+});

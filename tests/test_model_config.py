@@ -50,6 +50,13 @@ def test_request_override_wins_over_settings(tmp_home):
     assert (mc.provider_id, mc.model) == ("deepseek", "deepseek-reasoner")
 
 
+def test_cross_provider_override_ignores_settings_model(tmp_home):
+    """跨 provider 的请求覆盖不能继承设置里的模型名——那是另一个 provider 的模型 ID。"""
+    get_settings_service().save_area("models", {"provider": "kimi", "model": "moonshot-v1-8k"})
+    mc = resolve_model_config(override_provider="deepseek", override_model="")
+    assert (mc.provider_id, mc.model) == ("deepseek", "deepseek-chat")
+
+
 def test_custom_without_base_url_raises(tmp_home):
     get_settings_service().save_area("models", {"provider": "custom", "model": "my-model"})
     with pytest.raises(LLMConfigError, match="base_url"):

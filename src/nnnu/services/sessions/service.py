@@ -89,6 +89,14 @@ class SessionManager:
         )
         return await self.get_session(session_id)
 
+    async def set_model(self, session_id: str, model: str | None) -> Session | None:
+        """设置会话模型覆盖（§6.10 粘性，'provider:model'；None = 清除，回退设置默认）。"""
+        await self._db.execute(
+            "UPDATE sessions SET model = ?, updated_at = ? WHERE id = ?",
+            (model, time.time(), session_id),
+        )
+        return await self.get_session(session_id)
+
     async def touch_session(self, session_id: str) -> None:
         await self._db.execute(
             "UPDATE sessions SET updated_at = ? WHERE id = ?", (time.time(), session_id)

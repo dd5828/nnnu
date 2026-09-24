@@ -49,7 +49,14 @@
     "knowledgeCount": "{n} knowledge bases",
     "knowledgeHint": "Questions in this session search the selected knowledge bases; none selected means no retrieval",
     "selectKnowledgeBases": "Select knowledge bases",
-    "noKnowledgeBases": "No searchable knowledge base yet"
+    "noKnowledgeBases": "No searchable knowledge base yet",
+    "selectModel": "Select model",
+    "followDefault": "Follow settings default",
+    "modelCurrent": "Current: {model}",
+    "modelHint": "This session keeps using the selected model; the default follows Settings",
+    "modelDefaultTag": "default",
+    "modelMissingKey": "No API key configured (add one in Settings → Model)",
+    "modelEmpty": "No selectable model"
   },
   "nav": {
     "home": "Home",

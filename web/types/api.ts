@@ -34,6 +34,26 @@ export interface SettingsAreaResponse {
   fields: SettingsFieldMeta[];
 }
 
+/** 对应 nnnu/api/routers/settings.py 的 GET /api/v1/settings/llm-options 响应（§6.10）。
+ *  只给 id 与布尔，密钥永不出现在这里。 */
+export interface LlmOption {
+  value: string;
+  provider: string;
+  provider_label: string;
+  model: string;
+  label: string;
+  context_window: number | null;
+  is_local: boolean;
+  missing_key: boolean;
+  is_active_default: boolean;
+}
+
+export interface LlmOptionsResponse {
+  active: string | null;
+  active_source: "settings" | "env" | "default" | "unresolved";
+  options: LlmOption[];
+}
+
 /** 对应 nnnu/core/tool_protocol.py 的 ToolDefinition（§6.3）。 */
 export interface ToolDefinitionMeta {
   name: string;

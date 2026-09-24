@@ -26,6 +26,14 @@ writeFileSync(
     2
   )
 );
+// 1b) 假密钥：模型选择器把「没配密钥」的 provider 渲染成不可点，
+//     不 seed 的话 deepseek 行是否可点取决于开发机仓库根的 .env（测试得确定性）
+mkdirSync(path.join(E2E_HOME, "data", "system", "user-secrets"), { recursive: true });
+writeFileSync(
+  path.join(E2E_HOME, "data", "system", "user-secrets", "llm.json"),
+  JSON.stringify({ keys: { deepseek: "sk-e2e-stub" }, pending: {} }, null, 2)
+);
+
 // 2) 样例 PDF（附件引用场景用；输出到本目录 .artifacts/）
 execSync(
   `"${PYTHON}" ${path.join(__dirname, "fixtures", "make_pdf.py")} ${path.join(

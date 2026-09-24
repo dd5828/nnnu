@@ -69,6 +69,22 @@ def parse_model_ref(model: str) -> tuple[str | None, str]:
     return None, model
 
 
+def normalize_model_ref(ref: str | None) -> str | None:
+    """严格规范化 'provider:model'（§6.10 会话级模型选择）：provider ∈ 内置注册表
+    ∪ {custom} 且 model 非空 → 规范串；否则 None（调用方决定拒绝还是回退设置默认）。
+
+    宽松解析（env NNNU_MODEL、设置回显、会话里的历史值）仍走 parse_model_ref——
+    不认识的 provider 在这里返回 None，由调用方选择告警丢弃而不是当场炸。
+    """
+    provider, _, model = (ref or "").partition(":")
+    provider, model = provider.strip(), model.strip()
+    if not provider or not model:
+        return None
+    if provider != "custom" and find_by_id(build_registry(), provider) is None:
+        return None
+    return f"{provider}:{model}"
+
+
 def resolve_model_config(
     *,
     override_provider: str | None = None,
@@ -84,8 +100,12 @@ def resolve_model_config(
     from nnnu.services.settings.service import get_settings_service
 
     values = get_settings_service().load_area("models")
-    provider_id = override_provider or str(values.get("provider") or "")
-    model = override_model or str(values.get("model") or "")
+    settings_provider = str(values.get("provider") or "")
+    settings_model = str(values.get("model") or "")
+    provider_id = override_provider or settings_provider
+    # 请求覆盖换 provider 时，模型只能来自 override_model（或该 provider 的默认模型）：
+    # 设置里的模型名属于另一个 provider，继承过来会把两边的模型 ID 张冠李戴
+    model = override_model or (settings_model if provider_id == settings_provider else "")
     base_url = str(values.get("base_url") or "").strip() or None
     temperature = float(values.get("temperature") or 1.0)
     reasoning_effort = str(values.get("reasoning_effort") or "") or None

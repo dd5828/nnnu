@@ -1,11 +1,12 @@
 "use client";
 
 /** 输入区（§7.21）：textarea（Enter 发送 / Shift+Enter 换行，中文输入法守卫）
- *  + 知识库选择（§7.9）+ 附件上传 + 发送/停止。 */
+ *  + 知识库选择（§7.9）+ 模型选择（§6.10）+ 附件上传 + 发送/停止。 */
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CircleStop, Paperclip, Send, X } from "lucide-react";
 import KnowledgeSelector from "@/components/chat/KnowledgeSelector";
+import ModelSelector from "@/components/chat/ModelSelector";
 import { useChatStore, type AttachmentRef } from "@/hooks/useChat";
 import { useI18n } from "@/hooks/useI18n";
 import { apiFetch } from "@/lib/api";
@@ -23,7 +24,18 @@ export default function Composer() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composingRef = useRef(false);
+
+  // 高度跟着内容长（上限交给 max-h-40），多行写作才不会卡在 36px 里滚动
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) {
+      return;
+    }
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [text]);
 
   const handleUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) {
@@ -106,25 +118,10 @@ export default function Composer() {
           </div>
         )}
         {uploadError && <div className="mb-2 text-xs text-danger">{uploadError}</div>}
-        <div className="flex items-end gap-2 rounded-2xl border border-border bg-surface p-2 focus-within:border-primary/50">
-          <KnowledgeSelector />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="rounded-lg p-2 text-muted transition-colors hover:bg-accent hover:text-foreground"
-            title={t("chat.attachHint")}
-            aria-label={t("chat.attach")}
-          >
-            <Paperclip className="h-4 w-4" />
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={(event) => void handleUpload(event.target.files)}
-          />
+        <div className="rounded-2xl border border-border bg-surface p-2 focus-within:border-primary/50">
+          {/* 文字独占整行，工具条在下面一行：左边会话级选择（知识库/模型）+ 附件，右边发送 */}
           <textarea
+            ref={textareaRef}
             value={text}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={handleKeyDown}
@@ -136,28 +133,48 @@ export default function Composer() {
             }}
             placeholder={t("chat.placeholder")}
             rows={1}
-            className="max-h-40 min-h-[2.25rem] flex-1 resize-none bg-transparent py-1.5 text-sm outline-none placeholder:text-muted"
+            className="max-h-40 min-h-[2.25rem] w-full resize-none bg-transparent px-1.5 py-1.5 text-sm outline-none placeholder:text-muted"
           />
-          {active ? (
+          <div className="mt-1 flex items-center gap-1">
+            <KnowledgeSelector />
+            <ModelSelector />
             <button
               type="button"
-              onClick={stop}
-              className="rounded-xl bg-danger/10 p-2 text-danger transition-colors hover:bg-danger/20"
-              aria-label={t("chat.stop")}
+              onClick={() => fileInputRef.current?.click()}
+              className="rounded-lg p-2 text-muted transition-colors hover:bg-accent hover:text-foreground"
+              title={t("chat.attachHint")}
+              aria-label={t("chat.attach")}
             >
-              <CircleStop className="h-4 w-4" />
+              <Paperclip className="h-4 w-4" />
             </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void handleSubmit()}
-              disabled={!text.trim() && attachments.length === 0}
-              className="rounded-xl bg-primary p-2 text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-40"
-              aria-label={t("chat.send")}
-            >
-              <Send className="h-4 w-4" />
-            </button>
-          )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(event) => void handleUpload(event.target.files)}
+            />
+            {active ? (
+              <button
+                type="button"
+                onClick={stop}
+                className="ml-auto rounded-xl bg-danger/10 p-2 text-danger transition-colors hover:bg-danger/20"
+                aria-label={t("chat.stop")}
+              >
+                <CircleStop className="h-4 w-4" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void handleSubmit()}
+                disabled={!text.trim() && attachments.length === 0}
+                className="ml-auto rounded-xl bg-primary p-2 text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-40"
+                aria-label={t("chat.send")}
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

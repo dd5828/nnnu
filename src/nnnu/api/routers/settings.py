@@ -133,6 +133,62 @@ async def probe_settings(body: ProbeRequest):
     return {"ok": result.ok, "models": result.models, "error": result.error}
 
 
+# 注意：/settings/llm-options 同样必须声明在 /settings/{area} 之前，否则被吞成 area="llm-options"
+@router.get("/api/v1/settings/llm-options")
+async def get_llm_options():
+    """聊天输入区模型选择器的数据源（§6.10）：注册表内置 provider:model 快照 + 当前默认。
+
+    只回布尔与文案——密钥明文与掩码都不出本进程，缺密钥只体现为 missing_key。
+    选项来自静态注册表（不探测、不接受自由输入）；models 为空的 provider 不贡献行；
+    custom 端点只在 active 里出现（base_url 即身份，枚举不出来）。
+    """
+    from nnnu.services.llm.env import load_dotenv
+    from nnnu.services.llm.errors import LLMConfigError
+    from nnnu.services.llm.factory import resolve_model_config
+    from nnnu.services.secrets.store import get_secrets_store
+
+    values = get_settings_service().load_area("models")
+    load_dotenv()  # 本函数不在 LLM 工厂链里，.env 得自己补一次（同 _resolve_probe_key）
+    store = get_secrets_store()
+
+    active: str | None
+    source: str
+    try:
+        mc = resolve_model_config()
+        active = f"{mc.provider_id}:{mc.model}"
+        if str(values.get("provider") or ""):
+            source = "settings"
+        elif os.environ.get("NNNU_MODEL"):
+            source = "env"
+        else:
+            source = "default"
+    except LLMConfigError:
+        # 配置坏了（如 custom 缺 base_url）：设置页模型卡片负责报错，聊天这边不炸
+        active, source = None, "unresolved"
+
+    options: list[dict[str, Any]] = []
+    for spec in build_registry():
+        has_key = bool(store.get("llm", spec.id)) or (
+            bool(os.environ.get(spec.api_key_env)) if spec.api_key_env else False
+        )
+        for info in spec.models:
+            value = f"{spec.id}:{info.id}"
+            options.append(
+                {
+                    "value": value,
+                    "provider": spec.id,
+                    "provider_label": spec.label,
+                    "model": info.id,
+                    "label": info.label or info.id,
+                    "context_window": info.context_window,
+                    "is_local": spec.is_local,
+                    "missing_key": (not spec.is_local) and not has_key,
+                    "is_active_default": value == active,
+                }
+            )
+    return {"active": active, "active_source": source, "options": options}
+
+
 @router.get("/api/v1/settings/{area}")
 async def get_settings(area: str):
     try:

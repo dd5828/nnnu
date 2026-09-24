@@ -205,3 +205,46 @@ async def test_unknown_type_error(ws_client):
         event = ws.receive_json()
         assert event["type"] == "error"
         assert event["payload"]["recoverable"] is False
+
+
+async def test_turn_start_reports_effective_model(ws_client):
+    """§6.10：turn_start 的 model 是生效值——当回合报显式选择，之后的回合报会话里存的。"""
+    install_scripted(lambda: ScriptedLLM([ScriptedStep(chunks=["回答"])]))
+    with ws_client.websocket_connect("/api/v1/ws") as ws:
+        ws.send_json(
+            {
+                "type": "chat",
+                "session_id": "sess-ws-model",
+                "message": "一",
+                "model": "kimi:kimi-k2",
+            }
+        )
+        events = _receive_until(ws, lambda e: e["type"] == "done")
+    assert events[0]["payload"]["model"] == "kimi:kimi-k2"
+
+    # done 先发、会话互斥在收尾时才解除：不等它，下一发会被挡成 busy error 帧
+    import time
+
+    runtime = ws_client.app.state.runtime
+    for _ in range(100):
+        if runtime.active_turn_for("sess-ws-model") is None:
+            break
+        time.sleep(0.05)
+
+    # 新连接、不带 model：沿用会话里的选择（粘性）
+    with ws_client.websocket_connect("/api/v1/ws") as ws:
+        ws.send_json({"type": "chat", "session_id": "sess-ws-model", "message": "二"})
+        events = _receive_until(ws, lambda e: e["type"] == "done")
+    assert events[0]["payload"]["model"] == "kimi:kimi-k2"
+
+
+async def test_invalid_model_ref_returns_error_frame(ws_client):
+    """坏 model 引用 fail-fast 成 error 帧，连接不断（后续消息照常处理）。"""
+    with ws_client.websocket_connect("/api/v1/ws") as ws:
+        ws.send_json({"type": "chat", "message": "问题", "model": "nope:x"})
+        event = ws.receive_json()
+        assert event["type"] == "error"
+        assert "未知模型引用" in event["payload"]["message"]
+
+        ws.send_json({"type": "ping"})
+        assert ws.receive_json()["type"] == "heartbeat"

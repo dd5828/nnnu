@@ -68,3 +68,7 @@ steps:
   - chunks: ["知识库里说，傅里叶变换把时域信号分解为频域分量（见引用）。"]
     finish_reason: stop
     usage: { prompt_tokens: 100, completion_tokens: 30 }
+  # Turn 9（测试⑪）：模型选择——新会话里选中 deepseek-chat 后随便发一条（粘性靠回合落库）
+  - chunks: ["模型选择验证回答。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
