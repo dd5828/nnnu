@@ -1,10 +1,15 @@
 "use client";
 
-/** 历史 assistant 消息（§7.1）：思考块 + 正文 + 工具轨迹 + 引用 + 成本 + 存入笔记本 + 重新生成。 */
+/** 历史 assistant 消息（§7.1）：思考块 + 正文 + 工具轨迹 + 引用 + 成本 + 存入笔记本 + 重新生成。
+ *
+ * 出题会话（§7.4）多一个「去题库作答」入口：作答判分在题库页做，聊天里只给路。
+ */
 
-import { RefreshCw } from "lucide-react";
+import Link from "next/link";
+import { ListChecks, RefreshCw } from "lucide-react";
 import { useChatStore, type UiMessage } from "@/hooks/useChat";
 import { useI18n } from "@/hooks/useI18n";
+import { CAPABILITY_QUESTION } from "@/lib/capabilities";
 import CitationsPanel from "./CitationsPanel";
 import CostBadge from "./CostBadge";
 import Markdown from "./Markdown";
@@ -16,6 +21,7 @@ export default function AssistantMessage({ message }: { message: UiMessage }) {
   const { t } = useI18n();
   const regenerate = useChatStore((s) => s.regenerate);
   const active = useChatStore((s) => s.active);
+  const capability = useChatStore((s) => s.capability);
   const isLast = useChatStore((s) => s.messages[s.messages.length - 1]?.id === message.id);
   return (
     <div className="flex flex-col items-start gap-1.5">
@@ -32,6 +38,16 @@ export default function AssistantMessage({ message }: { message: UiMessage }) {
       <div className="flex items-center gap-2">
         {message.cost && <CostBadge tokens={message.cost.tokens} cost={message.cost.cost} />}
         {message.content && <SaveToNotebook content={message.content} />}
+        {message.content && capability === CAPABILITY_QUESTION && (
+          <Link
+            href="/questions"
+            data-testid="go-to-questions"
+            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] text-primary transition-colors hover:bg-primary/10"
+          >
+            <ListChecks className="h-3 w-3" />
+            {t("chat.goToQuestions")}
+          </Link>
+        )}
         {isLast && !active && (
           <button
             type="button"

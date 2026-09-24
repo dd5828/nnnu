@@ -7,19 +7,21 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { Check, MessagesSquare, Sigma } from "lucide-react";
+import { Check, ListChecks, MessagesSquare, Sigma } from "lucide-react";
 import { useChatStore } from "@/hooks/useChat";
 import { useI18n } from "@/hooks/useI18n";
 import {
   CAPABILITY_CHAT,
   CAPABILITY_HINT_KEYS,
   CAPABILITY_LABEL_KEYS,
+  CAPABILITY_QUESTION,
   CAPABILITY_SOLVE,
 } from "@/lib/capabilities";
 
 const OPTIONS = [
   { value: CAPABILITY_CHAT, icon: MessagesSquare },
   { value: CAPABILITY_SOLVE, icon: Sigma },
+  { value: CAPABILITY_QUESTION, icon: ListChecks },
 ];
 
 export default function CapabilitySelector() {

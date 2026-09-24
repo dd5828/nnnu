@@ -20,6 +20,7 @@ const TYPE_LABEL_KEYS: Record<NotebookRecordType, string> = {
   note: "notebooks.typeNote",
   chat: "notebooks.typeChat",
   solve: "notebooks.typeSolve",
+  question: "notebooks.typeQuestion",
 };
 
 function dateLabel(seconds: number): string {

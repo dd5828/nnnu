@@ -39,7 +39,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/learning", key: "nav.learning", icon: GraduationCap },
   { href: "/memory", key: "nav.memory", icon: Brain },
   { href: "/notebooks", key: "nav.notebooks", icon: NotebookPen, enabled: true },
-  { href: "/questions", key: "nav.questions", icon: ListChecks },
+  { href: "/questions", key: "nav.questions", icon: ListChecks, enabled: true },
   { href: "/skills", key: "nav.skills", icon: Sparkles },
   { href: "/partners", key: "nav.partners", icon: MessageSquare },
   { href: "/agents", key: "nav.agents", icon: Bot },

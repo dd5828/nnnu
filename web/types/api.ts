@@ -155,8 +155,8 @@ export interface KbDocContent {
 
 // ---- 笔记本（§8.2 / §9.1，对应 nnnu/services/notebooks/models.py） ----
 
-/** 记录类型：批一只有这三种（题库/研究记录随批二、P9 扩）。 */
-export type NotebookRecordType = "chat" | "solve" | "note";
+/** 记录类型：批一三种 + 批二补的 question（出题回合存进笔记本的记录）。 */
+export type NotebookRecordType = "chat" | "solve" | "note" | "question";
 
 export interface NotebookRecord {
   id: string;
@@ -192,4 +192,59 @@ export interface CapabilityMeta {
   stages: CapabilityStageMeta[];
   config_schema: Record<string, unknown>;
   default_model_role: string;
+}
+
+// ---- 题库（§7.4 / §8.2，对应 nnnu/services/question_bank/models.py） ----
+
+export type QuestionType = "single" | "multi" | "short";
+
+/** 题库筛选：全部 / 错题（wrong_count > 0）/ 未作答（还没作答过）。 */
+export type QuestionFilter = "all" | "wrong" | "unanswered";
+
+export interface Question {
+  id: string;
+  stem: string;
+  options: string[]; // 裸文本，选项标签 A/B/C/D 按位置推
+  answer: string; // 客观题是标签（多选升序拼接如 "AC"）；简答是参考答案
+  explanation: string | null;
+  source: string | null;
+  tags: string[];
+  mastery: number; // 0–1，界面按百分比显示
+  wrong_count: number;
+  last_attempt_at: number | null;
+  created_at: number;
+  type: QuestionType;
+  knowledge_point: string;
+  difficulty: string; // easy | medium | hard
+  session_id: string | null;
+}
+
+export interface QuestionAttempt {
+  id: string;
+  question_id: string;
+  session_id: string | null;
+  answer: string;
+  correct: boolean;
+  score: number;
+  feedback: string | null;
+  source: string; // deterministic | llm
+  created_at: number;
+}
+
+/** 对应 GET /api/v1/questions：列表 + 三个筛选各自的条数（徽标用）。 */
+export interface QuestionListResponse {
+  questions: Question[];
+  counts: { all: number; wrong: number; unanswered: number };
+}
+
+/** 对应 POST /api/v1/questions/{id}/attempt（本批新增的判分端点）。 */
+export interface AttemptResponse {
+  attempt: QuestionAttempt;
+  question: Question;
+  grading: {
+    correct: boolean;
+    score: number;
+    feedback: string;
+    source: string; // deterministic | llm
+  };
 }

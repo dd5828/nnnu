@@ -278,3 +278,67 @@ test("⑫ 解题能力：三阶段步骤条依次点亮，答案存进笔记本"
   await expect(page.getByTestId("nb-record").first()).toBeVisible({ timeout: 10000 });
   await expect(page.getByTestId("nb-record").first()).toContainText("解题规划");
 });
+
+test("⑬ 出题能力：两阶段步骤条，生成即入库，题库页作答判分", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "新对话" }).click();
+  const box = page.locator("textarea").first();
+  await expect(box).toBeVisible();
+
+  // 输入区切到「出题」（§6.4 会话级粘性）
+  await page.getByTestId("capability-selector").click();
+  await page.locator('[data-testid="capability-option"][data-value="deep_question"]').click();
+  await expect(page.getByTestId("capability-selector")).toContainText("出题");
+
+  await box.fill("出 3 道关于链式法则的题");
+  await box.press("Enter");
+
+  // 步骤条两段：构思 → 生成（脚本每段 1.2s 停顿，够看当前段）
+  await expect(page.getByTestId("stage-bar")).toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId("stage-pill")).toHaveCount(2);
+  await expect(page.locator('[data-testid="stage-pill"][data-stage="generation"]')).toHaveAttribute(
+    "data-state",
+    "active",
+    { timeout: 15000 }
+  );
+
+  // 正文 = 构思散文 + 渲染后的题目（题面与选项带 KaTeX），原始 JSON 不外露
+  await expect(page.getByRole("heading", { name: "构思" })).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText("链式法则练习 1：求")).toBeVisible({ timeout: 20000 });
+  await expect(page.getByText("链式法则练习 3：用自己的话说说")).toBeVisible();
+  await expect(page.locator(".katex").first()).toBeVisible();
+
+  // 出题会话多一个「去题库作答」入口（作答判分在题库页做）
+  await page.getByTestId("go-to-questions").first().click();
+  await page.waitForURL(/\/questions$/, { timeout: 15000 });
+  await expect(page.getByTestId("q-card")).toHaveCount(3, { timeout: 15000 });
+
+  // 第 1 题（答案 B）故意选 A：判分说错，解析与参考答案露出来
+  const card = page.getByTestId("q-card").filter({ hasText: "链式法则练习 1" });
+  await card.locator('[data-testid="q-option"][data-label="A"]').click();
+  await card.getByTestId("q-submit").click();
+  await expect(card.getByTestId("q-result")).toHaveAttribute("data-correct", "false", {
+    timeout: 15000,
+  });
+  await expect(card.getByTestId("q-result")).toContainText("答错了");
+  await expect(card.getByTestId("q-explanation")).toContainText("参考答案");
+  await expect(card.getByTestId("q-explanation")).toContainText("解析");
+
+  // 错题视图：答错的那道就在「错题」筛选里（§7.4 的错题回顾就是它）
+  await page.getByTestId("q-filter-wrong").click();
+  await expect(page.getByTestId("q-card")).toHaveCount(1, { timeout: 10000 });
+  await expect(page.getByTestId("q-card").filter({ hasText: "链式法则练习 1" })).toBeVisible();
+
+  // 知识点筛选按题意落到「链式法则」（出题时写进库的那列）
+  await page.getByTestId("q-filter-all").click();
+  await page.getByTestId("q-filter-knowledge").selectOption("链式法则");
+  await expect(page.getByTestId("q-card")).toHaveCount(3, { timeout: 10000 });
+
+  // 简答题作答：写一句与参考答案不是一回事的话 → 判分器给不通过
+  const shortCard = page.getByTestId("q-card").filter({ hasText: "链式法则练习 3" });
+  await shortCard.locator("textarea").fill("不知道");
+  await shortCard.getByTestId("q-submit").click();
+  await expect(shortCard.getByTestId("q-result")).toHaveAttribute("data-correct", "false", {
+    timeout: 20000,
+  });
+});
