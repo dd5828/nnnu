@@ -35,6 +35,18 @@ async def test_plugins_lists_chat_and_ask_user(client):
     assert [stage["key"] for stage in solve["stages"]] == ["planning", "reasoning", "writing"]
     assert all(stage["label_i18n"] and stage["max_rounds"] > 0 for stage in solve["stages"])
     assert solve["config_schema"]["mode"]["enum"] == ["full", "hint"]
+    # 出题能力（§7.4）：两段 IDEATION → GENERATION，配置项就是出题规格那四项
+    question = next(item for item in data["capabilities"] if item["name"] == "deep_question")
+    assert [stage["key"] for stage in question["stages"]] == ["ideation", "generation"]
+    assert all(stage["label_i18n"] and stage["max_rounds"] > 0 for stage in question["stages"])
+    assert set(question["config_schema"]) == {
+        "num_questions",
+        "types",
+        "difficulty",
+        "knowledge_point",
+    }
+    assert question["config_schema"]["types"]["items"]["enum"] == ["single", "multi", "short"]
+    assert "question_bank" in tool_names
 
 
 async def test_availability_follows_prerequisites_not_mount(client, tmp_home):

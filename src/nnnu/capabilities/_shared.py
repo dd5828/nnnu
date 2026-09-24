@@ -23,6 +23,8 @@ from nnnu.core.agent_loop import ToolSet
 from nnnu.core.stream_bus import StreamBus
 from nnnu.runtime import home
 from nnnu.services.i18n.prompts import get_prompt_manager
+from nnnu.services.llm.factory import ModelConfig
+from nnnu.services.llm.protocol import LLMClient, LLMRequest
 from nnnu.services.llm.provider_registry import build_registry, find_by_id, find_model
 from nnnu.services.sessions.models import Message
 
@@ -202,6 +204,42 @@ async def build_user_message(
             "content": [{"type": "text", "text": content_text}, *image_parts],
         }
     return {"role": "user", "content": content_text}
+
+
+async def complete_with_cost(
+    ctx: UnifiedContext,
+    client: LLMClient,
+    model_config: ModelConfig,
+    *,
+    messages: list[dict[str, Any]],
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+) -> str:
+    """阶段能力内部的一次非流式调用（如出题的审校轮），用量并进本回合成本。
+
+    用能力自己那个 client——重开一个会丢掉脚本化测试的步进；成本记进 `ctx.cost`，
+    不是 `ctx.metadata["cost_tracker"]`（那是给工具用的，见 agent_loop 的 ToolContext）。
+    """
+    response = await client.complete(
+        LLMRequest(
+            messages=messages,
+            model=model_config.model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+    )
+    if response.usage:
+        ctx.cost.add_usage(
+            provider=model_config.provider_id or "",
+            model=model_config.model,
+            input_tokens=int(
+                response.usage.get("prompt_tokens") or response.usage.get("input_tokens") or 0
+            ),
+            output_tokens=int(
+                response.usage.get("completion_tokens") or response.usage.get("output_tokens") or 0
+            ),
+        )
+    return response.text or ""
 
 
 def append_user_text(message: dict, extra: str) -> dict:

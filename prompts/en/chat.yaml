@@ -31,6 +31,7 @@ tool_descriptions:
   github: "Query GitHub repositories (README/file tree/specific file content). Use it to learn the real structure of an open-source project the user mentions."
   cron: "Manage scheduled tasks: create (cron expression + prompt, runs as a new turn when due), list, or delete. Use it for requests like 'give me a question every morning'."
   brainstorm: "Brainstorm around a topic: breadth-first list of diverse ideas with rationales. Use it for inspiration, topic selection, or alternatives."
+  question_bank: "Read and write the local question bank: search by filter (all/wrong/unanswered), knowledge point, tag or keyword; add stores questions into the bank. Use it for requests like 'that question I got wrong' or 'save this question'."
   reason: "Run a dedicated deep-reasoning pass (separate reasoning block): step-by-step derivation with a clear conclusion. Use it for proofs, logic puzzles, or complex analysis."
   imagegen: "Generate an image from a description (saved to workspace/generated/). Use it when the user says 'draw/picture/generate an image'."
   videogen: "Video generation (not supported yet; returns a clear message. Prefer imagegen or other ways to satisfy the user)."
