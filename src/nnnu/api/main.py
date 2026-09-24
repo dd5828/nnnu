@@ -20,6 +20,7 @@ from nnnu.api.routers import (
     knowledge,
     notebooks,
     plugins,
+    questions,
     sessions,
     settings,
     unified_ws,
@@ -77,6 +78,7 @@ def create_app() -> FastAPI:
         from nnnu.services.cost.service import CostService
         from nnnu.services.files.service import AttachmentsService
         from nnnu.services.notebooks.service import NotebookService
+        from nnnu.services.question_bank.service import QuestionBankService, set_question_bank
         from nnnu.services.sessions.db import Database
         from nnnu.services.sessions.schema import db_path
         from nnnu.services.sessions.service import SessionManager
@@ -91,6 +93,12 @@ def create_app() -> FastAPI:
         _app.state.db = db
         _app.state.attachments = AttachmentsService(db, runtime_home.get_data_root())
         _app.state.notebooks = NotebookService(db)
+        # 题库（§7.4）：单例给出题能力/工具用，app.state 给路由用；成本服务同理
+        # （判分端点要写 usage_records，之前只塞进了 TurnRuntimeManager）
+        questions_service = QuestionBankService(db)
+        set_question_bank(questions_service)
+        _app.state.questions = questions_service
+        _app.state.cost = cost_service
         _app.state.runtime = TurnRuntimeManager(
             sessions=session_manager, costs=cost_service, orchestrator=orchestrator
         )
@@ -138,6 +146,7 @@ def create_app() -> FastAPI:
         await kb_service.shutdown()
         set_kb_service(None)
         set_embedding_service(None)
+        set_question_bank(None)
         await embedding.aclose()
         await cron_service.stop()
         await db.close()
@@ -174,6 +183,7 @@ def create_app() -> FastAPI:
     app.include_router(attachments.router)
     app.include_router(knowledge.router)
     app.include_router(notebooks.router)
+    app.include_router(questions.router)
     app.include_router(plugins.router)
     app.include_router(chat.router)
     app.include_router(sessions.router)
