@@ -248,3 +248,53 @@ async def test_invalid_model_ref_returns_error_frame(ws_client):
 
         ws.send_json({"type": "ping"})
         assert ws.receive_json()["type"] == "heartbeat"
+
+
+async def _wait_turn_settled(ws_client, session_id: str) -> None:
+    """done 先发、落库在收尾时完成：不等它，读会话会读到半截。"""
+    import time
+
+    runtime = ws_client.app.state.runtime
+    for _ in range(100):
+        if runtime.active_turn_for(session_id) is None:
+            return
+        time.sleep(0.05)
+    raise AssertionError("回合未在预期时间内收尾")
+
+
+async def test_regenerate_keeps_capability(ws_client, repo_prompts):
+    """§6.4/§6.8：解题会话点「重新生成」还是解题，不会悄悄退回聊天。
+
+    脚本给 6 步（两回合各三段）：重新生成若走成 chat 只会消耗 1 步，
+    正文里也就没有三段小标题——两条断言都会红。
+    """
+    texts = [f"第{i}段产出" for i in range(1, 7)]
+    scripted = ScriptedLLM([ScriptedStep(chunks=[text]) for text in texts])
+    install_scripted(lambda: scripted)
+    with ws_client.websocket_connect("/api/v1/ws") as ws:
+        ws.send_json(
+            {
+                "type": "chat",
+                "session_id": "sess-solve-regen",
+                "message": "求 d/dx[sin(x²)]",
+                "capability": "deep_solve",
+                "language": "zh",
+            }
+        )
+        events = _receive_until(ws, lambda e: e["type"] == "done")
+    session_id = events[0]["session_id"]
+    await _wait_turn_settled(ws_client, session_id)
+
+    resp = ws_client.post(f"/api/v1/sessions/{session_id}/regenerate")
+    assert resp.status_code == 200, resp.text
+    await _wait_turn_settled(ws_client, session_id)
+
+    assert scripted.exhausted  # 两回合各三段，6 步正好用尽
+    detail = ws_client.get(f"/api/v1/sessions/{session_id}").json()
+    assert detail["capability"] == "deep_solve"
+    assistant = [m for m in detail["messages"] if m["role"] == "assistant"]
+    assert assistant
+    assert all(
+        f"## {heading}" in assistant[-1]["content"]
+        for heading in ("解题规划", "详细推导", "教学级解答")
+    )

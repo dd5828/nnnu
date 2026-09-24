@@ -181,10 +181,21 @@ class TurnRuntimeManager:
         if last_user is None:
             raise TurnRejected(f"会话 {session_id} 无用户消息可重新生成")
         await self._sessions.delete_last_assistant(session_id)
+        # 能力跟着会话走（§6.4）：不带的话解题会话点「重新生成」会退回聊天
         request = TurnRequest(
-            session_id=session_id, message=last_user.content, persist_user_message=False
+            session_id=session_id,
+            message=last_user.content,
+            capability=await self.session_capability(session_id),
+            persist_user_message=False,
         )
         return await self.start_turn(request)
+
+    async def session_capability(self, session_id: str | None) -> str:
+        """会话记住的能力名（cron 等非前端入口用它补上 capability，没会话时回退 chat）。"""
+        if not session_id:
+            return "chat"
+        session = await self._sessions.get_session(session_id)
+        return session.capability if session is not None else "chat"
 
     # ---- 订阅与重放（§7.20 resume 三源合流） ----
 
@@ -299,6 +310,18 @@ class TurnRuntimeManager:
                 )
             request.model = ref
 
+    async def _apply_capability_selection(self, request: TurnRequest, session) -> None:
+        """能力选择（§6.4 粘性）：显式带 capability 的请求（前端每条消息都带）落库，切走再
+        回来还是它；没带的（老客户端）沿用会话里存的。能力名合法性由编排器兜底——未知能力
+        在那里报 error + TurnRejected，这里不做白名单（注册表是快照，不该当白名单用）。"""
+        if "capability" in request.model_fields_set:
+            try:
+                await self._sessions.set_capability(session.id, request.capability)
+            except Exception:
+                logger.warning("能力选择持久化失败 session=%s", session.id, exc_info=True)
+        else:
+            request.capability = session.capability
+
     async def _run_turn(self, execution: _TurnExecution) -> None:
         """回合主流程：上下文 → 编排器 → 持久化 → 收尾（单出口收尾，防重复落库）。"""
         request = execution.request
@@ -318,6 +341,7 @@ class TurnRuntimeManager:
                 self._active_by_session[session.id] = execution.turn_id
                 await self._apply_kb_selection(request, session)
                 await self._apply_model_selection(request, session)
+                await self._apply_capability_selection(request, session)
                 # session 解析后重入日志上下文：后续日志带真实 session_id
                 with turn_log_context(execution.turn_id, session.id):
                     await self._run_turn_body(execution, request, session, relay)

@@ -66,7 +66,7 @@ export interface ToolDefinitionMeta {
 /** 对应 nnnu/api/routers/plugins.py 的 GET /api/v1/plugins 响应（§6.11 内省）。 */
 export interface PluginsResponse {
   tools: { definition: ToolDefinitionMeta; available: boolean }[];
-  capabilities: { name: string; display_name?: string }[];
+  capabilities: CapabilityMeta[];
 }
 
 // ---- 知识库（§7.9 / §8.3，对应 nnnu/services/knowledge/types.py） ----
@@ -151,4 +151,45 @@ export interface KbDocContent {
   kind: string;
   page_count: number;
   text: string;
+}
+
+// ---- 笔记本（§8.2 / §9.1，对应 nnnu/services/notebooks/models.py） ----
+
+/** 记录类型：批一只有这三种（题库/研究记录随批二、P9 扩）。 */
+export type NotebookRecordType = "chat" | "solve" | "note";
+
+export interface NotebookRecord {
+  id: string;
+  notebook_id: string;
+  type: NotebookRecordType;
+  title: string;
+  content_md: string;
+  source_ref: string | null; // 来源会话 id（聊天里存进来的那条）
+  created_at: number;
+}
+
+/** 列表端点每条带 record_count；详情端点带 records。 */
+export interface Notebook {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: number;
+  record_count?: number;
+  records?: NotebookRecord[];
+}
+
+/** 对应 GET /api/v1/plugins（§6.11）：能力清单里的 stages 是声明式的阶段顺序。 */
+export interface CapabilityStageMeta {
+  key: string;
+  label_i18n: string;
+  max_rounds: number;
+  max_tokens: number;
+}
+
+export interface CapabilityMeta {
+  name: string;
+  version: string;
+  stages: CapabilityStageMeta[];
+  config_schema: Record<string, unknown>;
+  default_model_role: string;
 }

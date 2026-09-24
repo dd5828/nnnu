@@ -227,3 +227,54 @@ test("⑪ 模型选择：会话级粘性，切走再回来仍在，可清回默�
   await page.getByTestId("model-option-default").click();
   await expect(page.getByTestId("model-selector")).toContainText("跟随设置默认");
 });
+
+test("⑫ 解题能力：三阶段步骤条依次点亮，答案存进笔记本", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "新对话" }).click();
+  const box = page.locator("textarea").first();
+  await expect(box).toBeVisible();
+
+  // 输入区切到「解题」（§6.4 会话级粘性：随消息下发）
+  await page.getByTestId("capability-selector").click();
+  await page.locator('[data-testid="capability-option"][data-value="deep_solve"]').click();
+  await expect(page.getByTestId("capability-selector")).toContainText("解题");
+
+  await box.fill("求 d/dx[sin(x²)]");
+  await box.press("Enter");
+
+  // 步骤条：三个阶段一次全渲染，当前阶段依次点亮（脚本每段 1.2s 停顿）
+  await expect(page.getByTestId("stage-bar")).toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId("stage-pill")).toHaveCount(3);
+  await expect(page.locator('[data-testid="stage-pill"][data-stage="reasoning"]')).toHaveAttribute(
+    "data-state",
+    "active",
+    { timeout: 10000 }
+  );
+  await expect(page.locator('[data-testid="stage-pill"][data-stage="writing"]')).toHaveAttribute(
+    "data-state",
+    "active",
+    { timeout: 15000 }
+  );
+
+  // 三段小标题（各段正文标题）+ 最终答案 + KaTeX
+  await expect(page.getByRole("heading", { name: "解题规划" })).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole("heading", { name: "详细推导" })).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText("教学级解答：最终答案 2x·cos(x²)。")).toBeVisible({
+    timeout: 20000,
+  });
+  await expect(page.locator(".katex").first()).toBeVisible();
+
+  // 存入笔记本：一本都没有时「新建一本并存入」直接兜住
+  await page.getByTestId("save-to-notebook").first().click();
+  await page.getByTestId("notebook-create-and-save").click();
+  await expect(page.getByTestId("save-to-notebook").first()).toContainText("已存入", {
+    timeout: 10000,
+  });
+
+  // 笔记本页看得到这条记录（列表卡片 → 详情记录，正文是那份教学级解答）
+  await page.goto("/notebooks");
+  await expect(page.getByTestId("nb-card").first()).toBeVisible({ timeout: 10000 });
+  await page.getByTestId("nb-card").first().click();
+  await expect(page.getByTestId("nb-record").first()).toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId("nb-record").first()).toContainText("解题规划");
+});

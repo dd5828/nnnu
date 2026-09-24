@@ -53,6 +53,8 @@ export interface ActiveTurn {
   sessionId: string | null;
   model: string | null;
   stage: string | null;
+  /** 本回合已观测到的阶段（§7.3 步骤条）：去重保序，多阶段能力依次点亮 */
+  stages: string[];
   thinking: string;
   content: string;
   toolCalls: Record<string, UiToolCall>;
@@ -69,6 +71,7 @@ function emptyTurn(turnId: string, sessionId: string | null, model: string | nul
     sessionId,
     model,
     stage: null,
+    stages: [],
     thinking: "",
     content: "",
     toolCalls: {},
@@ -91,6 +94,8 @@ interface ChatState {
   kbIds: string[];
   /** 会话级模型选择（§6.10 粘性，'provider:model'）：null = 跟随设置默认 */
   modelRef: string | null;
+  /** 会话级能力选择（§6.4 粘性）：'chat' | 'deep_solve'，随每条消息下发并落库 */
+  capability: string;
 
   init: () => void;
   refreshSessions: () => Promise<void>;
@@ -99,6 +104,7 @@ interface ChatState {
   selectSession: (id: string) => Promise<void>;
   setKbIds: (ids: string[]) => void;
   setModelRef: (ref: string | null) => void;
+  setCapability: (value: string) => void;
   renameSession: (id: string, title: string) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
   send: (text: string, attachments: AttachmentRef[]) => Promise<void>;
@@ -151,23 +157,30 @@ interface RawMessage {
   created_at: number;
 }
 
-/** hydrateKb/hydrateModel：切会话时顺带水合库与模型选择；回合结束的重取不带——
- * 用户可能刚改过选择，服务器那边还是本回合发过去的旧值，回灌会把用户的改动抹掉。 */
+/** hydrateKb/hydrateModel/hydrateCapability：切会话时顺带水合库、模型与能力选择；
+ * 回合结束的重取不带——用户可能刚改过选择，服务器那边还是本回合发过去的旧值，
+ * 回灌会把用户的改动抹掉（能力尤其：mid-turn 改不了，但下一回合前改得动）。 */
 async function refreshMessages(
   set: (fn: (s: ChatState) => Partial<ChatState>) => void,
   sessionId: string,
-  { hydrateKb = false, hydrateModel = false }: { hydrateKb?: boolean; hydrateModel?: boolean } = {}
+  {
+    hydrateKb = false,
+    hydrateModel = false,
+    hydrateCapability = false,
+  }: { hydrateKb?: boolean; hydrateModel?: boolean; hydrateCapability?: boolean } = {}
 ): Promise<void> {
   try {
     const detail = await apiFetch<{
       messages: RawMessage[];
       kb_ids?: string[];
       model?: string | null;
+      capability?: string;
     }>(`/api/v1/sessions/${sessionId}`);
     set(() => ({
       messages: toUiMessages(detail.messages ?? []),
       ...(hydrateKb ? { kbIds: detail.kb_ids ?? [] } : {}),
       ...(hydrateModel ? { modelRef: detail.model ?? null } : {}),
+      ...(hydrateCapability ? { capability: detail.capability ?? "chat" } : {}),
     }));
   } catch {
     // 会话已被删除等：保留本地视图
@@ -192,10 +205,16 @@ function bindSocket(
         break;
       case "status":
         if (turn && env.turn_id === turn.turnId) {
+          const stageKey = (payload.stage as string) ?? "";
           set(() => ({
             active: {
               ...turn,
-              stage: ((payload.message as string) || (payload.stage as string)) ?? null,
+              stage: ((payload.message as string) || stageKey) ?? null,
+              // 步骤条按观测顺序点亮（多阶段能力；重复的 stage 不重复入列）
+              stages:
+                stageKey && !turn.stages.includes(stageKey)
+                  ? [...turn.stages, stageKey]
+                  : turn.stages,
             },
           }));
         }
@@ -337,6 +356,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   topError: null,
   kbIds: [],
   modelRef: null,
+  capability: "chat",
 
   init: () => {
     if (initialized) {
@@ -356,9 +376,13 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   newSession: async () => {
     const session = await apiFetch<SessionMeta>("/api/v1/sessions", {
       method: "POST",
-      body: JSON.stringify({ capability: "chat", language: useLanguageStore.getState().lang }),
+      body: JSON.stringify({
+        capability: get().capability,
+        language: useLanguageStore.getState().lang,
+      }),
     });
     socket.setSession(session.id);
+    // 能力选择不清：那是输入区里的一档「模式」，用户没换就一直是它（切已有会话才水合）
     set(() => ({ sessionId: session.id, messages: [], active: null, kbIds: [], modelRef: null }));
     await refreshSessions(set);
   },
@@ -370,11 +394,14 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     }
     const session = await apiFetch<SessionMeta>("/api/v1/sessions", {
       method: "POST",
-      body: JSON.stringify({ capability: "chat", language: useLanguageStore.getState().lang }),
+      body: JSON.stringify({
+        capability: get().capability,
+        language: useLanguageStore.getState().lang,
+      }),
     });
     socket.setSession(session.id);
-    // 不动 kbIds/modelRef：空状态页上用户可以先把库和模型选好再发第一条消息，
-    // 这里清掉的话选择会被静默吞掉（会话建出来时选择照常随消息下发）
+    // 不动 kbIds/modelRef/capability：空状态页上用户可以先把库、模型和能力选好再发
+    // 第一条消息，这里清掉的话选择会被静默吞掉（会话建出来时选择照常随消息下发）
     set(() => ({ sessionId: session.id }));
     await refreshSessions(set);
     return session.id;
@@ -387,12 +414,18 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     }
     socket.setSession(id);
     set(() => ({ sessionId: id, active: null, topError: null }));
-    await refreshMessages(set, id, { hydrateKb: true, hydrateModel: true });
+    await refreshMessages(set, id, {
+      hydrateKb: true,
+      hydrateModel: true,
+      hydrateCapability: true,
+    });
   },
 
   setKbIds: (ids: string[]) => set(() => ({ kbIds: ids })),
 
   setModelRef: (ref: string | null) => set(() => ({ modelRef: ref })),
+
+  setCapability: (value: string) => set(() => ({ capability: value })),
 
   renameSession: async (id: string, title: string) => {
     await apiFetch(`/api/v1/sessions/${id}`, {
@@ -437,6 +470,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       kb_ids: get().kbIds,
       // 模型选择同款全量下发（§6.10 粘性）：null 也是明确意思——跟随设置默认
       model: get().modelRef,
+      // 能力同款（§6.4 粘性）：后端按请求里的值跑本回合并写回会话
+      capability: get().capability,
       language: useLanguageStore.getState().lang,
     });
   },

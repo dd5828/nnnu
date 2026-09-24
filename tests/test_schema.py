@@ -1,4 +1,4 @@
-"""schema 迁移：全新安装、v1→v2→v3→v4、幂等、失败中止。"""
+"""schema 迁移：全新安装、逐级升级保数据、幂等、失败中止。"""
 
 import sqlite3
 
@@ -105,7 +105,7 @@ def test_version_without_migration_definition_aborts(tmp_home, monkeypatch):
     # 事故复现：SCHEMA_VERSION 改大了但 MIGRATIONS 里没有对应条目 →
     # 迁移一条不跑、版本号却被推高（"no such table" 的根因）。必须硬中止。
     monkeypatch.setitem(MIGRATIONS, "5", [])
-    monkeypatch.setattr("nnnu.services.sessions.schema.SCHEMA_VERSION", "6")
+    monkeypatch.setattr("nnnu.services.sessions.schema.SCHEMA_VERSION", "7")
     with pytest.raises(RuntimeError, match="与 MIGRATIONS 不同步"):
         migrate(tmp_home / "data")
     assert not _version_file(tmp_home).exists()
@@ -140,3 +140,40 @@ def test_db_newer_than_program_aborts(tmp_home):
     _version_file(tmp_home).write_text("99\n", encoding="utf-8")
     with pytest.raises(RuntimeError, match="比本程序"):
         migrate(tmp_home / "data")
+
+
+def test_fresh_install_creates_notebook_tables(tmp_home):
+    assert migrate(tmp_home / "data") == SCHEMA_VERSION
+    assert {"notebooks", "notebook_records"} <= _table_names(tmp_home)
+
+
+def test_migrate_v5_to_v6_keeps_existing_rows(tmp_home):
+    # 模拟 P3 状态：v5 库里有会话与定时任务，升到 v6 后两者都还在
+    data = tmp_home / "data"
+    (data / "system").mkdir(parents=True)
+    _version_file(tmp_home).write_text("5\n", encoding="utf-8")
+    path = db_path(data)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    try:
+        for level in ("2", "3", "4", "5"):
+            for statement in MIGRATIONS[level]:
+                conn.execute(statement)
+        conn.execute(
+            """INSERT INTO sessions
+               (id, title, capability, model, persona, language, kb_ids, tool_overrides,
+                created_at, updated_at)
+               VALUES ('sess-v5', '旧会话', 'chat', NULL, NULL, 'zh', '[]', '{}', 1.0, 1.0)"""
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert migrate(data) == SCHEMA_VERSION
+    assert {"notebooks", "notebook_records"} <= _table_names(tmp_home)
+    conn = sqlite3.connect(path)
+    try:
+        row = conn.execute("SELECT title FROM sessions WHERE id = 'sess-v5'").fetchone()
+    finally:
+        conn.close()
+    assert row == ("旧会话",)

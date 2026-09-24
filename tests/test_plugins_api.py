@@ -26,9 +26,15 @@ async def test_plugins_lists_chat_and_ask_user(client):
     assert "parameters" in ask_user["definition"]
     capability_names = [item["name"] for item in data["capabilities"]]
     assert "chat" in capability_names
+    assert "deep_solve" in capability_names
     chat = next(item for item in data["capabilities"] if item["name"] == "chat")
     assert chat["stages"] == []
     assert chat["default_model_role"] == "chat"
+    # 三阶段流水线的声明（§7.3）：步骤条与阶段提示词都按这个顺序走
+    solve = next(item for item in data["capabilities"] if item["name"] == "deep_solve")
+    assert [stage["key"] for stage in solve["stages"]] == ["planning", "reasoning", "writing"]
+    assert all(stage["label_i18n"] and stage["max_rounds"] > 0 for stage in solve["stages"])
+    assert solve["config_schema"]["mode"]["enum"] == ["full", "hint"]
 
 
 async def test_availability_follows_prerequisites_not_mount(client, tmp_home):

@@ -1,10 +1,11 @@
 "use client";
 
 /** 输入区（§7.21）：textarea（Enter 发送 / Shift+Enter 换行，中文输入法守卫）
- *  + 知识库选择（§7.9）+ 模型选择（§6.10）+ 附件上传 + 发送/停止。 */
+ *  + 能力选择（§6.4）+ 知识库选择（§7.9）+ 模型选择（§6.10）+ 附件上传 + 发送/停止。 */
 
 import { useEffect, useRef, useState } from "react";
 import { CircleStop, Paperclip, Send, X } from "lucide-react";
+import CapabilitySelector from "@/components/chat/CapabilitySelector";
 import KnowledgeSelector from "@/components/chat/KnowledgeSelector";
 import ModelSelector from "@/components/chat/ModelSelector";
 import { useChatStore, type AttachmentRef } from "@/hooks/useChat";
@@ -136,6 +137,7 @@ export default function Composer() {
             className="max-h-40 min-h-[2.25rem] w-full resize-none bg-transparent px-1.5 py-1.5 text-sm outline-none placeholder:text-muted"
           />
           <div className="mt-1 flex items-center gap-1">
+            <CapabilitySelector />
             <KnowledgeSelector />
             <ModelSelector />
             <button

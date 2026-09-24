@@ -1,6 +1,6 @@
 "use client";
 
-/** 历史 assistant 消息（§7.1）：思考块 + 正文 + 工具轨迹 + 引用 + 成本 + 重新生成。 */
+/** 历史 assistant 消息（§7.1）：思考块 + 正文 + 工具轨迹 + 引用 + 成本 + 存入笔记本 + 重新生成。 */
 
 import { RefreshCw } from "lucide-react";
 import { useChatStore, type UiMessage } from "@/hooks/useChat";
@@ -8,6 +8,7 @@ import { useI18n } from "@/hooks/useI18n";
 import CitationsPanel from "./CitationsPanel";
 import CostBadge from "./CostBadge";
 import Markdown from "./Markdown";
+import SaveToNotebook from "./SaveToNotebook";
 import ThinkingBlock from "./ThinkingBlock";
 import ToolCallCard from "./ToolCallCard";
 
@@ -30,6 +31,7 @@ export default function AssistantMessage({ message }: { message: UiMessage }) {
       {message.citations.length > 0 && <CitationsPanel sources={message.citations} />}
       <div className="flex items-center gap-2">
         {message.cost && <CostBadge tokens={message.cost.tokens} cost={message.cost.cost} />}
+        {message.content && <SaveToNotebook content={message.content} />}
         {isLast && !active && (
           <button
             type="button"

@@ -8,6 +8,7 @@ import { useI18n } from "@/hooks/useI18n";
 import CitationsPanel from "./CitationsPanel";
 import CostBadge from "./CostBadge";
 import Markdown, { useDebouncedText } from "./Markdown";
+import StageBar from "./StageBar";
 import ThinkingBlock from "./ThinkingBlock";
 import ToolCallCard from "./ToolCallCard";
 
@@ -15,17 +16,14 @@ export default function ActiveTurnView({ turn }: { turn: ActiveTurn }) {
   const { t } = useI18n();
   const stop = useChatStore((s) => s.stop);
   const replyAskUser = useChatStore((s) => s.replyAskUser);
+  const capability = useChatStore((s) => s.capability);
   const renderedContent = useDebouncedText(turn.content);
   const running = !turn.terminal;
 
   return (
     <div className="flex flex-col items-start gap-1.5">
-      {turn.stage && (
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-accent/60 px-2.5 py-0.5 text-[11px] text-muted">
-          <Loader2 className="h-3 w-3 animate-spin" />
-          {turn.stage}
-        </span>
-      )}
+      {/* 阶段条只在跑着的时候显示：终局（error/stopped）后还转圈就是骗人 */}
+      {running && <StageBar capability={capability} stages={turn.stages} />}
       {turn.thinking && <ThinkingBlock text={turn.thinking} streaming={running} />}
       {renderedContent && (
         <div className="max-w-full">

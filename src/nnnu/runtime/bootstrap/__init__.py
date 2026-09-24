@@ -68,6 +68,7 @@ def ensure_bootstrap() -> Path:
 def register_builtins() -> None:
     """内置工具/能力注册清单（§6.11）：幂等，随阶段追加。"""
     from nnnu.capabilities.chat.capability import ChatCapability
+    from nnnu.capabilities.solve.capability import SolveCapability
     from nnnu.runtime.registry.capability_registry import get_capability_registry
     from nnnu.runtime.registry.tool_registry import get_tool_registry
     from nnnu.tools.builtin.ask_user import AskUserTool
@@ -90,6 +91,7 @@ def register_builtins() -> None:
     from nnnu.tools.builtin.web_search import WebSearchTool
 
     get_capability_registry().register(ChatCapability.manifest, ChatCapability)
+    get_capability_registry().register(SolveCapability.manifest, SolveCapability)
     get_tool_registry().register(AskUserTool())
     get_tool_registry().register(AttachmentSearchTool())
     get_tool_registry().register(RagSearchTool())

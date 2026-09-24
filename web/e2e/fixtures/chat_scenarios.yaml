@@ -72,3 +72,19 @@ steps:
   - chunks: ["模型选择验证回答。"]
     finish_reason: stop
     usage: { prompt_tokens: 100, completion_tokens: 30 }
+  # Turn 10（测试⑫）：deep_solve 三阶段——每阶段一次 LLM 调用（一个回合 3 步），
+  # delay_ms 留出步骤条「当前阶段」的观察窗（§7.3）
+  - chunks: ["考点是链式法则与复合函数求导，思路：令 u=x²。"]
+    finish_reason: stop
+    delay_ms: 1200
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  - chunks: ["逐步推导：d/dx[sin(u)]=cos(u)·2x，代回 u=x²。"]
+    finish_reason: stop
+    delay_ms: 1200
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  - chunks:
+      - "教学级解答：最终答案 2x·cos(x²)。"
+      - "对照公式：$d/dx[\\sin(x^2)] = 2x\\cos(x^2)$。"
+    finish_reason: stop
+    delay_ms: 1200
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
