@@ -1,18 +1,42 @@
 "use client";
 
 /**
- * 阅读器（§7.9）：PDF 用 iframe 指到原件的 `#page=N` 页锚，文本类拉 /content 铺 <pre>。
+ * 阅读器（§7.9）：按文件类型分发预览。
  *
- * 页锚支持是浏览器行为：Chromium/Edge 的内置 PDF 查看器认 `#page=N`，Firefox 不认
- * （所以面板上留了一句提示）。切换页码时给 iframe 换 key，强制重新导航——不然
- * 光改 fragment 不会让查看器跳页。
+ * - PDF  → 浏览器原生 iframe，`#page=N` 引用跳页（切页时换 key 强制重导航）；
+ * - docx/xlsx → 原件字节交给懒加载的渲染器（docx-preview / exceljs）；
+ * - md / 代码 / 文本 → 拉原件文本（草稿、代码要高亮原文，不用 /content 的规范化副本）；
+ * - pptx 等 → /content 的解析文本（二进制没法当文本读）；
+ * - 其余 → 兜底下载。
+ *
+ * 三个重库只在懒加载分块里出现，别在本文件静态引它们。
  */
 
 import { useEffect, useState } from "react";
-import { ExternalLink, Loader2, X } from "lucide-react";
-import { apiFetch } from "@/lib/api";
+import dynamic from "next/dynamic";
+import { Check, Copy, Download, ExternalLink, X } from "lucide-react";
 import { useI18n } from "@/hooks/useI18n";
-import type { KbDoc, KbDocContent } from "@/types/api";
+import type { KbDoc } from "@/types/api";
+import { previewKindFor } from "./preview/previewerFor";
+import FallbackPreview from "./preview/previewers/FallbackPreview";
+import MarkdownPreview from "./preview/previewers/MarkdownPreview";
+import OfficeTextPreview from "./preview/previewers/OfficeTextPreview";
+import { PreviewSpinner } from "./preview/previewers/PreviewStatus";
+
+// 重库跟着这三个走（docx-preview / exceljs / react-syntax-highlighter），
+// 静态引入会把它们拽进主包。
+const DocxPreview = dynamic(() => import("./preview/previewers/DocxPreview"), {
+  ssr: false,
+  loading: PreviewSpinner,
+});
+const XlsxPreview = dynamic(() => import("./preview/previewers/XlsxPreview"), {
+  ssr: false,
+  loading: PreviewSpinner,
+});
+const TextPreview = dynamic(() => import("./preview/previewers/TextPreview"), {
+  ssr: false,
+  loading: PreviewSpinner,
+});
 
 interface KnowledgeReaderProps {
   kbId: string;
@@ -21,42 +45,12 @@ interface KnowledgeReaderProps {
   onClose: () => void;
 }
 
-/** 拉回来的解析文本：key 是文档地址——换了文档，旧结果自然不算数（不用手动清）。 */
-interface LoadedContent {
-  key: string;
-  content: KbDocContent | null;
-  error: string | null;
-}
-
 export default function KnowledgeReader({ kbId, doc, page, onClose }: KnowledgeReaderProps) {
   const { t } = useI18n();
-  const isPdf = doc.mime.includes("pdf") || doc.filename.toLowerCase().endsWith(".pdf");
+  const [copied, setCopied] = useState(false);
   const docBase = `/api/v1/kbs/${kbId}/docs/${doc.doc_id}`;
-  const [loaded, setLoaded] = useState<LoadedContent | null>(null);
-
-  useEffect(() => {
-    if (isPdf) {
-      return;
-    }
-    let alive = true;
-    void (async () => {
-      try {
-        const data = await apiFetch<KbDocContent>(`${docBase}/content`);
-        if (alive) {
-          setLoaded({ key: docBase, content: data, error: null });
-        }
-      } catch (loadError) {
-        if (alive) {
-          setLoaded({ key: docBase, content: null, error: String(loadError) });
-        }
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [docBase, isPdf]);
-
-  const current = loaded?.key === docBase ? loaded : null;
+  const fileUrl = `${docBase}/file`;
+  const kind = previewKindFor({ filename: doc.filename, mimeType: doc.mime });
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -67,6 +61,19 @@ export default function KnowledgeReader({ kbId, doc, page, onClose }: KnowledgeR
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  const copyLink = async () => {
+    const link = `${location.origin}/knowledge/${kbId}?doc=${doc.doc_id}${
+      page !== null ? `&page=${page}` : ""
+    }`;
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // 剪贴板被拒就算了，头部还有原文/下载两个出口
+    }
+  };
 
   return (
     <div
@@ -85,12 +92,30 @@ export default function KnowledgeReader({ kbId, doc, page, onClose }: KnowledgeR
               {t("chat.page", { n: String(page) })}
             </span>
           )}
+          <button
+            type="button"
+            data-testid="reader-copy-link"
+            onClick={() => void copyLink()}
+            title={copied ? t("knowledge.readerCopied") : t("knowledge.readerCopyLink")}
+            className="ml-auto shrink-0 rounded-lg p-1.5 text-muted transition-colors hover:bg-accent"
+          >
+            {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
+          </button>
           <a
-            href={`${docBase}/file`}
+            data-testid="reader-download"
+            href={fileUrl}
+            download={doc.filename}
+            title={t("knowledge.readerDownload")}
+            className="shrink-0 rounded-lg p-1.5 text-muted transition-colors hover:bg-accent"
+          >
+            <Download className="h-4 w-4" />
+          </a>
+          <a
+            href={fileUrl}
             target="_blank"
             rel="noreferrer"
             title={t("knowledge.openOriginal")}
-            className="ml-auto shrink-0 rounded-lg p-1.5 text-muted transition-colors hover:bg-accent"
+            className="shrink-0 rounded-lg p-1.5 text-muted transition-colors hover:bg-accent"
           >
             <ExternalLink className="h-4 w-4" />
           </a>
@@ -104,12 +129,12 @@ export default function KnowledgeReader({ kbId, doc, page, onClose }: KnowledgeR
           </button>
         </div>
 
-        {isPdf ? (
+        {kind === "pdf" ? (
           <>
             <iframe
               key={`${doc.doc_id}-${page ?? 0}`}
               title={doc.filename}
-              src={page !== null ? `${docBase}/file#page=${page}` : `${docBase}/file`}
+              src={page !== null ? `${fileUrl}#page=${page}` : fileUrl}
               className="min-h-0 flex-1 bg-background"
             />
             <p className="border-t border-border px-4 py-1.5 text-[11px] text-muted">
@@ -117,16 +142,15 @@ export default function KnowledgeReader({ kbId, doc, page, onClose }: KnowledgeR
             </p>
           </>
         ) : (
-          <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
-            {current?.error ? (
-              <p className="text-sm text-danger">{current.error}</p>
-            ) : !current?.content ? (
-              <Loader2 className="h-4 w-4 animate-spin text-muted" />
-            ) : (
-              <pre className="whitespace-pre-wrap break-words font-sans text-sm">
-                {current.content.text}
-              </pre>
-            )}
+          // 每个渲染器自带滚动容器（docx 的缩放贴合要量自己的视口宽度）
+          <div className="min-h-0 flex-1">
+            {kind === "docx" && <DocxPreview url={fileUrl} />}
+            {kind === "xlsx" && <XlsxPreview url={fileUrl} />}
+            {kind === "markdown" && <MarkdownPreview url={fileUrl} />}
+            {kind === "code" && <TextPreview url={fileUrl} filename={doc.filename} />}
+            {kind === "text" && <TextPreview url={fileUrl} filename={doc.filename} />}
+            {kind === "office-text" && <OfficeTextPreview contentUrl={`${docBase}/content`} />}
+            {kind === "fallback" && <FallbackPreview filename={doc.filename} url={fileUrl} />}
           </div>
         )}
       </div>

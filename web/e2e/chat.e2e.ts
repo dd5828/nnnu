@@ -171,3 +171,30 @@ test("⑨ 知识库引用可点：从引用面板跳进阅读器并定位页码"
   // PDF 走 iframe 页锚
   await expect(reader.locator("iframe")).toHaveAttribute("src", /#page=1$/);
 });
+
+test("⑩ 知识库 Markdown 预览：正文渲染成 DOM，不再是解析文本", async ({ page }) => {
+  const md = path.resolve(__dirname, "fixtures", "sample.md");
+  await page.goto("/knowledge");
+  await page.getByTestId("kb-card").filter({ hasText: "信号库" }).locator("a").click();
+  await page.waitForURL(/\/knowledge\/kb-/, { timeout: 15000 });
+
+  // 加一份 md 文档，等它进入就绪
+  await page.getByTestId("kb-add-files").setInputFiles(md);
+  const row = page.getByTestId("doc-row").filter({ hasText: "sample.md" });
+  await expect(row).toBeVisible({ timeout: 15000 });
+  await expect(row.getByTestId("doc-status")).toHaveAttribute("data-status", "done", {
+    timeout: 30000,
+  });
+
+  // 点文件名开阅读器：拿原件文本走 Markdown 渲染
+  await row.getByRole("button").first().click();
+  const reader = page.getByTestId("reader");
+  await expect(reader).toBeVisible({ timeout: 15000 });
+  await expect(reader.getByRole("heading", { name: "傅里叶变换速查" })).toBeVisible({
+    timeout: 15000,
+  });
+  await expect(reader.locator(".markdown-body")).toBeVisible();
+  // 渲染成了 DOM；走 <pre> 兜底就算退化
+  await expect(reader.locator("pre")).toHaveCount(0);
+  await expect(reader.getByTestId("reader-download")).toBeVisible();
+});

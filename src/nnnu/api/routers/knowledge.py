@@ -135,7 +135,11 @@ async def download_doc(kb_id: str, doc_id: str, http_request: Request):
     if path is None:
         return _not_found("文档不存在或文件已被清理")
     return FileResponse(
-        path, filename=doc.filename, media_type=doc.mime or "application/octet-stream"
+        path,
+        filename=doc.filename,
+        media_type=doc.mime or "application/octet-stream",
+        # inline：PDF iframe 内嵌与图片直显需要浏览器渲染而不是下载
+        content_disposition_type="inline",
     )
 
 
