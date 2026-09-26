@@ -5,9 +5,14 @@
  *
  * 判分在卡片里当场做（后端 `POST /questions/{id}/attempt`）；做题产生的错题就是
  * 「错题」这个筛选视图（wrong_count > 0），不需要额外的「一键入库」动作。
+ *
+ * 支持 `?node=<id>`：学习看板的薄弱点/节点面板深链过来只看这个节点的题。
+ * 读了 useSearchParams，所以本体包在 Suspense 里（Next 16 的硬要求）。
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ListChecks, Loader2, Plus, Search, X } from "lucide-react";
 import QuestionCard from "@/components/quiz/QuestionCard";
 import QuestionForm, { emptyFormValues, toInput, validate } from "@/components/quiz/QuestionForm";
@@ -22,7 +27,23 @@ const FILTERS: { value: QuestionFilter; key: string }[] = [
 ];
 
 export default function QuestionsPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex flex-1 items-center justify-center">
+          <Loader2 className="h-5 w-5 animate-spin text-muted" />
+        </main>
+      }
+    >
+      <QuestionsBoard />
+    </Suspense>
+  );
+}
+
+function QuestionsBoard() {
   const { t, lang } = useI18n();
+  const searchParams = useSearchParams();
+  const nodeId = searchParams.get("node") ?? "";
   const [filter, setFilter] = useState<QuestionFilter>("all");
   const [knowledgePoint, setKnowledgePoint] = useState("");
   const [searchDraft, setSearchDraft] = useState("");
@@ -38,7 +59,7 @@ export default function QuestionsPage() {
     return () => clearTimeout(timer);
   }, [searchDraft]);
 
-  const { data, isLoading, error } = useQuestionList({ filter, knowledgePoint, search });
+  const { data, isLoading, error } = useQuestionList({ filter, knowledgePoint, search, nodeId });
   // 知识点下拉的候选：另外拉一份「全部」的第一页（同一条查询缓存住，切筛选不会重复请求）
   const { data: all } = useQuestionList({ filter: "all" });
   const knowledgePoints = useMemo(
@@ -88,6 +109,18 @@ export default function QuestionsPage() {
             </button>
           )}
         </div>
+
+        {nodeId && (
+          <div
+            data-testid="q-node-banner"
+            className="flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/5 px-3 py-2 text-xs"
+          >
+            <span className="text-primary">{t("questions.nodeFilter")}</span>
+            <Link href="/questions" className="ml-auto text-muted hover:text-foreground">
+              {t("questions.nodeFilterClear")}
+            </Link>
+          </div>
+        )}
 
         {formOpen && (
           <div>

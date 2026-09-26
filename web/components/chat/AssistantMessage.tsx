@@ -6,13 +6,14 @@
  */
 
 import Link from "next/link";
-import { ListChecks, RefreshCw } from "lucide-react";
+import { GraduationCap, ListChecks, RefreshCw } from "lucide-react";
 import { useChatStore, type UiMessage } from "@/hooks/useChat";
 import { useI18n } from "@/hooks/useI18n";
-import { CAPABILITY_QUESTION } from "@/lib/capabilities";
+import { CAPABILITY_MASTERY, CAPABILITY_QUESTION } from "@/lib/capabilities";
 import CitationsPanel from "./CitationsPanel";
 import CostBadge from "./CostBadge";
 import Markdown from "./Markdown";
+import MasteryResultCard, { isGradedMasteryCall } from "./MasteryResultCard";
 import SaveToNotebook from "./SaveToNotebook";
 import ThinkingBlock from "./ThinkingBlock";
 import ToolCallCard from "./ToolCallCard";
@@ -31,9 +32,14 @@ export default function AssistantMessage({ message }: { message: UiMessage }) {
           <Markdown text={message.content} />
         </div>
       )}
-      {message.tool_calls.map((call) => (
-        <ToolCallCard key={call.call_id} call={call} />
-      ))}
+      {message.tool_calls.map((call) =>
+        // 判过分的答题调用摊成结果卡；其余（含失败的）走通用折叠卡
+        isGradedMasteryCall(call) ? (
+          <MasteryResultCard key={call.call_id} call={call} />
+        ) : (
+          <ToolCallCard key={call.call_id} call={call} />
+        )
+      )}
       {message.citations.length > 0 && <CitationsPanel sources={message.citations} />}
       <div className="flex items-center gap-2">
         {message.cost && <CostBadge tokens={message.cost.tokens} cost={message.cost.cost} />}
@@ -46,6 +52,16 @@ export default function AssistantMessage({ message }: { message: UiMessage }) {
           >
             <ListChecks className="h-3 w-3" />
             {t("chat.goToQuestions")}
+          </Link>
+        )}
+        {message.content && capability === CAPABILITY_MASTERY && (
+          <Link
+            href="/learning"
+            data-testid="go-to-learning"
+            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] text-primary transition-colors hover:bg-primary/10"
+          >
+            <GraduationCap className="h-3 w-3" />
+            {t("chat.goToLearning")}
           </Link>
         )}
         {isLast && !active && (

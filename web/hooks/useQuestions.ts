@@ -17,6 +17,10 @@ export interface QuestionFilters {
   filter: QuestionFilter;
   knowledgePoint?: string;
   search?: string;
+  /** 只看学习路径某个节点的题（学习看板的薄弱点深链 ?node= 走这里）。 */
+  nodeId?: string;
+  /** 拿不到节点时别发请求（节点详情面板还没选中节点）——默认发。 */
+  enabled?: boolean;
 }
 
 function queryString(filters: QuestionFilters): string {
@@ -27,13 +31,23 @@ function queryString(filters: QuestionFilters): string {
   if (filters.search) {
     params.set("search", filters.search);
   }
+  if (filters.nodeId) {
+    params.set("node_id", filters.nodeId);
+  }
   return params.toString();
 }
 
 export function useQuestionList(filters: QuestionFilters) {
   return useQuery({
-    queryKey: ["questions", filters.filter, filters.knowledgePoint ?? "", filters.search ?? ""],
+    queryKey: [
+      "questions",
+      filters.filter,
+      filters.knowledgePoint ?? "",
+      filters.search ?? "",
+      filters.nodeId ?? "",
+    ],
     queryFn: () => apiFetch<QuestionListResponse>(`/api/v1/questions?${queryString(filters)}`),
+    enabled: filters.enabled ?? true,
   });
 }
 

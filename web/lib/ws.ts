@@ -67,6 +67,16 @@ export class ChatSocket {
     this.sessionId = sessionId;
   }
 
+  /** 订阅一个已经在跑的回合（§7.20）：REST 起的回合（如学习会话）不会被自动带进来。
+   *
+   * `after_seq` 取「本会话已收到的最新 seq」，没有就从头重放——同一个会话重复订阅时
+   * 才不会把已经渲染过的正文再灌一遍。 */
+  resume(sessionId: string, afterSeq: number | null = null): void {
+    const from = afterSeq ?? (sessionId === this.sessionId ? this.lastSeq : 0);
+    this.setSession(sessionId);
+    this.send({ type: "resume", session_id: sessionId, after_seq: from });
+  }
+
   send(message: Record<string, unknown>): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));

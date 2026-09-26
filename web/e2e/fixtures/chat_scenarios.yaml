@@ -142,3 +142,47 @@ steps:
       - '{"score": 0.0, "correct": false, "feedback": "参考答案说的是「复合函数求导时先外层再乘内层」，你的作答没有涉及这一点。"}'
     finish_reason: stop
     usage: { prompt_tokens: 100, completion_tokens: 30 }
+  # Turn 12（测试⑭）：聊天里建学习路径——先 paths 看库里有没有现成的（本会话还没绑路径），
+  # 没有才 build（路径只能这么建：没有 POST /learning/paths）。第一个节点刻意是「记忆」
+  # （定量门 90、还没碰过）→ 服务端现算的下一目标是 probe（摸底）
+  - tool_calls:
+      - { id: master-1, name: mastery, arguments: '{"action": "paths"}' }
+    finish_reason: tool_calls
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  - tool_calls:
+      - id: master-2
+        name: mastery
+        arguments: '{"action": "build", "topic": "线性代数基础", "title": "线性代数基础", "summary": "从向量到矩阵", "nodes": [{"title": "向量与线性组合", "type": "memory", "description": "线性组合的定义与运算"}, {"title": "矩阵与行列式", "type": "procedure", "parent_index": 0}]}'
+    finish_reason: tool_calls
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  - chunks: ["学习路径《线性代数基础》建好了，我们从「向量与线性组合」开始。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  # Turn 13（测试⑭）：看板点「去聊天里学」→ REST 起回合（服务端按下一目标拼的那句用户消息
+  # 先在库里落成 user 消息，再跑这一轮）。节点上还没有题 → 摸底先补 2 道：**卡片阻塞不占
+  # LLM 调用**，所以补题那次调用就紧跟在这一轮的工具调用之后。两道都答对 → 掌握度 80
+  # （两次作答封顶），还没过 90 的门 → 服务端下一目标仍是这个节点的 practice
+  - chunks: ["先摸底：这两道做做看，对了就直接跳过讲解。"]
+    tool_calls:
+      - { id: master-3, name: mastery, arguments: '{"action": "probe", "cards": 2}' }
+    finish_reason: tool_calls
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  # 补题产出（数组末位那道先出卡：「未作答」档按题库列表序 = 新的在前）——
+  # 测试⑭ 因此期望第 1 张是「向量和练习」（答案 B）、第 2 张是「数乘练习」（答案 C）
+  - chunks:
+      - |
+        ```json
+        [
+          {"type": "single", "stem": "数乘练习：向量 (2,4) 乘标量 3 得到什么？",
+           "options": ["(5,7)", "(2,4)", "(6,12)", "(6,4)"], "answer": "C",
+           "explanation": "每个分量都乘以 3：(2×3, 4×3) = (6,12)。", "difficulty": "medium"},
+          {"type": "single", "stem": "向量和练习：a=(1,2) 与 b=(3,4) 的和是哪个？",
+           "options": ["(3,8)", "(4,6)", "(1,2)", "(2,3)"], "answer": "B",
+           "explanation": "对应分量相加：(1+3, 2+4) = (4,6)。", "difficulty": "easy"}
+        ]
+        ```
+    finish_reason: stop
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  - chunks: ["两题都对，掌握度到 80 了——再做一遍过 90 的门（两次作答封顶八十）。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 100, completion_tokens: 30 }

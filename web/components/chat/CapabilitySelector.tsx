@@ -7,13 +7,14 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { Check, ListChecks, MessagesSquare, Sigma } from "lucide-react";
+import { Check, GraduationCap, ListChecks, MessagesSquare, Sigma } from "lucide-react";
 import { useChatStore } from "@/hooks/useChat";
 import { useI18n } from "@/hooks/useI18n";
 import {
   CAPABILITY_CHAT,
   CAPABILITY_HINT_KEYS,
   CAPABILITY_LABEL_KEYS,
+  CAPABILITY_MASTERY,
   CAPABILITY_QUESTION,
   CAPABILITY_SOLVE,
 } from "@/lib/capabilities";
@@ -22,6 +23,7 @@ const OPTIONS = [
   { value: CAPABILITY_CHAT, icon: MessagesSquare },
   { value: CAPABILITY_SOLVE, icon: Sigma },
   { value: CAPABILITY_QUESTION, icon: ListChecks },
+  { value: CAPABILITY_MASTERY, icon: GraduationCap },
 ];
 
 export default function CapabilitySelector() {
@@ -77,7 +79,7 @@ export default function CapabilitySelector() {
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-0 z-50 mb-1.5 w-[min(320px,calc(100vw-32px))] overflow-hidden rounded-xl border border-border bg-surface py-1 shadow-lg">
+        <div className="absolute bottom-full left-0 z-50 mb-1.5 max-h-[60vh] w-[min(320px,calc(100vw-32px))] overflow-y-auto rounded-xl border border-border bg-surface py-1 shadow-lg">
           {OPTIONS.map((option) => {
             const Icon = option.icon;
             const selected = capability === option.value;

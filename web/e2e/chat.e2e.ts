@@ -38,8 +38,13 @@ test("② ask_user 中途提问弹窗：选择后回合继续", async ({ page })
   const box = page.locator("textarea").first();
   await box.fill("再展开讲讲");
   await box.press("Enter");
-  // 弹窗出现：问题 + 两个选项按钮
+  // 弹窗出现：问题 + 两个选项按钮（裸字符串选项由服务端归一成 {label, description}）
   await expect(page.getByText("你想深入了解哪个方向？")).toBeVisible({ timeout: 10000 });
+  await expect(page.locator('[data-testid="ask-option"]')).toHaveCount(2);
+  await expect(page.locator('[data-testid="ask-option"]').first()).toHaveAttribute(
+    "data-label",
+    "数学推导"
+  );
   await page.getByRole("button", { name: "工程应用" }).click();
   // 回合继续并体现用户答复
   await expect(page.getByText("好，我们看工程应用方向")).toBeVisible({ timeout: 10000 });
@@ -341,4 +346,118 @@ test("⑬ 出题能力：两阶段步骤条，生成即入库，题库页作答�
   await expect(shortCard.getByTestId("q-result")).toHaveAttribute("data-correct", "false", {
     timeout: 20000,
   });
+});
+
+test("⑭ 学习路径：聊天建路径 → 看板下一目标 → 聊天里刷卡答题 → 即时判分 → 补第三遍过门", async ({
+  page,
+}) => {
+  // 题库页作答小工具：按题干里的字样找卡（题库列表按创建时间倒序，下标靠不住），
+  // 选一个选项 → 提交 → 看判分结果
+  const answerInBank = async (word: string, label: string, correct: boolean) => {
+    const card = page.getByTestId("q-card").filter({ hasText: word });
+    await card.locator(`[data-testid="q-option"][data-label="${label}"]`).click();
+    await card.getByTestId("q-submit").click();
+    await expect(card.getByTestId("q-result")).toHaveAttribute("data-correct", String(correct), {
+      timeout: 15000,
+    });
+  };
+
+  // ---- 建路径：能力强切「学习路径」说一句。路径只从聊天里长出来（没有 POST /learning/paths），
+  // 模型先 paths 看库里有没有对得上的，没有才 build 建树 ----
+  await page.goto("/");
+  await page.getByTestId("capability-selector").click();
+  await page.locator('[data-testid="capability-option"][data-value="mastery_path"]').click();
+  await expect(page.getByTestId("capability-selector")).toContainText("学习路径");
+  const box = page.locator("textarea").first();
+  await box.fill("我要学线性代数基础");
+  await box.press("Enter");
+  await expect(page.getByText("学习路径《线性代数基础》建好了")).toBeVisible({ timeout: 20000 });
+  await expect(page.getByTestId("go-to-learning").first()).toBeVisible();
+
+  // ---- 看板列表 → 详情：进度 0，下一目标 = 摸底（第一个节点是记忆类，定量门 90，还没碰过）----
+  await page.goto("/learning");
+  const card = page.getByTestId("l-card").filter({ hasText: "线性代数基础" });
+  await expect(card).toBeVisible({ timeout: 15000 });
+  await expect(card.getByTestId("l-card-progress")).toHaveAttribute("data-value", "0");
+  await expect(card.getByTestId("l-card-next")).toHaveAttribute("data-action", "probe");
+  await card.locator("a").click();
+  await page.waitForURL(/\/learning\/lpath-/, { timeout: 15000 });
+  const pathId = new URL(page.url()).pathname.split("/").pop() ?? "";
+
+  // 详情页：树两节点（记忆 → 流程子节点），下一目标是服务端现算的，圆环读 payload 的门
+  const nodes = page.getByTestId("l-node");
+  await expect(nodes).toHaveCount(2, { timeout: 15000 });
+  await expect(nodes.first()).toHaveAttribute("data-depth", "0");
+  await expect(nodes.first()).toHaveAttribute("data-next", "true");
+  await expect(nodes.first()).toHaveAttribute("data-cleared", "false");
+  await expect(nodes.nth(1)).toHaveAttribute("data-depth", "1");
+  const next = page.getByTestId("l-next");
+  await expect(next).toHaveAttribute("data-action", "probe");
+  await expect(page.getByTestId("l-next-title")).toContainText("向量与线性组合");
+  await expect(page.getByTestId("l-next-action")).toContainText("摸底测一下");
+  const ring = page.getByTestId("l-mastery");
+  await expect(ring).toHaveAttribute("data-value", "0");
+  await expect(ring).toHaveAttribute("data-state", "not_started");
+  await expect(ring).toHaveAttribute("data-gate", "90"); // 记忆类：定量门
+  await expect(ring).toHaveAttribute("data-gate-kind", "quantitative");
+  await expect(page.getByText("还没有薄弱点")).toBeVisible();
+  await expect(page.getByText("还没有复习安排")).toBeVisible();
+
+  // ---- 去聊天里学：REST 起回合（正文走 WS，前端显式订阅），开场白由服务端按下一目标拼 ----
+  await page.getByTestId("l-next-go").click();
+  await page.waitForURL(/\/$/, { timeout: 15000 });
+  await expect(page.getByText("继续学《线性代数基础》")).toBeVisible({ timeout: 20000 });
+  await expect(page.getByText("先摸底：这两道做做看")).toBeVisible({ timeout: 20000 });
+
+  // ---- 刷卡答题：卡由服务端从题库行渲染（题面 + A/B/C/D 选项 + 第几题），一次只飞一张 ----
+  await expect(page.getByTestId("ask-context")).toContainText("节点《向量与线性组合》· 第 1/2 题", {
+    timeout: 20000,
+  });
+  await expect(page.getByText("向量和练习：a=(1,2) 与 b=(3,4) 的和是哪个？")).toBeVisible();
+  await page.locator('[data-testid="ask-option"][data-label="B"]').click(); // 正确答案
+  await expect(page.getByTestId("ask-context")).toContainText("第 2/2 题", { timeout: 20000 });
+  await expect(page.getByText("数乘练习：向量 (2,4) 乘标量 3 得到什么？")).toBeVisible();
+  await page.locator('[data-testid="ask-option"][data-label="C"]').click();
+
+  // ---- 即时判分：两张卡各摊一张结果卡（对错 + 解析 + 掌握的进度），两次作答封顶 80，没过 90 的门 ----
+  await expect(page.getByText("两题都对，掌握度到 80 了")).toBeVisible({ timeout: 20000 });
+  const result = page.getByTestId("m-card").first();
+  await expect(result).toHaveAttribute("data-action", "probe");
+  await expect(result.getByTestId("m-quiz-result")).toHaveCount(2);
+  await expect(result.getByTestId("m-quiz-result").first()).toHaveAttribute("data-correct", "true");
+  await expect(result.getByTestId("m-quiz-mastery").first()).toHaveAttribute("data-value", "80");
+  await expect(result.getByTestId("m-quiz-mastery").first()).toHaveAttribute(
+    "data-cleared",
+    "false"
+  );
+  await expect(result.getByTestId("m-quiz-reference").first()).toContainText("参考答案");
+
+  // ---- 看板跟上：掌握度 80、没过门；下一目标从「摸底」变成「练到过门」 ----
+  await page.goto(`/learning/${pathId}`);
+  await expect(ring).toHaveAttribute("data-value", "80", { timeout: 15000 });
+  await expect(ring).toHaveAttribute("data-cleared", "false");
+  await expect(ring).toHaveAttribute("data-state", "learning");
+  await expect(nodes.first()).toHaveAttribute("data-cleared", "false");
+  await expect(next).toHaveAttribute("data-action", "practice");
+  await expect(page.getByTestId("l-next-action")).toContainText("练到过门");
+
+  // ---- 题库页补第三遍：同一道题再做一次（3 次作答才可能过 90 的门）----
+  await page.getByRole("link", { name: "去题库做这个节点的题" }).click();
+  await expect(page).toHaveURL(/\/questions\?node=lnode-/, { timeout: 15000 });
+  await expect(page.getByTestId("q-node-banner")).toBeVisible();
+  await expect(page.getByTestId("q-card")).toHaveCount(2, { timeout: 15000 });
+  await answerInBank("向量和练习", "B", true);
+
+  // ---- 过门：进度 50%、节点变绿；下一目标自动挪到第二个节点（流程类，还没碰过 → 摸底）----
+  await page.goto(`/learning/${pathId}`);
+  await expect(page.getByTestId("l-progress")).toHaveAttribute("data-value", "50", {
+    timeout: 15000,
+  });
+  await expect(nodes.first()).toHaveAttribute("data-cleared", "true");
+  await expect(nodes.first()).toHaveAttribute("data-state", "mastered");
+  await nodes.first().getByTestId("l-node-open").click();
+  await expect(ring).toHaveAttribute("data-value", "100");
+  await expect(ring).toHaveAttribute("data-cleared", "true");
+  await expect(next).toHaveAttribute("data-action", "probe");
+  await expect(page.getByTestId("l-next-title")).toContainText("矩阵与行列式");
 });

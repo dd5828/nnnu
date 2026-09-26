@@ -36,7 +36,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/book", key: "nav.book", icon: BookOpen },
   { href: "/co-writer", key: "nav.coWriter", icon: PenLine },
   { href: "/knowledge", key: "nav.knowledge", icon: Database, enabled: true },
-  { href: "/learning", key: "nav.learning", icon: GraduationCap },
+  { href: "/learning", key: "nav.learning", icon: GraduationCap, enabled: true },
   { href: "/memory", key: "nav.memory", icon: Brain },
   { href: "/notebooks", key: "nav.notebooks", icon: NotebookPen, enabled: true },
   { href: "/questions", key: "nav.questions", icon: ListChecks, enabled: true },

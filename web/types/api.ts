@@ -217,6 +217,7 @@ export interface Question {
   knowledge_point: string;
   difficulty: string; // easy | medium | hard
   session_id: string | null;
+  node_id: string | null; // 挂在学习路径的哪个节点上（软引用，节点删了就置空）
 }
 
 export interface QuestionAttempt {
@@ -247,4 +248,132 @@ export interface AttemptResponse {
     feedback: string;
     source: string; // deterministic | llm
   };
+}
+
+// ---- 学习路径（§7.5 / §8.2，对应 nnnu/services/learning/models.py） ----
+
+/** 节点类型（批三重做后四类）：前两类定量过门（90 分），后两类定性过门（自己讲一遍）。 */
+export type NodeType = "memory" | "procedure" | "concept" | "design";
+
+/** 节点的门怎么算：quantitative 看分数、qualitative 看评定。 */
+export type GateKind = "quantitative" | "qualitative";
+
+/** 节点四态（§7.5：未开始 / 学习中 / 已过门 / 待复习）。 */
+export type NodeState = "not_started" | "learning" | "mastered" | "reviewing";
+
+/** 下一目标要做什么（服务端每回合现算；`complete` = 全部过门）。 */
+export type NextAction = "answer_pending" | "review" | "probe" | "practice" | "assess" | "complete";
+
+export interface LearningPath {
+  id: string;
+  topic: string;
+  title: string;
+  summary: string | null;
+  // **没有 current_node_id**：门就是游标，下一步由服务端按「哪些节点已过门」现算
+  session_id: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface LearningNode {
+  id: string;
+  path_id: string;
+  parent_id: string | null;
+  title: string;
+  node_type: NodeType;
+  description: string;
+  depth: number; // 树深（根 0），前端按它缩进
+  sort_order: number;
+  mastery: number; // 节点级 0–100（题级是 Question.mastery 的 0–1，两个别混）
+  state: NodeState;
+  review_stage: number; // 复习阶梯档位（下标）
+  next_review_at: number | null;
+  last_practiced_at: number | null;
+  assess_passed: boolean; // 定性节点最近一次评定的结论
+  assessed_at: number | null;
+  // 下面四个是服务端算出来的（computed_field），前端**只读不镜像**
+  gate: number | null; // 定量门（分数线）；定性节点为 null
+  gate_kind: GateKind;
+  cleared: boolean; // 是否已过门
+  due: boolean; // 已过门且复习到期
+  created_at: number;
+  updated_at: number;
+}
+
+/** 看板汇总：`mastered`/`progress` 一律数「已过门」；`due` 与它正交（可重叠）。 */
+export interface PathStats {
+  total: number;
+  mastered: number; // 已过门（含到期待复习的）
+  learning: number; // 碰过但没过门
+  not_started: number;
+  due: number; // 已过门且到期
+  progress: number; // 0–1 = 已过门 / total
+  weak: number;
+}
+
+export interface WeakPoint {
+  node_id: string;
+  title: string;
+  node_type: NodeType;
+  mastery: number;
+  gate: number; // 定量门；定性记 0（看板按定性样式渲染）
+  gate_kind: GateKind;
+  gap: number; // 距过门还差多少
+  attempted: number;
+  wrong: number;
+}
+
+export interface ReviewItem {
+  node_id: string;
+  title: string;
+  node_type: NodeType;
+  mastery: number;
+  gate: number | null;
+  gate_kind: GateKind;
+  state: NodeState;
+  review_stage: number;
+  next_review_at: number | null;
+  overdue: boolean;
+}
+
+/** 服务端现算的下一目标（状态块 / 工具输出 / 看板是同一个对象）。 */
+export interface NextTarget {
+  action: NextAction;
+  node_id: string | null;
+  node_title: string | null;
+  node_type: NodeType | null;
+  gate: number | null;
+  gate_kind: GateKind | null;
+  mastery: number;
+  reason: string; // 人话一句，直接展示
+  due_at: number | null;
+}
+
+/** 路径卡片：路径本体 + 汇总 + 「接着学什么」（列表端点）。 */
+export interface LearningPathCard extends LearningPath {
+  stats: PathStats;
+  next_review_at: number | null;
+  next_title: string | null;
+  next_action: NextAction | null;
+}
+
+export interface LearningPathListResponse {
+  paths: LearningPathCard[];
+}
+
+/** 路径详情：树 + 汇总 + 薄弱点 + 复习建议 + 下一目标（看板全部数据在一个响应里）。 */
+export interface LearningPathDetail {
+  path: LearningPath;
+  nodes: LearningNode[];
+  stats: PathStats;
+  weak_points: WeakPoint[];
+  reviews: ReviewItem[];
+  next_target: NextTarget;
+}
+
+/** 对应 POST /learning/paths/{id}/session：正文在 WS 上流，前端拿 turn_id 后订阅。 */
+export interface LearningSessionResponse {
+  path_id: string;
+  session_id: string;
+  turn_id: string;
 }

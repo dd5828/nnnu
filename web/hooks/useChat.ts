@@ -6,7 +6,12 @@ import { create } from "zustand";
 import { useLanguageStore } from "@/i18n/language-store";
 import { apiFetch } from "@/lib/api";
 import { ChatSocket, type SocketStatus } from "@/lib/ws";
-import type { CitationSource, CostSummaryPayload, StreamEventEnvelope } from "@/types/stream";
+import type {
+  AskUserOption,
+  CitationSource,
+  CostSummaryPayload,
+  StreamEventEnvelope,
+} from "@/types/stream";
 
 export interface AttachmentRef {
   id: string;
@@ -44,8 +49,12 @@ export interface UiMessage {
 
 export interface AskUserPrompt {
   question: string;
-  options: string[];
+  options: AskUserOption[];
   ask_id: string;
+  /** 卡片是否收自由文本（定性评定要学习者自己写一段讲解） */
+  allowFreeText: boolean;
+  /** 服务端拼的展示副标题（如「节点《…》· 第 2/3 题」），空则不渲染 */
+  context: string;
 }
 
 export interface ActiveTurn {
@@ -102,6 +111,7 @@ interface ChatState {
   ensureSession: () => Promise<string>;
   newSession: () => Promise<void>;
   selectSession: (id: string) => Promise<void>;
+  attachSession: (id: string) => void;
   setKbIds: (ids: string[]) => void;
   setModelRef: (ref: string | null) => void;
   setCapability: (value: string) => void;
@@ -117,6 +127,25 @@ interface ChatState {
 const socket = new ChatSocket();
 let initialized = false;
 
+/** 卡片选项归一：契约形状是 {label, description}；裸字符串（旧模型输出）兜成 label-only。 */
+function normalizeAskOptions(raw: unknown): AskUserOption[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .map((item) => {
+      if (typeof item === "string") {
+        return { label: item, description: "" };
+      }
+      const record = (item ?? {}) as Record<string, unknown>;
+      return {
+        label: String(record.label ?? ""),
+        description: String(record.description ?? ""),
+      };
+    })
+    .filter((option) => option.label !== "");
+}
+
 /** 服务器消息 → UI 消息：tool_calls 落库是 done 事件的 ToolTrace 形状
  *（tool_name 键），与实时回合的 UiToolCall（name 键）不同，这里归一化。 */
 function toUiMessages(raw: RawMessage[]): UiMessage[] {
@@ -131,7 +160,8 @@ function toUiMessages(raw: RawMessage[]): UiMessage[] {
       args: (call.args as Record<string, unknown>) ?? {},
       ok: typeof call.ok === "boolean" ? call.ok : null,
       summary: String(call.summary ?? ""),
-      detail: null, // 落库形状无 detail（实时回合才带）
+      // 小结构 detail 也落库（答题结果卡刷新后仍是卡）；超限的没落，用 null 兜住
+      detail: (call.detail as Record<string, unknown>) ?? null,
     })),
     citations: message.citations ?? [],
     cost: message.cost ?? null,
@@ -151,6 +181,7 @@ interface RawMessage {
     args?: unknown;
     ok?: unknown;
     summary?: unknown;
+    detail?: unknown; // 只落小结构（见 core/agent_loop.py 的 8KB 上限）
   }[];
   citations: CitationSource[];
   cost: { tokens: number; cost: number } | null;
@@ -292,8 +323,11 @@ function bindSocket(
               ...turn,
               askUser: {
                 question: String(payload.question ?? ""),
-                options: (payload.options as string[]) ?? [],
+                // 选项是 {label, description} 对象（§12.1 契约）；宽容旧形状的裸字符串
+                options: normalizeAskOptions(payload.options),
                 ask_id: String(payload.ask_id ?? ""),
+                allowFreeText: Boolean(payload.allow_free_text),
+                context: String(payload.context ?? ""),
               },
             },
           }));
@@ -419,6 +453,16 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       hydrateModel: true,
       hydrateCapability: true,
     });
+  },
+
+  attachSession: (id: string) => {
+    // REST 起的回合（学习会话、regenerate 式端点）不会自己进订阅：显式 resume 一次，
+    // 从本会话已收到的最新 seq 往后补（同会话重复 attach 不会把正文灌两遍）
+    socket.resume(id);
+    set(() => ({ sessionId: id, topError: null }));
+    // 回合刚起：用户那条消息已经落库了（编排器先落消息再流式），先取回来，
+    // 免得讲解在流、用户看不到自己发的那句
+    void refreshMessages(set, id);
   },
 
   setKbIds: (ids: string[]) => set(() => ({ kbIds: ids })),
