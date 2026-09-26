@@ -6,7 +6,7 @@ import pytest
 
 from nnnu.core.agent_loop import LoopDeps, ToolSet, run_agent_loop
 from nnnu.core.context import SessionRef, UnifiedContext
-from nnnu.core.events import StreamEventType
+from nnnu.core.events import StreamEventType, ToolTrace
 from nnnu.core.stream_bus import StreamBus
 from nnnu.core.tool_protocol import BaseTool, ToolContext, ToolDefinition, ToolMount, ToolResult
 from nnnu.services.llm.protocol import LLMToolCall
@@ -47,6 +47,25 @@ class MultiplyTool(BaseTool):
 
 
 TOOLS = ToolSet({"add_numbers": AddTool(), "multiply": MultiplyTool()})
+
+
+class DetailTool(BaseTool):
+    """带结构化 detail 的工具：小结构要落库（界面靠它把结果卡画出来）。"""
+
+    definition = ToolDefinition(
+        name="detail_tool",
+        description="返回结构化结果",
+        parameters={"type": "object", "properties": {}, "required": []},
+        mount=ToolMount.ALWAYS,
+    )
+
+    async def run(self, ctx: ToolContext) -> ToolResult:
+        if ctx.args.get("huge"):
+            return ToolResult(ok=True, output="大结果", detail={"blob": "x" * 9000})
+        return ToolResult(ok=True, output="小结果", detail={"cards": [{"answer": "B"}]})
+
+
+DETAIL_TOOLS = ToolSet({"detail_tool": DetailTool()})
 
 
 def _ctx(**metadata):
@@ -155,6 +174,34 @@ async def test_cost_recorded_into_ctx():
     summary = ctx.cost.summary()
     assert summary["tokens"] == 10
     assert summary["per_model"]["deepseek-chat"]["calls"] == 1
+
+
+async def test_tool_trace_keeps_small_detail_and_drops_oversized():
+    """工具轨迹的 detail：小结构跟着历史走（刷新后结果卡还在），超限的整块丢掉。
+
+    落库形状见 `ToolTrace`——它同时是 done 事件与 assistant 消息里 tool_calls 的形状，
+    所以两条路都要带（少一边，界面上就会出现「聊天里看得见、刷新后变 JSON」的退化）。
+    """
+    llm = ScriptedLLM(
+        [
+            ScriptedStep(
+                tool_calls=[
+                    LLMToolCall(id="c1", name="detail_tool", arguments="{}"),
+                    LLMToolCall(id="c2", name="detail_tool", arguments='{"huge": true}'),
+                ],
+                finish_reason="tool_calls",
+            ),
+            ScriptedStep(chunks=["两个都跑完了"]),
+        ]
+    )
+    outcome, _events = await _run_and_collect(llm, deps_overrides={"tools": DETAIL_TOOLS})
+    assert outcome.tool_calls[0]["detail"] == {"cards": [{"answer": "B"}]}
+    assert "detail" not in outcome.tool_calls[1]  # 超限（9KB > 8KB 上限）：只留 summary
+    assert outcome.tool_calls[1]["summary"] == "大结果"
+    # done 事件那一路要经 ToolTrace 校验：模型不认这个字段的话，落库时会悄悄丢掉
+    traces = [ToolTrace.model_validate(call) for call in outcome.tool_calls]
+    assert traces[0].detail == {"cards": [{"answer": "B"}]}
+    assert traces[1].detail is None
 
 
 async def test_max_rounds_force_finish_then_error():

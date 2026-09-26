@@ -11,7 +11,7 @@ import time
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from nnnu.core.ids import new_id
 
@@ -90,10 +90,34 @@ class CitationPayload(BaseModel):
     sources: list[CitationSource] = Field(default_factory=list)
 
 
+class AskUserOption(BaseModel):
+    """卡片选项：短标签 + 可选长说明。
+
+    - label 是「用户点它就发回服务端的那个字符串」（判分要靠它精确对上答案键）；
+    - 模型-authored 的朴素写法（纯字符串数组）在前校验里归一成
+      {label: 原串, description: ""}，老调用方不用改。
+    """
+
+    label: str
+    description: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_bare_string(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return {"label": value}
+        return value
+
+
 class AskUserPayload(BaseModel):
     question: str
-    options: list[str] = Field(default_factory=list)
+    options: list[AskUserOption] = Field(default_factory=list)
     ask_id: str
+    # 卡片是否自带自由文本输入框（定性评定、开放作答用；纯选项卡为 False）
+    allow_free_text: bool = False
+    # 服务端拼的展示副标题（如「节点《…》· 第 2/3 题」）。只进文案不进身份：
+    # 「这张卡考的是哪道题」的权威绑定留在服务端（learning_interactions 行）。
+    context: str = ""
 
 
 class AskUserReplyPayload(BaseModel):
@@ -129,6 +153,9 @@ class ToolTrace(BaseModel):
     call_id: str
     ok: bool
     summary: str = ""
+    # 小结构展示数据（答题结果卡、引用来源等）：跟着历史活下来，刷新后仍是卡；
+    # 超限的（imagegen 的 data URI）在 agent_loop 就丢掉了，这里自然是 None
+    detail: dict[str, Any] | None = None
 
 
 class DonePayload(BaseModel):

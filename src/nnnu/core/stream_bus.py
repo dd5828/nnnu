@@ -172,9 +172,22 @@ class StreamBus:
     async def emit_citation(self, *, sources: list[dict]) -> StreamEvent:
         return await self.emit(StreamEventType.CITATION, sources=sources)
 
-    async def emit_ask_user(self, *, question: str, options: list[str], ask_id: str) -> StreamEvent:
+    async def emit_ask_user(
+        self,
+        *,
+        question: str,
+        options: list[dict[str, str]],
+        ask_id: str,
+        allow_free_text: bool = False,
+        context: str = "",
+    ) -> StreamEvent:
         return await self.emit(
-            StreamEventType.ASK_USER, question=question, options=options, ask_id=ask_id
+            StreamEventType.ASK_USER,
+            question=question,
+            options=options,
+            ask_id=ask_id,
+            allow_free_text=allow_free_text,
+            context=context,
         )
 
     async def emit_ask_user_reply(self, *, ask_id: str, answer: str) -> StreamEvent:

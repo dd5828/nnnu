@@ -537,11 +537,24 @@ class TurnRuntimeManager:
     def _make_ask_user_fn(self, execution: _TurnExecution):
         """注入循环的暂停函数：emit ask_user → 阻塞等答复（或 5 分钟超时空答复）。"""
 
-        async def ask_user_fn(question: str, options: list[str], ask_id: str) -> str:
+        async def ask_user_fn(
+            question: str,
+            options: list[dict[str, str]],
+            ask_id: str,
+            *,
+            allow_free_text: bool = False,
+            context: str = "",
+        ) -> str:
             execution.awaiting_user_reply = True
             execution.pending_ask_id = ask_id
             execution.reply_queue = asyncio.Queue()
-            await execution.bus.emit_ask_user(question=question, options=options, ask_id=ask_id)
+            await execution.bus.emit_ask_user(
+                question=question,
+                options=options,
+                ask_id=ask_id,
+                allow_free_text=allow_free_text,
+                context=context,
+            )
             timeout_task: asyncio.Task | None = None
             if not execution.subscribers:
                 # §7.20：无前端连接时 5 分钟超时自动空答复（防挂起）

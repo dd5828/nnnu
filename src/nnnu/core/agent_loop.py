@@ -37,6 +37,21 @@ logger = logging.getLogger(__name__)
 
 MAX_CONTINUATIONS = 2  # 截断续写轮数上限（§6.6"自动续写一轮"+兜底）
 TRUNCATED_FINISH_REASONS = {"length", "max_tokens", "max_output_tokens"}
+# 工具轨迹里 detail 的落库上限：答题结果卡这类结构化结果要跟着历史活下来（刷新后
+# 不能退化成一段 JSON 文本），但 imagegen 的 data URI 动辄几百 KB——超限的整块丢掉，
+# 界面退回只显示 summary（与「detail 不落库」的老行为一致）。
+TOOL_TRACE_DETAIL_LIMIT = 8 * 1024
+
+
+def _trace_detail(detail: dict[str, Any] | None) -> dict[str, Any] | None:
+    """可落库的 detail：小结构原样带上，超限/序列化不了的返回 None。"""
+    if not detail:
+        return None
+    try:
+        blob = json.dumps(detail, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        return None
+    return detail if len(blob) <= TOOL_TRACE_DETAIL_LIMIT else None
 
 
 class ToolSet:
@@ -95,7 +110,7 @@ class ToolSet:
             return ToolResult(ok=False, output=f"工具 {name} 执行异常: {exc}")
 
 
-AskUserFn = Callable[[str, list[str], str], Awaitable[str]]
+AskUserFn = Callable[[str, list[dict[str, str]], str], Awaitable[str]]
 
 
 @dataclass(slots=True)
@@ -399,14 +414,17 @@ async def run_agent_loop(
                     messages.append(
                         {"role": "tool", "tool_call_id": call_id, "content": result.output}
                     )
-                    outcome.tool_calls.append(
-                        {
-                            "tool_name": call.name,
-                            "call_id": call_id,
-                            "ok": result.ok,
-                            "summary": result.output[:200],
-                        }
-                    )
+                    trace: dict[str, Any] = {
+                        "tool_name": call.name,
+                        "call_id": call_id,
+                        "ok": result.ok,
+                        "summary": result.output[:200],
+                    }
+                    # 落库的 detail 让结果卡刷新后仍是卡（见 _trace_detail）
+                    trace_detail = _trace_detail(result.detail)
+                    if trace_detail is not None:
+                        trace["detail"] = trace_detail
+                    outcome.tool_calls.append(trace)
                     if result.detail and "sources" in result.detail:
                         outcome.citations.extend(result.detail["sources"])
                 continue

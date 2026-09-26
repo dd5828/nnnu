@@ -23,7 +23,16 @@ VALID_CASES: dict[str, dict] = {
     "tool_call": {"tool_name": "add", "args": {"a": 1}, "call_id": "call-1"},
     "tool_result": {"call_id": "call-1", "ok": True, "summary": "=3"},
     "citation": {"sources": [{"doc_id": "d1", "kb": "kb1", "page": 2, "snippet": "..."}]},
-    "ask_user": {"question": "选哪个?", "options": ["A", "B"], "ask_id": "ask-1"},
+    "ask_user": {
+        "question": "选哪个?",
+        "options": [
+            {"label": "A", "description": "第一条路径"},
+            {"label": "B", "description": ""},
+        ],
+        "ask_id": "ask-1",
+        "allow_free_text": True,
+        "context": "节点《极限》· 第 1/2 题",
+    },
     "ask_user_reply": {"ask_id": "ask-1", "answer": "A"},
     "warning": {"message": "部分检索失败"},
     "error": {"message": "超轮数", "recoverable": False},
@@ -66,6 +75,25 @@ def test_make_and_roundtrip(type_name):
         assert event.payload[key] == value
     # 类型化还原视图与 payload 完全一致
     assert event.payload_model().model_dump() == event.payload
+
+
+def test_ask_user_accepts_bare_string_options():
+    """选项裸字符串兜底：模型只给 ["A","B"] 时也成卡（归一成 {label, description:""}）。"""
+    event = StreamEvent.make(
+        StreamEventType.ASK_USER, "turn-1", question="选哪个?", options=["A", "B"], ask_id="ask-1"
+    )
+    payload = event.payload_model()
+    assert [option.label for option in payload.options] == ["A", "B"]
+    assert [option.description for option in payload.options] == ["", ""]
+
+
+def test_ask_user_new_fields_default_off():
+    """allow_free_text/context 缺省收 False/""：老调用方（chat/deep_solve）不用改。"""
+    event = StreamEvent.make(StreamEventType.ASK_USER, "turn-1", question="继续?", ask_id="ask-1")
+    payload = event.payload_model()
+    assert payload.options == []
+    assert payload.allow_free_text is False
+    assert payload.context == ""
 
 
 def test_make_defaults_fill_payload_fields():

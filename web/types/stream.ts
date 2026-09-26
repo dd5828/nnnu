@@ -86,10 +86,17 @@ export interface CitationPayload {
   sources: CitationSource[];
 }
 
+export interface AskUserOption {
+  label: string;
+  description: string;
+}
+
 export interface AskUserPayload {
   question: string;
-  options: string[];
+  options: AskUserOption[];
   ask_id: string;
+  allow_free_text: boolean;
+  context: string;
 }
 
 export interface AskUserReplyPayload {
@@ -125,6 +132,8 @@ export interface ToolTrace {
   call_id: string;
   ok: boolean;
   summary: string;
+  /** 小结构展示数据（答题结果卡等）：跟着历史落库，超限的没落（用 null 兜住） */
+  detail?: Record<string, unknown> | null;
 }
 
 export interface DonePayload {
