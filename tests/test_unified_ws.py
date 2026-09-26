@@ -250,11 +250,27 @@ async def test_invalid_model_ref_returns_error_frame(ws_client):
         assert ws.receive_json()["type"] == "heartbeat"
 
 
-async def _wait_turn_settled(ws_client, session_id: str) -> None:
-    """done 先发、落库在收尾时完成：不等它，读会话会读到半截。"""
+async def _wait_turn_settled(ws_client, session_id: str, *, turn_id: str | None = None) -> None:
+    """done 先发、落库在收尾时完成：不等它，读会话会读到半截。
+
+    turn_id 是「刚发起、还没跑起来」的回合要传的：start_turn 只建后台任务，
+    活跃标记由任务开跑（先 await 一次 ensure_session）时才登记——POST 刚返回
+    就去等「已空闲」，会在标记登记前当场放行，把整个回合漏过去。本地磁盘快、
+    登记先完成，所以只在 CI 红。给了 turn_id 就认任务本身（落库在任务返回前
+    完成），不看标记。
+    """
     import time
 
     runtime = ws_client.app.state.runtime
+    if turn_id is not None:
+        execution = runtime._executions.get(turn_id)
+        assert execution is not None, f"回合 {turn_id} 不在运行时里"
+        assert execution.task is not None
+        for _ in range(400):  # 10s
+            if execution.task.done():
+                return
+            time.sleep(0.025)
+        raise AssertionError("回合未在预期时间内收尾")
     for _ in range(100):
         if runtime.active_turn_for(session_id) is None:
             return
@@ -287,7 +303,7 @@ async def test_regenerate_keeps_capability(ws_client, repo_prompts):
 
     resp = ws_client.post(f"/api/v1/sessions/{session_id}/regenerate")
     assert resp.status_code == 200, resp.text
-    await _wait_turn_settled(ws_client, session_id)
+    await _wait_turn_settled(ws_client, session_id, turn_id=resp.json()["turn_id"])
 
     assert scripted.exhausted  # 两回合各三段，6 步正好用尽
     detail = ws_client.get(f"/api/v1/sessions/{session_id}").json()
