@@ -17,6 +17,9 @@ KNOWN_PREFIXES = (
     "nbr",
     "q",
     "qa",
+    "lpath",
+    "lnode",
+    "lint",  # 答题交互行（learning_interactions）
 )
 
 

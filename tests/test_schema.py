@@ -229,3 +229,143 @@ def test_migrate_v6_to_v7_keeps_existing_rows(tmp_home):
     finally:
         conn.close()
     assert row == ("single", "", "medium", 0.0)
+
+
+def test_fresh_install_creates_learning_tables(tmp_home):
+    assert migrate(tmp_home / "data") == SCHEMA_VERSION
+    assert {"learning_paths", "learning_nodes"} <= _table_names(tmp_home)
+    # 树结构 + 门控/复习所需的列（§7.5 自定数值都落在这些列上）
+    assert {
+        "parent_id",
+        "depth",
+        "sort_order",
+        "mastery",
+        "state",
+        "review_stage",
+        "next_review_at",
+    } <= _columns(tmp_home, "learning_nodes")
+    # 题目软引用节点（不加强外键：节点删了题还在，只是 node_id 置空）
+    assert "node_id" in _columns(tmp_home, "questions")
+
+
+def test_migrate_v7_to_v8_keeps_rows(tmp_home):
+    # 模拟批二状态：v7 库里有题（可能已有作答），升到 v8 后题目与作答都还在，
+    # 新列 node_id 对老数据是 NULL（还没挂到任何节点上）
+    data = tmp_home / "data"
+    (data / "system").mkdir(parents=True)
+    _version_file(tmp_home).write_text("7\n", encoding="utf-8")
+    path = db_path(data)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    try:
+        for level in ("2", "3", "4", "5", "6", "7"):
+            for statement in MIGRATIONS[level]:
+                conn.execute(statement)
+        conn.execute(
+            "INSERT INTO questions (id, stem, answer, mastery, wrong_count) "
+            "VALUES ('q-v7', '批二的题', 'A', 0.5, 1)"
+        )
+        conn.execute(
+            "INSERT INTO question_attempts (id, question_id, answer, correct, score, source) "
+            "VALUES ('att-v7', 'q-v7', 'A', 0, 0.0, 'deterministic')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert migrate(data) == SCHEMA_VERSION
+    assert {"learning_paths", "learning_nodes"} <= _table_names(tmp_home)
+    conn = sqlite3.connect(path)
+    try:
+        row = conn.execute(
+            "SELECT stem, mastery, node_id FROM questions WHERE id = 'q-v7'"
+        ).fetchone()
+        attempts = conn.execute("SELECT COUNT(*) FROM question_attempts").fetchone()
+    finally:
+        conn.close()
+    assert row == ("批二的题", 0.5, None)
+    assert attempts == (1,)
+
+
+def test_migrate_v8_idempotent(tmp_home):
+    migrate(tmp_home / "data")
+    assert migrate(tmp_home / "data") == SCHEMA_VERSION
+    assert {"learning_paths", "learning_nodes"} <= _table_names(tmp_home)
+    assert "node_id" in _columns(tmp_home, "questions")
+
+
+def _indexes(tmp_home, table: str) -> dict[str, tuple[int, int]]:
+    """PRAGMA index_list 的（unique, partial）两列——本级的索引是否「部分唯一」就看它。"""
+    conn = sqlite3.connect(db_path(tmp_home / "data"))
+    try:
+        return {
+            row[1]: (int(row[2]), int(row[4]))
+            for row in conn.execute(f"PRAGMA index_list({table})")
+        }
+    finally:
+        conn.close()
+
+
+def test_migrate_v8_to_v9_keeps_rows(tmp_home):
+    # 模拟批二状态：v8 库里有路径（带 current_node_id 游标）、两个旧类型节点、挂节点上的题。
+    # 升到 v9 后：旧类型映射成 procedure/design、游标列消失（门就是游标，库里不再存当前节点）、
+    # 掌握度口径整批作废，learning_interactions 与「一条路径同时只有一张卡在飞」的部分唯一索引就位。
+    data = tmp_home / "data"
+    (data / "system").mkdir(parents=True)
+    _version_file(tmp_home).write_text("8\n", encoding="utf-8")
+    path = db_path(data)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    try:
+        for level in ("2", "3", "4", "5", "6", "7", "8"):
+            for statement in MIGRATIONS[level]:
+                conn.execute(statement)
+        conn.execute(
+            "INSERT INTO learning_paths (id, topic, title, summary, current_node_id, session_id, "
+            "created_at, updated_at) "
+            "VALUES ('lpath-v8', '线代', '线代', NULL, 'lnode-calc', 'sess-v8', 1.0, 2.0)"
+        )
+        conn.executemany(
+            "INSERT INTO learning_nodes (id, path_id, parent_id, title, node_type, description, "
+            "depth, sort_order, mastery, state, review_stage, next_review_at, last_practiced_at, "
+            "created_at, updated_at) "
+            "VALUES (?, 'lpath-v8', NULL, ?, ?, NULL, 0, ?, 0.8, 'reviewing', 2, 111.0, 99.0, 1.0, 2.0)",
+            [
+                ("lnode-calc", "计算与化简", "calculation", 0),
+                ("lnode-proof", "证明与推导", "proof", 1),
+            ],
+        )
+        conn.execute(
+            "INSERT INTO questions (id, stem, answer, mastery, wrong_count, node_id) "
+            "VALUES ('q-v8', '批二的题', 'A', 0.5, 1, 'lnode-calc')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert migrate(data) == SCHEMA_VERSION
+    assert "learning_interactions" in _table_names(tmp_home)
+    assert "current_node_id" not in _columns(tmp_home, "learning_paths")
+    assert {"assess_passed", "assessed_at"} <= _columns(tmp_home, "learning_nodes")
+    conn = sqlite3.connect(path)
+    try:
+        types = dict(conn.execute("SELECT id, node_type FROM learning_nodes ORDER BY sort_order"))
+        # 旧口径的派生列一并清零：留着会写出「掌握度 0 却写着已掌握」这种自相矛盾的行
+        stale = conn.execute(
+            "SELECT mastery, state, review_stage, next_review_at, last_practiced_at "
+            "FROM learning_nodes WHERE id = 'lnode-calc'"
+        ).fetchone()
+        question = conn.execute("SELECT stem, node_id FROM questions WHERE id = 'q-v8'").fetchone()
+        session = conn.execute(
+            "SELECT session_id FROM learning_paths WHERE id = 'lpath-v8'"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert types == {"lnode-calc": "procedure", "lnode-proof": "design"}
+    assert stale == (0.0, "not_started", 0, None, None)
+    assert question == ("批二的题", "lnode-calc")  # 题目与其软引用不受迁移影响
+    assert session == ("sess-v8",)
+
+    indexes = _indexes(tmp_home, "learning_interactions")
+    assert indexes["idx_learning_interactions_pending"] == (1, 1)  # 唯一 + 部分（只拦未决行）
+    assert indexes["idx_learning_interactions_node"] == (0, 0)

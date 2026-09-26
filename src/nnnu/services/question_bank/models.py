@@ -32,6 +32,9 @@ class Question(BaseModel):
     knowledge_point: str = ""
     difficulty: str = "medium"
     session_id: str | None = None  # 出自哪次会话（出题能力生成时写入）
+    # 挂在哪个学习节点上（§7.5；软引用，节点删了这里被置空）——节点掌握度就是
+    # 按这一列把题卷起来算的，见 services/learning/service.py
+    node_id: str | None = None
 
     @classmethod
     def new(cls, **kwargs) -> "Question":

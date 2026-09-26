@@ -44,8 +44,8 @@ RECENCY_WEIGHTS = (0.5, 0.7, 0.85, 0.95, 1.0)
 _INSERT_QUESTION = (
     "INSERT INTO questions "
     "(id, stem, options, answer, explanation, source, tags, mastery, wrong_count, "
-    " last_attempt_at, created_at, type, knowledge_point, difficulty, session_id) "
-    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    " last_attempt_at, created_at, type, knowledge_point, difficulty, session_id, node_id) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 
 _INSERT_ATTEMPT = (
@@ -181,10 +181,11 @@ class QuestionBankService:
         knowledge_point: str | None = None,
         tag: str | None = None,
         search: str | None = None,
+        node_id: str | None = None,
         limit: int = DEFAULT_PAGE,
         offset: int = 0,
     ) -> list[Question]:
-        where, params = self._where(filter, knowledge_point, tag, search)
+        where, params = self._where(filter, knowledge_point, tag, search, node_id)
         rows = await self._db.fetch_all(
             f"SELECT * FROM questions{where} ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?",
             (*params, max(1, min(limit, MAX_PAGE)), max(0, offset)),
@@ -349,6 +350,7 @@ class QuestionBankService:
         knowledge_point: str | None,
         tag: str | None,
         search: str | None,
+        node_id: str | None = None,
     ) -> tuple[str, list[Any]]:
         clauses: list[str] = []
         params: list[Any] = []
@@ -356,6 +358,9 @@ class QuestionBankService:
             clauses.append("wrong_count > 0")
         elif filter == "unanswered":
             clauses.append("last_attempt_at IS NULL")
+        if node_id:
+            clauses.append("node_id = ?")
+            params.append(node_id)
         if knowledge_point:
             clauses.append("knowledge_point = ?")
             params.append(knowledge_point)
@@ -381,6 +386,7 @@ class QuestionBankService:
         tags: Iterable[str] | None = None,
         source: str | None = None,
         session_id: str | None = None,
+        node_id: str | None = None,
         mastery: float = 0.0,
         wrong_count: int = 0,
         last_attempt_at: float | None = None,
@@ -401,6 +407,7 @@ class QuestionBankService:
             type=type,  # type: ignore[arg-type]  # clean_fields 已按白名单校验
             source=source,
             session_id=session_id,
+            node_id=node_id,
             mastery=mastery,
             wrong_count=wrong_count,
             last_attempt_at=last_attempt_at,
@@ -425,6 +432,7 @@ class QuestionBankService:
             question.knowledge_point,
             question.difficulty,
             question.session_id,
+            question.node_id,
         )
 
     @staticmethod
@@ -459,6 +467,7 @@ class QuestionBankService:
             knowledge_point=str(row["knowledge_point"] or ""),
             difficulty=str(row["difficulty"] or "medium"),
             session_id=row["session_id"],
+            node_id=row["node_id"],
         )
 
     @staticmethod
