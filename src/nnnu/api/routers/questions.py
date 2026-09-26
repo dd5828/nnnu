@@ -1,8 +1,12 @@
 """题库 REST（§9.1 的 /questions + 本批新增的判分端点）。
 
 §9.1 列了 `GET/POST/PATCH/DELETE /questions`；`POST /questions/{id}/attempt` 是
-本批新增（§9.1 未列，记 STAGE_LOG 偏离清单）：作答判分在题库页当场做，聊天里
-只给「去题库作答」的入口。
+批三新增（§9.1 未列，记 STAGE_LOG 偏离清单）。
+
+批三重做后这里是一条**平行的答题通路**：聊天里的 `mastery quiz` 会当场弹卡片判分，
+题库页保留浏览 / 编辑 / 错题回顾，作答仍然可用。两条通路写同一张 `question_attempts`、
+走同一个 `grade_with_fallback`、回写同一份掌握度（`learning.on_attempt(node_id)`），
+所以「在哪答题」不影响看板上的数。
 
 判分**不是回合**：不建会话消息、不进 TurnRuntime。简答走 LLM 判分器时，用量按
 合成 turn_id（`grade-<attempt_id>`）写 usage_records——§6.9 没定义这条通路，
@@ -16,13 +20,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from nnnu.services.cost.tracker import CostTracker
-from nnnu.services.learning.grading import (
-    GradeInputError,
-    feedback_text,
-    grade,
-    grader_from_settings,
-)
-from nnnu.services.llm.errors import LLMError
+from nnnu.services.learning.grading import GradeInputError, grade_with_fallback
 from nnnu.services.question_bank.service import (
     LIST_FILTERS,
     QuestionBankError,
@@ -82,6 +80,22 @@ class AttemptBody(BaseModel):
     language: str = "zh"
 
 
+async def _sync_node_mastery(http_request: Request, node_id: str | None) -> None:
+    """把这次作答回写到学习节点（§7.5 掌握度联动）。
+
+    在 `record_attempt` **提交之后**（事务外）调：题库是主流程，学习域回写失败
+    只告警不阻断——用户在题库页答一道题不该因为看板算不出来而报错。
+    **不给分数**：`on_attempt` 从刚写进的作答序列自己重算（幂等），这样题库页与
+    聊天卡片两条通路算出来的是同一个数。
+    """
+    if not node_id:
+        return
+    try:
+        await http_request.app.state.learning.on_attempt(node_id)
+    except Exception:
+        logger.warning("节点 %s 掌握度回写失败", node_id, exc_info=True)
+
+
 @router.get("/api/v1/questions")
 async def list_questions(
     http_request: Request,
@@ -89,10 +103,14 @@ async def list_questions(
     knowledge_point: str | None = None,
     tag: str | None = None,
     search: str | None = None,
+    node_id: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ):
-    """题目列表：三个筛选（全部/错题/未作答）+ 知识点/标签/关键词，附各自的条数。"""
+    """题目列表：三个筛选（全部/错题/未作答）+ 知识点/标签/关键词/学习节点，附各自的条数。
+
+    `node_id` 是批三加的：看板薄弱点深链过来只看这个节点的题。
+    """
     if filter_ not in LIST_FILTERS:
         return _error(
             422, "invalid_filter", f"未知筛选 {filter_!r}，允许：{'、'.join(LIST_FILTERS)}"
@@ -103,6 +121,7 @@ async def list_questions(
         knowledge_point=knowledge_point or None,
         tag=tag or None,
         search=search or None,
+        node_id=node_id or None,
         limit=limit,
         offset=offset,
     )
@@ -154,29 +173,15 @@ async def submit_attempt(question_id: str, body: AttemptBody, http_request: Requ
         return _not_found(f"题目 {question_id} 不存在")
 
     language = body.language if body.language in ("zh", "en") else "zh"
+    tracker = CostTracker()
     try:
-        result = grade(
-            question.type, body.answer, question.answer, option_count=len(question.options)
+        # 与聊天里的 mastery quiz 走同一条判分入口（同一口径：确定性 → 简答兜底 LLM）
+        result, feedback = await grade_with_fallback(
+            question, body.answer, language=language, tracker=tracker
         )
     except GradeInputError as exc:
         return _error(422, "invalid_answer", str(exc))
 
-    tracker = CostTracker()
-    if result.needs_llm:
-        try:
-            grader = grader_from_settings(language=language)
-            result = await grader.grade(
-                stem=question.stem,
-                key=question.answer,
-                answer=body.answer,
-                options=question.options,
-                fallback=result,
-                tracker=tracker,
-            )
-        except LLMError as exc:
-            logger.warning("简答判分调用失败，按未通过计：%s", exc)
-
-    feedback = result.feedback or feedback_text(result, lang=language, answer_key=question.answer)
     attempt, updated = await service.record_attempt(
         question_id,
         answer=body.answer,
@@ -188,6 +193,7 @@ async def submit_attempt(question_id: str, body: AttemptBody, http_request: Requ
     )
     if attempt is None or updated is None:
         return _not_found(f"题目 {question_id} 不存在")
+    await _sync_node_mastery(http_request, updated.node_id)
     if not tracker.is_empty():
         await http_request.app.state.cost.record_turn(
             session_id=body.session_id or "",

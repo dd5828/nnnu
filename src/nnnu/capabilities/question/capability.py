@@ -24,6 +24,7 @@ from nnnu.capabilities._shared import (
     complete_with_cost,
     mount_tools,
     session_history,
+    strip_label_prefix,
 )
 from nnnu.core.agent_loop import LoopDeps, run_agent_loop
 from nnnu.core.capability_protocol import BaseCapability, CapabilityManifest, Stage
@@ -398,7 +399,7 @@ class QuestionCapability(BaseCapability):
             [str(option).strip() for option in raw_options] if isinstance(raw_options, list) else []
         )
         options = [option for option in options if option]
-        options = [_strip_label_prefix(option, position) for position, option in enumerate(options)]
+        options = [strip_label_prefix(option, position) for position, option in enumerate(options)]
         answer = str(item.get("answer") or "").strip()
         explanation = str(item.get("explanation") or "").strip()
         if not explanation:
@@ -645,20 +646,6 @@ class QuestionCapability(BaseCapability):
                 reasoning_effort=config.get("reasoning_effort"),
             ),
         )
-
-
-def _strip_label_prefix(option: str, position: int) -> str:
-    """剥掉模型爱写的选项前缀（"A. 文本" / "A、文本" / "(A) 文本"）。"""
-    text = option.strip()
-    for prefix in (
-        f"{LABELS[position]}.",
-        f"{LABELS[position]}、",
-        f"{LABELS[position]})",
-        f"({LABELS[position]})",
-    ):
-        if text.startswith(prefix):
-            return text[len(prefix) :].strip()
-    return text
 
 
 def _payload_text(raw_text: str) -> str:

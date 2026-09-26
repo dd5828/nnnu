@@ -18,6 +18,7 @@ from nnnu.api.routers import (
     cost,
     health,
     knowledge,
+    learning,
     notebooks,
     plugins,
     questions,
@@ -77,6 +78,7 @@ def create_app() -> FastAPI:
         from nnnu.runtime.turn_runtime import TurnRequest, TurnRuntimeManager
         from nnnu.services.cost.service import CostService
         from nnnu.services.files.service import AttachmentsService
+        from nnnu.services.learning.service import LearningService, set_learning_service
         from nnnu.services.notebooks.service import NotebookService
         from nnnu.services.question_bank.service import QuestionBankService, set_question_bank
         from nnnu.services.sessions.db import Database
@@ -99,6 +101,10 @@ def create_app() -> FastAPI:
         set_question_bank(questions_service)
         _app.state.questions = questions_service
         _app.state.cost = cost_service
+        # 学习路径（§7.5）：掌握工具/能力取单例，路由取 app.state
+        learning_service = LearningService(db)
+        set_learning_service(learning_service)
+        _app.state.learning = learning_service
         _app.state.runtime = TurnRuntimeManager(
             sessions=session_manager, costs=cost_service, orchestrator=orchestrator
         )
@@ -147,6 +153,7 @@ def create_app() -> FastAPI:
         set_kb_service(None)
         set_embedding_service(None)
         set_question_bank(None)
+        set_learning_service(None)
         await embedding.aclose()
         await cron_service.stop()
         await db.close()
@@ -184,6 +191,7 @@ def create_app() -> FastAPI:
     app.include_router(knowledge.router)
     app.include_router(notebooks.router)
     app.include_router(questions.router)
+    app.include_router(learning.router)
     app.include_router(plugins.router)
     app.include_router(chat.router)
     app.include_router(sessions.router)

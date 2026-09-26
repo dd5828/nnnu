@@ -46,7 +46,17 @@ async def test_plugins_lists_chat_and_ask_user(client):
         "knowledge_point",
     }
     assert question["config_schema"]["types"]["items"]["enum"] == ["single", "multi", "short"]
+    # 学习路径能力（§7.5）：对外只有一个阶段，配置项是路径与补题数量
+    mastery = next(item for item in data["capabilities"] if item["name"] == "mastery_path")
+    assert [stage["key"] for stage in mastery["stages"]] == ["responding"]
+    assert all(stage["label_i18n"] and stage["max_rounds"] > 0 for stage in mastery["stages"])
+    assert set(mastery["config_schema"]) == {"path_id", "practice_count"}
+    assert mastery["config_schema"]["practice_count"]["maximum"] == 5
     assert "question_bank" in tool_names
+    assert "mastery" in tool_names
+    mastery_tool = next(item for item in data["tools"] if item["definition"]["name"] == "mastery")
+    assert mastery_tool["definition"]["mount"] == "user_toggleable"
+    assert mastery_tool["definition"]["cost_hint"]  # chat.yaml: tool_cost_hints.mastery
 
 
 async def test_availability_follows_prerequisites_not_mount(client, tmp_home):

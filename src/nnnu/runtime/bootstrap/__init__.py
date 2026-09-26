@@ -68,6 +68,7 @@ def ensure_bootstrap() -> Path:
 def register_builtins() -> None:
     """内置工具/能力注册清单（§6.11）：幂等，随阶段追加。"""
     from nnnu.capabilities.chat.capability import ChatCapability
+    from nnnu.capabilities.mastery.capability import MasteryCapability
     from nnnu.capabilities.question.capability import QuestionCapability
     from nnnu.capabilities.solve.capability import SolveCapability
     from nnnu.runtime.registry.capability_registry import get_capability_registry
@@ -84,6 +85,7 @@ def register_builtins() -> None:
         WriteWorkspaceFileTool,
     )
     from nnnu.tools.builtin.github_query import GithubQueryTool
+    from nnnu.tools.builtin.mastery_tool import MasteryTool
     from nnnu.tools.builtin.media_gen_tool import ImageGenTool, VideoGenTool
     from nnnu.tools.builtin.paper_search_tool import PaperSearchTool
     from nnnu.tools.builtin.question_bank_tool import QuestionBankTool
@@ -95,10 +97,12 @@ def register_builtins() -> None:
     get_capability_registry().register(ChatCapability.manifest, ChatCapability)
     get_capability_registry().register(SolveCapability.manifest, SolveCapability)
     get_capability_registry().register(QuestionCapability.manifest, QuestionCapability)
+    get_capability_registry().register(MasteryCapability.manifest, MasteryCapability)
     get_tool_registry().register(AskUserTool())
     get_tool_registry().register(AttachmentSearchTool())
     get_tool_registry().register(RagSearchTool())
     get_tool_registry().register(QuestionBankTool())
+    get_tool_registry().register(MasteryTool())
     get_tool_registry().register(CodeExecutionTool())
     get_tool_registry().register(ExecTool())
     get_tool_registry().register(ListWorkspaceTool())
