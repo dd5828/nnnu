@@ -3,8 +3,8 @@
 /**
  * 学习路径读写（§7.5 / §9.1）：TanStack Query。
  *
- * 路径由聊天里的 `mastery` 工具读写（REST 不建路径、不推进），这里负责看板读、
- * 树编辑与起学习会话。所有写操作都失效 `["learning"]`——一次编辑会同时动树、
+ * 路径由聊天里那八个 `mastery_*` 工具读写（REST 不建路径、不推进），这里负责看板读、
+ * 树编辑、看板操作与起学习会话。所有写操作都失效 `["learning"]`——一次编辑会同时动树、
  * 汇总与薄弱点，粒度再细也躲不开这三处一起变。
  *
  * **没有推进接口**：门就是游标，下一步由服务端每回合现算（`next_target`）。
@@ -17,8 +17,10 @@ import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import type {
+  DueReviewListResponse,
   LearningNode,
   LearningPath,
+  LearningPathActionResponse,
   LearningPathDetail,
   LearningPathListResponse,
   LearningSessionResponse,
@@ -144,5 +146,37 @@ export function useMoveNode() {
         body: JSON.stringify({ direction }),
       }),
     onSuccess: () => invalidate(),
+  });
+}
+
+/** 跳过当前未决的那道题：卡作废，掌握度与作答历史都不动（不是判错）。 */
+export function useSkipQuestion() {
+  const invalidate = useInvalidateLearning();
+  return useMutation({
+    mutationFn: (pathId: string) =>
+      apiFetch<LearningPathActionResponse>(`/api/v1/learning/paths/${pathId}/skip-question`, {
+        method: "POST",
+      }),
+    onSuccess: () => invalidate(),
+  });
+}
+
+/** 重做整条路径：掌握度/评定/复习/作答历史全清，节点树与题目留着。 */
+export function useRedoPath() {
+  const invalidate = useInvalidateLearning();
+  return useMutation({
+    mutationFn: (pathId: string) =>
+      apiFetch<LearningPathActionResponse>(`/api/v1/learning/paths/${pathId}/redo`, {
+        method: "POST",
+      }),
+    onSuccess: () => invalidate(),
+  });
+}
+
+/** 跨路径的到期复习聚合（看板「该复习了」）。 */
+export function useDueReviews() {
+  return useQuery({
+    queryKey: ["learning", "reviews"],
+    queryFn: () => apiFetch<DueReviewListResponse>("/api/v1/learning/reviews"),
   });
 }

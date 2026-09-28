@@ -377,3 +377,19 @@ export interface LearningSessionResponse {
   session_id: string;
   turn_id: string;
 }
+
+/** 跳过此题 / 重做路径的响应：路径详情 + 这一步动了多少（skipped 张卡 / reset 个节点）。 */
+export interface LearningPathActionResponse extends LearningPathDetail {
+  skipped?: number;
+  reset?: number;
+}
+
+/** 跨路径的到期复习（`GET /learning/reviews`）：ReviewItem 加它属于哪条路径。 */
+export interface DueReview extends ReviewItem {
+  path_id: string;
+  path_title: string;
+}
+
+export interface DueReviewListResponse {
+  reviews: DueReview[];
+}

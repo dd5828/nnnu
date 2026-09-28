@@ -56,7 +56,7 @@ export default function SessionList() {
           <Plus className="h-4 w-4" />
         </button>
       </div>
-      <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3">
+      <div className="no-scrollbar min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3">
         {sorted.map((session) => (
           <div
             key={session.id}

@@ -65,7 +65,7 @@ export default function Sidebar() {
         <span className="text-lg font-semibold">{t("common.appName")}</span>
       </div>
 
-      <nav className="flex-1 space-y-0.5 overflow-y-auto px-2">
+      <nav className="no-scrollbar flex-1 space-y-0.5 overflow-y-auto px-2">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const label = t(item.key);

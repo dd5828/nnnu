@@ -14,7 +14,9 @@ export default function ToolCallCard({ call }: { call: UiToolCall }) {
   const imageDataUri = call.detail?.image_data_uri;
   const imageUrl = call.detail?.image_url;
   return (
-    <div className="mb-2 overflow-hidden rounded-lg border border-border/70 bg-surface text-sm">
+    // w-full 不能省：外层是 items-start 的列 flex，卡片宽度会被内容撑成 max-content，
+    // 摘要一行不换行 → 卡片比聊天区还宽，整页就横着出一根滚动条
+    <div className="mb-2 w-full overflow-hidden rounded-lg border border-border/70 bg-surface text-sm">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

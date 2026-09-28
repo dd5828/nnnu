@@ -88,7 +88,7 @@ export default function KnowledgeDetail() {
   const activeVersion = kb.versions.find((version) => version.version === kb.active_version);
 
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto">
+    <main className="no-scrollbar min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-6">
         <div className="flex items-center gap-2">
           <Link

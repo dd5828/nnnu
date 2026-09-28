@@ -15,13 +15,25 @@
 import { useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, ListChecks, Loader2, MessageSquare, Pencil, Play, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  ListChecks,
+  Loader2,
+  MessageSquare,
+  Pencil,
+  Play,
+  RotateCcw,
+  SkipForward,
+  Trash2,
+} from "lucide-react";
 import QuestionCard from "@/components/quiz/QuestionCard";
 import { useI18n } from "@/hooks/useI18n";
 import { useChatStore } from "@/hooks/useChat";
 import {
   useDeletePath,
   useLearningPath,
+  useRedoPath,
+  useSkipQuestion,
   useStartSession,
   useUpdatePath,
 } from "@/hooks/useLearning";
@@ -53,9 +65,13 @@ export default function LearningPathDetail() {
   const startSession = useStartSession();
   const updatePath = useUpdatePath();
   const removePath = useDeletePath();
+  const skipQuestion = useSkipQuestion();
+  const redoPath = useRedoPath();
 
   const [manualNode, setManualNode] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // 成功提示单独一格：notice 走红色（出错），这个走素色（「跳过了」「已重做」）
+  const [flash, setFlash] = useState<string | null>(null);
   const [pathEditing, setPathEditing] = useState(false);
   const [pathDraft, setPathDraft] = useState({ title: "", summary: "" });
 
@@ -130,6 +146,36 @@ export default function LearningPathDetail() {
     }
   };
 
+  /** 跳过在飞的那道题：卡作废，掌握度与作答记录都不动（不是判错）。 */
+  const skipPending = async () => {
+    if (!pathId) {
+      return;
+    }
+    setNotice(null);
+    try {
+      const result = await skipQuestion.mutateAsync(pathId);
+      setFlash(result.skipped ? t("learning.skippedNotice") : t("learning.nothingPending"));
+    } catch (err) {
+      setNotice(String(err));
+    }
+  };
+
+  const redo = async () => {
+    if (
+      !pathId ||
+      !window.confirm(t("learning.redoPathConfirm", { title: data?.path.title ?? "" }))
+    ) {
+      return;
+    }
+    setNotice(null);
+    try {
+      const result = await redoPath.mutateAsync(pathId);
+      setFlash(t("learning.redoneNotice", { n: String(result.reset ?? 0) }));
+    } catch (err) {
+      setNotice(String(err));
+    }
+  };
+
   if (isLoading) {
     return (
       <main className="flex flex-1 items-center justify-center">
@@ -153,7 +199,7 @@ export default function LearningPathDetail() {
   const gateText = selected ? gateKey(selected) : null;
 
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto">
+    <main className="no-scrollbar min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex max-w-4xl flex-col gap-4 px-4 py-6">
         <div className="flex items-start gap-3">
           <Link
@@ -220,6 +266,20 @@ export default function LearningPathDetail() {
                 className="rounded-lg p-1.5 text-muted transition-colors hover:bg-accent hover:text-foreground"
               >
                 <Pencil className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                data-testid="l-path-redo"
+                onClick={() => void redo()}
+                disabled={redoPath.isPending}
+                title={t("learning.redoPath")}
+                className="rounded-lg p-1.5 text-muted transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
+              >
+                {redoPath.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-4 w-4" />
+                )}
               </button>
               <button
                 type="button"
@@ -305,12 +365,33 @@ export default function LearningPathDetail() {
               {t("learning.masteryLine", { n: String(Math.round(nextTarget.mastery)) })}
             </span>
           )}
+          {/* 有卡在飞（answer_pending）才给「跳过此题」：跳过 = 作废那张卡，
+              掌握度与作答记录都不动（想重判就回聊天里再答一遍） */}
+          {nextTarget?.action === "answer_pending" && (
+            <button
+              type="button"
+              data-testid="l-next-skip"
+              onClick={() => void skipPending()}
+              disabled={skipQuestion.isPending}
+              title={t("learning.skipQuestionHint")}
+              className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-muted transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
+            >
+              {skipQuestion.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <SkipForward className="h-3.5 w-3.5" />
+              )}
+              {t("learning.skipQuestion")}
+            </button>
+          )}
           <button
             type="button"
             data-testid="l-next-go"
             onClick={() => void start()}
             disabled={startSession.isPending}
-            className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-40"
+            className={`${
+              nextTarget?.action === "answer_pending" ? "" : "ml-auto"
+            } inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-40`}
           >
             <MessageSquare className="h-3.5 w-3.5" />
             {t("learning.goToChat")}
@@ -323,6 +404,11 @@ export default function LearningPathDetail() {
         </section>
 
         {notice && <p className="text-xs text-danger">{notice}</p>}
+        {flash && (
+          <p className="text-xs text-muted" data-testid="l-flash">
+            {flash}
+          </p>
+        )}
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <section className="flex flex-col gap-2">

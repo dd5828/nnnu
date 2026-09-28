@@ -8,7 +8,7 @@ import { useChatStore, type ActiveTurn, type AskUserPrompt } from "@/hooks/useCh
 import { useI18n } from "@/hooks/useI18n";
 import CitationsPanel from "./CitationsPanel";
 import CostBadge from "./CostBadge";
-import Markdown, { useDebouncedText } from "./Markdown";
+import Markdown, { useThrottledText } from "./Markdown";
 import MasteryResultCard, { isGradedMasteryCall } from "./MasteryResultCard";
 import StageBar from "./StageBar";
 import ThinkingBlock from "./ThinkingBlock";
@@ -30,7 +30,10 @@ function AskUserCard({
   const canSubmitDraft = draft.trim().length > 0;
 
   return (
-    <div className="w-full rounded-xl border border-primary/30 bg-surface p-3">
+    <div
+      data-testid="ask-card"
+      className="w-full rounded-xl border border-primary/30 bg-surface p-3"
+    >
       {prompt.context && (
         <div data-testid="ask-context" className="mb-1 text-[11px] text-muted">
           {prompt.context}
@@ -92,7 +95,7 @@ export default function ActiveTurnView({ turn }: { turn: ActiveTurn }) {
   const stop = useChatStore((s) => s.stop);
   const replyAskUser = useChatStore((s) => s.replyAskUser);
   const capability = useChatStore((s) => s.capability);
-  const renderedContent = useDebouncedText(turn.content);
+  const renderedContent = useThrottledText(turn.content);
   const running = !turn.terminal;
 
   return (

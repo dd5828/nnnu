@@ -1,13 +1,14 @@
 "use client";
 
-/** 学习看板列表（§7.5）：路径卡片 + 空态提示。
+/** 学习看板列表（§7.5）：到期复习聚合 + 路径卡片 + 空态提示。
  *
- * 路径**不在这个页面新建**（拍板 #3）：它由聊天里的 `mastery` 工具生成，
+ * 路径**不在这个页面新建**（拍板 #3）：它由聊天里的 `mastery_*` 工具生成，
  * 所以空态给的是一句「怎么说」，不是「新建」按钮。
  */
 
 import Link from "next/link";
 import { GraduationCap, Loader2 } from "lucide-react";
+import DueReviewBoard from "@/components/learning/DueReviewBoard";
 import { useLearningPaths } from "@/hooks/useLearning";
 import { useI18n } from "@/hooks/useI18n";
 import { useNow } from "@/hooks/useNow";
@@ -87,12 +88,15 @@ export default function LearningPage() {
   const paths = data?.paths ?? [];
 
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto">
+    <main className="no-scrollbar min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-6">
         <div>
           <h1 className="text-xl font-semibold">{t("learning.title")}</h1>
           <p className="mt-0.5 text-xs text-muted">{t("learning.desc")}</p>
         </div>
+
+        {/* 跨路径的「该复习了」：没有到期项时它自己整块不渲染 */}
+        <DueReviewBoard />
 
         {isLoading ? (
           <div className="flex justify-center py-8">

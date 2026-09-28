@@ -409,28 +409,37 @@ test("⑭ 学习路径：聊天建路径 → 看板下一目标 → 聊天里刷
   await expect(page.getByText("继续学《线性代数基础》")).toBeVisible({ timeout: 20000 });
   await expect(page.getByText("先摸底：这两道做做看")).toBeVisible({ timeout: 20000 });
 
-  // ---- 刷卡答题：卡由服务端从题库行渲染（题面 + A/B/C/D 选项 + 第几题），一次只飞一张 ----
-  await expect(page.getByTestId("ask-context")).toContainText("节点《向量与线性组合》· 第 1/2 题", {
+  // ---- 刷卡答题：卡面由服务端按**登记的那道题**归位（模型在 ask_user 里说什么都不作数），
+  // 小字只有节点名（不再有「第几题」——出题权归模型后服务端不知道总共有几题）----
+  await expect(page.getByTestId("ask-context")).toHaveText("节点《向量与线性组合》", {
     timeout: 20000,
   });
-  await expect(page.getByText("向量和练习：a=(1,2) 与 b=(3,4) 的和是哪个？")).toBeVisible();
+  // 题干限定在卡里找：mastery_quiz 的折叠卡会把登记回执（含题干）也摊在聊天里，全页找会撞上
+  const askCard = page.getByTestId("ask-card");
+  await expect(askCard.getByText("向量和练习：a=(1,2) 与 b=(3,4) 的和是哪个？")).toBeVisible();
   await page.locator('[data-testid="ask-option"][data-label="B"]').click(); // 正确答案
-  await expect(page.getByTestId("ask-context")).toContainText("第 2/2 题", { timeout: 20000 });
-  await expect(page.getByText("数乘练习：向量 (2,4) 乘标量 3 得到什么？")).toBeVisible();
+  await expect(askCard.getByText("数乘练习：向量 (2,4) 乘标量 3 得到什么？")).toBeVisible({
+    timeout: 20000,
+  });
   await page.locator('[data-testid="ask-option"][data-label="C"]').click();
 
-  // ---- 即时判分：两张卡各摊一张结果卡（对错 + 解析 + 掌握的进度），两次作答封顶 80，没过 90 的门 ----
+  // ---- 即时判分：每判一题摊一张结果卡（对错 + 解析 + 掌握度），掌握度一道一道往上走
+  // （一次作答封顶 50、两次封顶 80），两次都没过 90 的门 ----
   await expect(page.getByText("两题都对，掌握度到 80 了")).toBeVisible({ timeout: 20000 });
-  const result = page.getByTestId("m-card").first();
-  await expect(result).toHaveAttribute("data-action", "probe");
-  await expect(result.getByTestId("m-quiz-result")).toHaveCount(2);
-  await expect(result.getByTestId("m-quiz-result").first()).toHaveAttribute("data-correct", "true");
-  await expect(result.getByTestId("m-quiz-mastery").first()).toHaveAttribute("data-value", "80");
-  await expect(result.getByTestId("m-quiz-mastery").first()).toHaveAttribute(
+  const results = page.getByTestId("m-card");
+  await expect(results).toHaveCount(2);
+  await expect(results.first()).toHaveAttribute("data-action", "grade");
+  await expect(results.first().getByTestId("m-quiz-result")).toHaveAttribute(
+    "data-correct",
+    "true"
+  );
+  await expect(results.first().getByTestId("m-quiz-mastery")).toHaveAttribute("data-value", "50");
+  await expect(results.nth(1).getByTestId("m-quiz-mastery")).toHaveAttribute("data-value", "80");
+  await expect(results.nth(1).getByTestId("m-quiz-mastery")).toHaveAttribute(
     "data-cleared",
     "false"
   );
-  await expect(result.getByTestId("m-quiz-reference").first()).toContainText("参考答案");
+  await expect(results.nth(1).getByTestId("m-quiz-reference")).toContainText("参考答案");
 
   // ---- 看板跟上：掌握度 80、没过门；下一目标从「摸底」变成「练到过门」 ----
   await page.goto(`/learning/${pathId}`);

@@ -1,14 +1,15 @@
 "use client";
 
-/** 答题结果卡（§7.5）：聊天里那次 `mastery` 工具调用的判分结果，摊开给人看。
+/** 答题结果卡（§7.5）：聊天里那次判分工具调用的结果，摊开给人看。
  *
- * 答题通路搬进聊天之后，工具输出那句纯文本（「第 1/2 题 ✓ …」）对人太糊：题干、
- * 你选了什么、对错、解析、这一下掌握度走到哪儿，都要一眼看到。所以 `mastery` 的
- * 判分动作（quiz / probe / assess / grade）不再走通用 `ToolCallCard` 的折叠 JSON，
- * 改由这里渲染；其它动作（status/build/paths/switch/leave）照旧走通用卡。
+ * 答题通路搬进聊天之后，工具输出那句纯文本（「✓ 正确（1.00）…」）对人太糊：题干、
+ * 你选了什么、对错、解析、这一下掌握度走到哪儿，都要一眼看到。所以**判分的两个工具**
+ * （`mastery_grade` / `mastery_assess`）不再走通用 `ToolCallCard` 的折叠 JSON，
+ * 改由这里渲染；其余六个（status/quiz/build/paths/switch/leave）照旧走通用卡——
+ * `mastery_quiz` 只是登记，还没判，没有卡片可讲。
  *
  * **答案键是工具输出里带的，不是前端算的**：`question.answer` 只在本题判分之后
- * 才由服务端塞进 detail（见 `tools/builtin/mastery_tool.py` 模块头 ④），前端只管画。
+ * 才由服务端塞进 detail（见 `tools/builtin/mastery/grade.py`），前端只管画。
  * testid 一律 `m-*` 前缀，跟题库页的 `q-*` 分开——两处选择器长得像会互相撞。
  */
 
@@ -18,8 +19,8 @@ import type { UiToolCall } from "@/hooks/useChat";
 import { masteryPercent } from "@/lib/learning";
 import Markdown from "./Markdown";
 
-/** 会摊成结果卡的动作（其余动作没有卡片可讲）。 */
-const CARD_ACTIONS = new Set(["quiz", "probe", "assess", "grade"]);
+/** 会摊成结果卡的工具（都是判分那一档；`mastery_quiz` 只登记，没有卡片可讲）。 */
+const CARD_TOOLS = new Set(["mastery_grade", "mastery_assess"]);
 
 interface CardQuestion {
   id?: string;
@@ -57,15 +58,12 @@ interface ResultDetail {
   replayed?: boolean;
 }
 
-/** 这个调用该不该由结果卡接管：判分动作 + 已成功 + 至少有一张卡。 */
+/** 这个调用该不该由结果卡接管：判分工具 + 已成功 + 至少有一张卡。 */
 export function isGradedMasteryCall(call: UiToolCall): boolean {
-  if (call.name !== "mastery" || call.ok !== true || !call.detail) {
+  if (!CARD_TOOLS.has(call.name) || call.ok !== true || !call.detail) {
     return false;
   }
   const detail = call.detail as ResultDetail;
-  if (!CARD_ACTIONS.has(String(detail.action ?? ""))) {
-    return false;
-  }
   return Array.isArray(detail.cards) && detail.cards.length > 0;
 }
 
@@ -104,7 +102,8 @@ function GradingChip({ card, assess }: { card: ResultCard; assess: boolean }) {
       {!assess && grading.score !== undefined && (
         <span>· {t("questions.scoreLine", { score: grading.score.toFixed(2) })}</span>
       )}
-      {grading.source === "llm" || grading.source === "assessor" ? (
+      {/* 不是服务端确定性判的分就标一下：简答走 LLM 兜底（llm），定性门是模型自己判的（model） */}
+      {grading.source === "llm" || grading.source === "model" ? (
         <span className="inline-flex items-center gap-0.5">
           <Sparkles className="h-3 w-3" />
           {t("questions.gradedByLlm")}
