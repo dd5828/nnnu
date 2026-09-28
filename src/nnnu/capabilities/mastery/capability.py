@@ -1,19 +1,18 @@
-"""mastery_path 能力（§7.5 重做版）：**门就是游标** + 服务端状态块 + 自由循环。
+"""mastery_path 能力（§7.5）：**门就是游标** + 八工具 + 自由循环。
 
-对外只有一个阶段 `responding`（§6.4 明令：阶段是能力的对外契约，内部三步不分段）：
+对外只有一个阶段 `responding`（§6.4 明令：阶段是能力的对外契约，内部不分段）：
 
-1. **解析路径**（零 LLM）：`config.path_id` → 本会话绑定的路径；一条都没有就是「还没建树」，
-   提示词换成 `system_new`（先 `paths` 看已有的 → 有对得上的 `switch` → 没有才 `build`）；
-2. **状态块**（零 LLM，纯服务端）：路径地图 / 全部路径 / **下一目标**（服务端按「哪些节点已过门」
-   现算，没有 `current_node_id` 这一列）/ 未决的卡 / 到期复习 / 各节点题目数 / 薄弱点 /
-   **已作答过的错题**（题干 + 正确答案 + 解析——这就是「答错后针对性重讲」的原料）。
-   状态块进 system 提示词，**不当作正文流给用户**（上一版把简报当正文发，用户得先读一屏机器生成的
-   清单，这次回归「正文只有模型讲的话」）；
-3. **自由循环**：`run_agent_loop` 里模型讲解、调 mastery 工具（`quiz`/`probe`/`assess` 会当场
-   弹卡片给用户作答，答复与判分都在同一个工具调用里闭环）。
+1. **解析路径**（零 LLM）：`config.path_id` → 本会话绑定的路径。一条都没有不算错——
+   那一回合的活就是建树（`mastery_build`）或切到已有的（`mastery_switch`）；
+   只有「指名道姓给的 id 找不到」才打回。
+2. **自由循环**：`run_agent_loop` 里模型讲解、调 mastery 八工具。
+   **状态由模型自己取**：提示词要求每轮第一条先调 `mastery_status`，
+   服务端不再往 system 提示词里塞状态块（这是上游的用法，
+   见 `deeptutor/capabilities/mastery/prompts/{zh,en}/system.md`）。
+3. **ask_user 缝**（`ask_seam.py`）：发卡前把卡面归位到库里那道题，收到答复先把**学习者原话**
+   落库再回给模型——判分只认那一列，模型转述无效。
 
-**补题搬进工具了**：上一版在能力里「启动时确定性补题」，现在只在真的要用题时（`quiz`）才补，
-所以本能力这一版**零 LLM 调用**（除了循环本身），每回合步数更可预测。
+**本能力零 LLM 调用**（除了循环本身），每回合步数可预测。
 
 两处与 deep_question 不同的地方（照旧）：
 - 正文**不吞**：讲解逐字流出去（真 bus 直接转），收尾的 `content_done` 用 `_TurnTranscriptBus`
@@ -32,17 +31,15 @@ from nnnu.capabilities._shared import (
     mount_tools,
     session_history,
 )
+from nnnu.capabilities.mastery import ask_seam
 from nnnu.core.agent_loop import LoopDeps, run_agent_loop
 from nnnu.core.capability_protocol import BaseCapability, CapabilityManifest, Stage
 from nnnu.core.stream_bus import StreamBus
 from nnnu.services.i18n.prompts import get_prompt_manager
-from nnnu.services.learning.models import PathDetail
-from nnnu.services.learning.policy import gate_of, strategy_key
-from nnnu.services.learning.service import LearningService, get_learning_service
+from nnnu.services.learning.service import get_learning_service
 from nnnu.services.llm.factory import ModelConfig, create_client, resolve_model_config
 from nnnu.services.llm.protocol import LLMClient
 from nnnu.services.llm.reasoning import build_reasoning_kwargs
-from nnnu.services.question_bank.service import get_question_bank
 
 if TYPE_CHECKING:
     from nnnu.core.context import UnifiedContext
@@ -50,23 +47,24 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # 配置项（键名不能动：tests/test_plugins_api.py 断言了 path_id / practice_count）
+# practice_count 是出题权归服务端时的遗留：现在题目由模型现场出，这个数不再驱动任何东西，
+# 但配置项是对外契约（§9.2），manifest 里的键留着，校验也留着。
 PRACTICE_COUNT_MIN = 1
 PRACTICE_COUNT_MAX = 5
 PRACTICE_COUNT_DEFAULT = 3
 
-# 状态块的自定尺寸（§7.5）：够模型看清全局，又不至于把上下文挤爆
-STATE_BLOCK_NODES = 12
-STATE_BLOCK_QUESTIONS = 8
-STATE_BLOCK_PATHS = 10
-STATE_BLOCK_WRONG = 3
-STATE_BLOCK_WEAK = 5
-STEM_PREVIEW_CHARS = 120
-
-# 本阶段挂哪些工具：mastery（讲解/出题/摸底/评定）+ 查资料 + 澄清 + 执行。
+# 本阶段挂哪些工具：八件（读/出题/判分/定性判定/建/列/切/脱离）+ 查资料 + 澄清 + 执行。
 # brainstorm / reason / consult_subagent 排除在外（它们自己会发 LLM 调用）。
 STAGE_TOOLS: dict[str, tuple[str, ...]] = {
     "responding": (
-        "mastery",
+        "mastery_status",
+        "mastery_quiz",
+        "mastery_grade",
+        "mastery_assess",
+        "mastery_build",
+        "mastery_paths",
+        "mastery_switch",
+        "mastery_leave",
         "ask_user",
         "rag",
         "attachment_search",
@@ -160,7 +158,7 @@ class MasteryCapability(BaseCapability):
             await bus.emit_error(
                 message=(
                     f"找不到学习路径 {spec['path_id']}：从学习看板进入已建的路径，"
-                    "或让模型用 mastery 的 paths / build 重建一条。"
+                    "或让模型用 mastery_paths / mastery_build 重建一条。"
                 ),
                 recoverable=False,
             )
@@ -176,13 +174,9 @@ class MasteryCapability(BaseCapability):
             message=prompts.render("mastery", lang, "stages.responding.label") or "responding",
         )
 
-        detail: PathDetail | None = None
-        if path is not None:
-            detail = await service.get_path(path.id)  # 内部重算四态 + 现算下一目标
-            if detail is None:
-                await bus.emit_error(message=f"学习路径 {path.id} 已被删除", recoverable=False)
-                return
-        state_block = await self._state_block(ctx, service, lang, detail)
+        # 卡面归位 + 原话落库：模型自己发卡（三段式的第二段），这两个口子得在这儿堵。
+        # 提示词里**不留状态块**：状态由模型每轮第一条 mastery_status 自己取（上游的用法）
+        ask_seam.install(ctx, bus, service)
 
         model_ref = ctx.model
         mc = resolve_model_config(
@@ -192,37 +186,18 @@ class MasteryCapability(BaseCapability):
         client = create_client(
             mc.model, provider_id=mc.provider_id, base_url=mc.base_url, api_key=mc.api_key
         )
-        common = {
-            "language": {"zh": "中文", "en": "English"}.get(lang, lang),
-            "tools": mounted.tool_lines(),
-            "rules": prompts.render("mastery", lang, "rules").strip(),
-            "state_block": state_block,
-            "kb_note": (
+        system = prompts.render(
+            "mastery",
+            lang,
+            "system",
+            language={"zh": "中文", "en": "English"}.get(lang, lang),
+            tools=mounted.tool_lines(),
+            kb_note=(
                 prompts.render("mastery", lang, "kb_note", kbs="、".join(mounted.kb_names))
                 if mounted.kb_names
                 else ""
             ),
-        }
-        if detail is None:
-            system = prompts.render("mastery", lang, "system_new", **common)
-        else:
-            target = detail.next_target
-            node = detail.node(target.node_id)
-            gate = gate_of(node.node_type) if node else None
-            system = prompts.render(
-                "mastery",
-                lang,
-                "system",
-                node_title=node.title if node else detail.path.title,
-                node_type_label=self._node_type_label(prompts, lang, node),
-                gate_text=(
-                    prompts.render("mastery", lang, "gate_text.quantitative", gate=f"{gate:.0f}")
-                    if gate is not None
-                    else prompts.render("mastery", lang, "gate_text.qualitative")
-                ),
-                strategy=self._strategy(prompts, lang, node),
-                **common,
-            )
+        )
         history = [
             {"role": "system", "content": system},
             *session_history(ctx),
@@ -274,187 +249,6 @@ class MasteryCapability(BaseCapability):
             "practice_count": count,
         }, errors
 
-    # ---- 状态块（纯服务端，进 system 提示词） ----
-
-    async def _state_block(
-        self,
-        ctx: UnifiedContext,
-        service: LearningService,
-        lang: str,
-        detail: PathDetail | None,
-    ) -> str:
-        """服务端现算的状态块：模型看不到库，这里给它全局（**只含已作答题的答案键**）。"""
-        prompts = get_prompt_manager()
-
-        def render(key: str, **vars: Any) -> str:
-            return prompts.render("mastery", lang, f"state_block.{key}", **vars).strip()
-
-        lines = [render("heading")]
-        if detail is None:
-            lines.append(render("no_path"))
-            summaries = await service.list_paths()
-            if summaries:
-                lines.append(render("paths_intro"))
-                for summary in summaries[:STATE_BLOCK_PATHS]:
-                    lines.append(
-                        render(
-                            "path_line",
-                            title=summary.path.title,
-                            mastered=summary.stats.mastered,
-                            total=summary.stats.total,
-                            due=summary.stats.due,
-                            next=summary.next_title or "—",
-                            action=self._action_label(prompts, lang, summary.next_action),
-                            id=summary.path.id,
-                        )
-                    )
-            lines.append(render("paths_hint"))
-            return "\n".join(line for line in lines if line)
-
-        path, stats, target = detail.path, detail.stats, detail.next_target
-        lines.append(
-            render(
-                "path",
-                title=path.title,
-                total=stats.total,
-                mastered=stats.mastered,
-                due=stats.due,
-                progress=f"{stats.progress:.0%}",
-                id=path.id,
-            )
-        )
-        lines.append(
-            render(
-                "next",
-                reason=target.reason or "（没有目标）",
-                action=self._action_label(prompts, lang, target.action),
-            )
-        )
-        pending = await service.pending_interaction(path.id)
-        if pending is not None:
-            lines.append(render("pending", stem=_preview(pending.card_prompt)))
-        counts = await service.question_counts()
-        lines.append(render("nodes_intro"))
-        for node in detail.nodes[:STATE_BLOCK_NODES]:
-            lines.append(
-                render(
-                    "node_line",
-                    title=node.title,
-                    type_label=self._node_type_label(prompts, lang, node),
-                    state_label=prompts.render("mastery", lang, f"state_labels.{node.state}")
-                    or node.state,
-                    mastery=f"{node.mastery:.1f}",
-                    gate_text=self._gate_text(prompts, lang, node),
-                )
-            )
-        if detail.reviews:
-            lines.append(render("reviews_intro"))
-            for review in detail.reviews[:STATE_BLOCK_QUESTIONS]:
-                lines.append(
-                    render(
-                        "review_line",
-                        title=review.title,
-                        type_label=self._node_type_label(
-                            prompts, lang, node=None, node_type=review.node_type
-                        ),
-                        stage=review.review_stage + 1,
-                    )
-                )
-        question_lines: list[str] = []
-        for node in detail.nodes[:STATE_BLOCK_QUESTIONS]:
-            total, attempted, wrong = counts.get(node.id, (0, 0, 0))
-            question_lines.append(
-                render(
-                    "question_line" if total else "no_questions",
-                    title=node.title,
-                    total=total,
-                    attempted=attempted,
-                    wrong=wrong,
-                )
-            )
-        if question_lines:
-            lines.append(render("questions_intro"))
-            lines.extend(question_lines)
-        if detail.weak_points:
-            lines.append(render("weak_intro"))
-            for weak in detail.weak_points[:STATE_BLOCK_WEAK]:
-                lines.append(
-                    render(
-                        "weak_line",
-                        title=weak.title,
-                        mastery=f"{weak.mastery:.1f}",
-                        gate=f"{weak.gate:.0f}" if weak.gate else "—",
-                        attempted=weak.attempted,
-                        wrong=weak.wrong,
-                    )
-                )
-        lines.extend(await self._wrong_material(ctx, lang, target.node_id))
-        return "\n".join(line for line in lines if line)
-
-    async def _wrong_material(
-        self, ctx: UnifiedContext, lang: str, node_id: str | None
-    ) -> list[str]:
-        """已有作答记录的错题（题干 + 答案 + 解析）——**唯一的答案键入口**。
-
-        只取 `filter="wrong"`（即已经作答过的题）；未作答的新题永不进提示词，
-        否则「考考我」就变成了「把答案念给我听」（答案不外泄约束 ②）。
-        """
-        if not node_id:
-            return []
-        prompts = get_prompt_manager()
-        try:
-            wrong = await get_question_bank().list_questions(
-                node_id=node_id, filter="wrong", limit=STATE_BLOCK_WRONG
-            )
-        except Exception:  # 题库读失败不该挡住讲解
-            logger.exception("读错题材料失败，本节按无错题处理")
-            return []
-        if not wrong:
-            return []
-        lines = [prompts.render("mastery", lang, "state_block.wrong_intro").strip()]
-        for question in wrong:
-            lines.append(
-                prompts.render(
-                    "mastery",
-                    lang,
-                    "state_block.wrong_line",
-                    stem=question.stem,
-                    answer=question.answer,
-                    explanation=question.explanation or "（没写解析）",
-                ).rstrip()
-            )
-        lines.append(prompts.render("mastery", lang, "remedial", count=len(wrong)).strip())
-        return [line for line in lines if line]
-
-    # ---- 提示词小工具 ----
-
-    @staticmethod
-    def _action_label(prompts: Any, lang: str, action: str | None) -> str:
-        if not action:
-            return "—"
-        return prompts.render("mastery", lang, f"state_block.action_{action}").strip() or action
-
-    @staticmethod
-    def _strategy(prompts: Any, lang: str, node: Any) -> str:
-        key = strategy_key(node.node_type) if node is not None else "concept"
-        return prompts.render("mastery", lang, f"strategies.{key}").strip()
-
-    @staticmethod
-    def _gate_text(prompts: Any, lang: str, node: Any) -> str:
-        gate = gate_of(node.node_type)
-        if gate is None:
-            return prompts.render("mastery", lang, "state_block.gate_qualitative").strip()
-        return prompts.render(
-            "mastery", lang, "state_block.gate_quantitative", gate=f"{gate:.0f}"
-        ).strip()
-
-    @staticmethod
-    def _node_type_label(prompts: Any, lang: str, node: Any = None, *, node_type: str = "") -> str:
-        kind = node_type or (node.node_type if node is not None else "")
-        if not kind:
-            return ""
-        return prompts.render("mastery", lang, f"node_types.{kind}") or kind
-
     @staticmethod
     def _deps(
         ctx: UnifiedContext,
@@ -481,8 +275,3 @@ class MasteryCapability(BaseCapability):
                 reasoning_effort=config.get("reasoning_effort"),
             ),
         )
-
-
-def _preview(text: str, limit: int = STEM_PREVIEW_CHARS) -> str:
-    plain = " ".join(str(text or "").split())
-    return plain if len(plain) <= limit else plain[:limit] + "…"

@@ -253,8 +253,10 @@ async def test_start_session_binds_path(hub):
         messages = await app.state.runtime._sessions.list_messages(session.id)
         assert [message.role for message in messages] == ["user", "assistant"]
         assert "先讲这一节" in messages[-1].content
-        # 开场白由服务端按下一目标拼（概念节点 → 请用户讲一遍）
-        assert "向量与线性组合" in messages[0].content
+        # 开场白由服务端拼：只报路径名，**具体学哪个节点让模型自己调 mastery_status 取**
+        # （状态不再由服务端塞进提示词，这是上游的用法）
+        assert path["title"] in messages[0].content
+        assert "mastery_status" in messages[0].content
 
         # 同一路径再进一次：复用同一个会话，不再新建
         again = await client.post(
@@ -316,3 +318,98 @@ async def test_error_envelopes(hub):
         "/api/v1/learning/paths/lpath-ghost/session", json={"language": "zh"}
     )
     assert ghost_session.status_code == 404
+
+
+# ---- 看板操作三件（对齐上游）：跳过此题 / 重做路径 / 到期复习聚合 ----
+
+
+async def _pending(app, path_id, node_id, *, turn_id="turn-1") -> str:
+    """摆一张在飞的卡，返回它的 question_id（路径绑给发卡的那个会话）。"""
+    await app.state.learning.bind_session(path_id, "sess-ui")
+    question = await app.state.questions.create_question(
+        stem="在飞的题", options=["1", "2"], answer="A", node_id=node_id
+    )
+    await app.state.learning.open_interaction(
+        path_id=path_id,
+        node_id=node_id,
+        question_id=question.id,
+        kind="quiz",
+        card_prompt=question.stem,
+        session_id="sess-ui",
+        turn_id=turn_id,
+    )
+    return question.id
+
+
+async def test_skip_question_abandons_the_card_only(hub):
+    """跳过：卡作废、下一目标不再被劫持，但**掌握度与作答历史一个字不动**。"""
+    client, app = hub
+    path = await _path(hub)
+    learning = app.state.learning
+    node = (await learning.list_nodes(path["id"]))[1]
+    await _answer(app, node.id, score=1.0, count=1)
+    before = (await learning.get_node(node.id)).mastery
+    await _pending(app, path["id"], node.id)
+
+    response = await client.post(f"/api/v1/learning/paths/{path['id']}/skip-question")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["skipped"] == 1
+    assert body["next_target"]["action"] != "answer_pending"
+    assert await learning.pending_interaction(path["id"]) is None
+    assert (await learning.get_node(node.id)).mastery == before
+    assert before > 0  # 作答历史还在（不是清零）
+    # 没有卡在飞时再点一次：skipped=0，不算错误
+    again = await client.post(f"/api/v1/learning/paths/{path['id']}/skip-question")
+    assert again.status_code == 200 and again.json()["skipped"] == 0
+
+
+async def test_redo_path_clears_progress_but_keeps_nodes(hub):
+    client, app = hub
+    path = await _path(hub)
+    learning = app.state.learning
+    nodes = await learning.list_nodes(path["id"])
+    await learning.record_qualitative(nodes[0].id, passed=True)
+    await _answer(app, nodes[1].id, score=1.0, count=3)
+    assert (await learning.get_node(nodes[1].id)).cleared is True
+
+    response = await client.post(f"/api/v1/learning/paths/{path['id']}/redo")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["reset"] == len(nodes)
+    assert [node["id"] for node in body["nodes"]] == [node.id for node in nodes]
+    assert body["stats"]["mastered"] == 0 and body["stats"]["progress"] == 0.0
+    fresh = await learning.get_node(nodes[1].id)
+    assert (fresh.mastery, fresh.state, fresh.review_stage) == (0.0, "not_started", 0)
+    assert (await learning.get_node(nodes[0].id)).assess_passed is False
+    # 题是历史存档：节点上挂的题还在（作答记录清掉了）
+    assert await app.state.questions.list_questions(node_id=nodes[1].id) != []
+
+
+async def test_reviews_aggregate_across_paths(hub):
+    """到期复习聚合：一条路径的也在、多条路径的也汇总，每条带上是哪条路径的。"""
+    client, app = hub
+    path = await _path(hub)
+    other = await _path(
+        hub, topic="概率论基础", nodes=[{"title": "条件概率", "node_type": "concept"}]
+    )
+    learning = app.state.learning
+    nodes = await learning.list_nodes(path["id"])
+    await learning.record_qualitative(nodes[0].id, passed=True)
+    other_nodes = await learning.list_nodes(other["id"])
+    await learning.record_qualitative(other_nodes[0].id, passed=True)
+
+    response = await client.get("/api/v1/learning/reviews")
+    assert response.status_code == 200
+    reviews = response.json()["reviews"]
+    assert {item["path_id"] for item in reviews} == {path["id"], other["id"]}
+    assert {item["path_title"] for item in reviews} == {path["title"], other["title"]}
+    assert all(item["node_id"] and item["overdue"] is False for item in reviews)
+
+
+async def test_skip_and_redo_404_on_ghost_path(hub):
+    client, _app = hub
+    assert (
+        await client.post("/api/v1/learning/paths/lpath-ghost/skip-question")
+    ).status_code == 404
+    assert (await client.post("/api/v1/learning/paths/lpath-ghost/redo")).status_code == 404

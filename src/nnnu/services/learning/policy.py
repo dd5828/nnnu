@@ -71,8 +71,3 @@ def is_cleared(node: "LearningNode") -> bool:
     if gate is None:
         return bool(node.assess_passed)
     return node.mastery >= gate
-
-
-def strategy_key(node_type: str) -> str:
-    """教学策略键：指向 prompts/{lang}/mastery.yaml 的 strategies.<key>。"""
-    return normalize_type(node_type)

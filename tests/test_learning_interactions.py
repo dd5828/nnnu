@@ -14,8 +14,6 @@ import sqlite3
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from nnnu.services.learning.quiz import pick_next_question
-
 DAY = 86400.0
 NOW = 1_700_000_000.0  # 用例显式传时间，别跟墙上时间赛跑
 
@@ -181,15 +179,17 @@ async def test_stopped_turn_keeps_card_for_next_turn(hub):
     target = await learning.next_objective(path.id, now=NOW + 1)
     assert (target.action, target.node_id) == ("answer_pending", nodes[0].id)
 
-    # 重出题：没作答的题优先 → 还是同一道；开新卡顺手把旧未决行作废
-    picked = await pick_next_question(nodes[0].id)
-    assert picked is not None and picked.id == question.id
+    # 重出的**是哪道题**：出题权归模型后服务端不再挑题，「重出同一道」由 ask_user 缝保证
+    # （它按未决行归位卡面，见 test_mastery_seam）；这里守的是台账那一面——
+    # 那道题还挂在未决行上，模型再开一张新卡才会把旧行作废
+    kept = await learning.pending_interaction(path.id)
+    assert kept.id == first.id and kept.question_id == question.id
     second = await learning.open_interaction(
         path_id=path.id,
         node_id=nodes[0].id,
-        question_id=picked.id,
+        question_id=question.id,
         kind="quiz",
-        card_prompt=picked.stem,
+        card_prompt=question.stem,
         now=NOW + 2,
     )
     assert (await learning.get_interaction(first.id)).status == "abandoned"

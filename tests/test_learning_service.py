@@ -518,3 +518,157 @@ async def test_delete_path_cascades_nodes(hub):
     assert await service.get_path_model(path.id) is None
     assert await service.list_nodes(path.id) == []
     assert (await bank.get_question(question.id)).node_id is None
+
+
+# ---- 答题暂停缝与看板操作（对齐上游后的三件服务层增量） ----
+
+
+async def _pending(hub, path, node, *, session_id="sess-a", turn_id="turn-1"):
+    """摆一张未决的卡（`mastery_quiz` 登记那步的落库结果）：卡发给哪个会话，路径就绑哪个。"""
+    _, service, bank = hub
+    await service.bind_session(path.id, session_id)
+    question = await bank.create_question(
+        stem="在飞的题", options=["1", "2"], answer="A", node_id=node.id
+    )
+    interaction = await service.open_interaction(
+        path_id=path.id,
+        node_id=node.id,
+        question_id=question.id,
+        kind="quiz",
+        card_prompt=question.stem,
+        session_id=session_id,
+        turn_id=turn_id,
+        now=NOW,
+    )
+    return question, interaction
+
+
+async def test_record_question_answer_only_fills_the_word(hub):
+    """暂停缝只落原话：不判分、不改状态，判分是 `mastery_grade` 的事。"""
+    path, nodes = await _path(hub)
+    _, service, _ = hub
+    _, interaction = await _pending(hub, path, nodes[1])
+
+    recorded = await service.record_question_answer(
+        path.id, user_answer="选 B", session_id="sess-a", turn_id="turn-1", now=NOW + 1
+    )
+    assert recorded is not None and recorded.id == interaction.id
+    assert recorded.user_answer == "选 B" and recorded.answered_at == NOW + 1
+    assert recorded.status == "awaiting_input" and recorded.correct is None
+    # 掌握度一动不动：还没判呢
+    assert (await service.get_node(nodes[1].id)).mastery == 0.0
+
+
+async def test_record_question_answer_needs_the_exact_turn(hub):
+    """三个键少一个都不落：模型问无关澄清时匹配不到行，自然 no-op。"""
+    path, nodes = await _path(hub)
+    _, service, _ = hub
+    await _pending(hub, path, nodes[1])
+
+    assert (
+        await service.record_question_answer(
+            path.id, user_answer="B", session_id="sess-a", turn_id="turn-9", now=NOW
+        )
+        is None
+    )
+    assert (
+        await service.record_question_answer(
+            path.id, user_answer="B", session_id="sess-other", turn_id="turn-1", now=NOW
+        )
+        is None
+    )
+    pending = await service.pending_interaction(path.id)
+    assert pending is not None and pending.user_answer == ""
+
+
+async def test_redo_path_resets_progress_but_keeps_the_tree(hub):
+    """重做：掌握度/评定/复习/作答历史全清，**节点树与题目原样留着**。"""
+    path, nodes = await _path(hub)
+    _, service, bank = hub
+    await service.record_qualitative(nodes[0].id, passed=True, now=NOW)
+    await _answer(service, bank, nodes[1].id, score=1.0, count=3)
+    await _pending(hub, path, nodes[1])
+    assert (await service.get_node(nodes[1].id)).cleared is True
+
+    reset = await service.redo_path(path.id, now=NOW + 1)
+    assert reset == len(nodes)
+    fresh = await service.list_nodes(path.id)
+    assert [node.id for node in fresh] == [node.id for node in nodes]  # 树原样
+    for node in fresh:
+        assert (node.mastery, node.state, node.review_stage) == (0.0, "not_started", 0)
+        assert node.next_review_at is None and node.last_practiced_at is None
+        assert node.assess_passed is False and node.assessed_at is None
+    assert await service.pending_interaction(path.id) is None
+    # 题是历史存档，留着；作答记录清掉
+    questions = await bank.list_questions(node_id=nodes[1].id)
+    assert questions and await bank.list_attempts(question_id=questions[0].id) == []
+    board = await service.get_path(path.id)
+    assert board.stats.mastered == 0 and board.stats.progress == 0.0
+    assert board.next_target.node_id == nodes[0].id  # 从头再来
+    assert await service.redo_path("lpath-ghost", now=NOW) == 0  # 空路径不报错
+
+
+async def test_due_reviews_aggregates_across_paths(hub):
+    """到期复习聚合：跨路径汇总，到期的排在前面，每条带上是哪条路径的。"""
+    path_a, nodes_a = await _path(hub, topic="线性代数基础")
+    path_b, nodes_b = await _path(
+        hub, topic="概率论基础", nodes=[{"title": "条件概率", "type": "concept"}]
+    )
+    _, service, _ = hub
+    await service.record_qualitative(nodes_a[0].id, passed=True, now=NOW)
+    await service.record_qualitative(nodes_b[0].id, passed=True, now=NOW)
+
+    # 还没到时候：安排都在，但都不算到期
+    early = await service.due_reviews(now=NOW)
+    assert {item.path_id for item in early} == {path_a.id, path_b.id}
+    assert all(item.overdue is False for item in early)
+    assert {item.path_title for item in early} == {path_a.title, path_b.title}
+
+    # 走到第一档之后：两条路径的复习都到期，聚合里看得到
+    later = await service.due_reviews(now=NOW + 30 * DAY)
+    assert {item.path_id for item in later} == {path_a.id, path_b.id}
+    assert all(item.overdue is True for item in later)
+    assert all(item.node_id in {node.id for node in nodes_a + nodes_b} for item in later)
+
+    # 刚讲完的排在到期的后面（聚合给看板用：先看该复习的）
+    path_c, nodes_c = await _path(
+        hub, topic="离散数学", nodes=[{"title": "集合与映射", "type": "concept"}]
+    )
+    await service.record_qualitative(nodes_c[0].id, passed=True, now=NOW + 30 * DAY)
+    mixed = await service.due_reviews(now=NOW + 30 * DAY + 1)
+    assert [item.overdue for item in mixed] == [True, True, False]
+    assert mixed[-1].path_id == path_c.id and mixed[-1].title == "集合与映射"
+
+
+async def test_pending_card_only_counts_in_its_own_session(hub):
+    """旧会话留下的卡不算未决：原话只能落在发卡那个会话的回合上，谁也答不了它。
+
+    真机踩过：两天前旧会话的卡把「下一目标」钉在 answer_pending 上，模型反复
+    `mastery_grade`（读不到原话）→ 出题 → 再判，整个回合卡死。
+    """
+    path, nodes = await _path(hub)
+    _, service, _ = hub
+    _, card = await _pending(hub, path, nodes[1], session_id="sess-a")
+
+    assert (await service.pending_interaction(path.id)) is not None
+    target = await service.next_objective(path.id, now=NOW)
+    assert (target.action, target.node_id) == ("answer_pending", nodes[1].id)
+
+    # 换个会话接着学：那张卡就地作废，游标回到正常顺序
+    await service.bind_session(path.id, "sess-b")
+    assert await service.pending_interaction(path.id) is None
+    target = await service.next_objective(path.id, now=NOW)
+    assert target.action != "answer_pending"
+    stale = await service.get_interaction(card.id)
+    assert stale.status == "abandoned" and stale.user_answer == ""  # 审计留着，没被判过
+
+
+async def test_rebinding_keeps_the_card_of_its_own_session(hub):
+    """同一个会话来回绑（每回合起手都会绑一次）：在飞的那张卡不受影响。"""
+    path, nodes = await _path(hub)
+    _, service, _ = hub
+    _, interaction = await _pending(hub, path, nodes[1], session_id="sess-a")
+
+    await service.bind_session(path.id, "sess-a")
+    pending = await service.pending_interaction(path.id)
+    assert pending is not None and pending.id == interaction.id

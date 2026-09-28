@@ -85,7 +85,7 @@ def register_builtins() -> None:
         WriteWorkspaceFileTool,
     )
     from nnnu.tools.builtin.github_query import GithubQueryTool
-    from nnnu.tools.builtin.mastery_tool import MasteryTool
+    from nnnu.tools.builtin.mastery import MASTERY_TOOLS
     from nnnu.tools.builtin.media_gen_tool import ImageGenTool
     from nnnu.tools.builtin.paper_search_tool import PaperSearchTool
     from nnnu.tools.builtin.question_bank_tool import QuestionBankTool
@@ -102,7 +102,9 @@ def register_builtins() -> None:
     get_tool_registry().register(AttachmentSearchTool())
     get_tool_registry().register(RagSearchTool())
     get_tool_registry().register(QuestionBankTool())
-    get_tool_registry().register(MasteryTool())
+    # 学习路径八件（§7.5）：读、出题、判分、定性判定、建、列、切、脱离
+    for tool_class in MASTERY_TOOLS:
+        get_tool_registry().register(tool_class())
     get_tool_registry().register(CodeExecutionTool())
     get_tool_registry().register(ExecTool())
     get_tool_registry().register(ListWorkspaceTool())

@@ -27,6 +27,7 @@ from nnnu.services.learning.mastery import (
 )
 from nnnu.services.learning.models import (
     NODE_TYPES,
+    DueReview,
     LearningInteraction,
     LearningNode,
     LearningPath,
@@ -264,6 +265,13 @@ class LearningService:
 
         async def _write() -> None:
             await self._unbind_others(session_id, keep=path_id, now=now)
+            # 换会话 = 上一张卡发给了别的会话：那张卡再也答不上（原话按三键落库），就地作废，
+            # 免得它继续占着「下一目标」（口径与 pending_interaction 一致：只认当前会话的卡）
+            await self._db.execute(
+                "UPDATE learning_interactions SET status = 'abandoned', updated_at = ? "
+                "WHERE path_id = ? AND status = 'awaiting_input' AND session_id IS NOT ?",
+                (now, path_id, session_id),
+            )
             await self._db.execute(
                 "UPDATE learning_paths SET session_id = ?, updated_at = ? WHERE id = ?",
                 (session_id, now, path_id),
@@ -558,17 +566,35 @@ class LearningService:
     # ---- 答题交互（一卡在飞） ----
 
     async def pending_interaction(self, path_id: str) -> LearningInteraction | None:
-        """本路径未决的那张卡（最多一张，部分唯一索引保证）。"""
+        """本路径未决的那张卡（最多一张，部分唯一索引保证）。
+
+        只认**本路径当前绑定会话**发出的那张：学习者原话是按 `(path, session, turn)`
+        三键落库的（见 `record_question_answer`），别的会话留下的卡谁也答不了——再把它
+        当成「还没答完的卡」，模型就会一直卡在「先把这张卡答完」上（真机踩过：两天前
+        旧会话的卡把游标钉死）。路径没绑会话时按 NULL 匹配：库里没绑定会话的卡算活的。
+        """
+        path = await self.get_path_model(path_id)
         row = await self._db.fetch_one(
             "SELECT * FROM learning_interactions WHERE path_id = ? AND status = 'awaiting_input' "
-            "ORDER BY created_at DESC, rowid DESC LIMIT 1",
-            (path_id,),
+            "AND session_id IS ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            (path_id, path.session_id if path is not None else None),
         )
         return self._row_to_interaction(row) if row else None
 
     async def get_interaction(self, interaction_id: str) -> LearningInteraction | None:
         row = await self._db.fetch_one(
             "SELECT * FROM learning_interactions WHERE id = ?", (interaction_id,)
+        )
+        return self._row_to_interaction(row) if row else None
+
+    async def interaction_by_question(
+        self, path_id: str, question_id: str
+    ) -> LearningInteraction | None:
+        """本路径某道题最近一次交互（判分幂等出口用：判过的题再调要能回放结果）。"""
+        row = await self._db.fetch_one(
+            "SELECT * FROM learning_interactions WHERE path_id = ? AND question_id = ? "
+            "ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            (path_id, question_id),
         )
         return self._row_to_interaction(row) if row else None
 
@@ -671,6 +697,93 @@ class LearningService:
             ),
         )
         return await self.get_interaction(interaction_id)
+
+    async def record_question_answer(
+        self,
+        path_id: str,
+        *,
+        user_answer: str,
+        session_id: str | None = None,
+        turn_id: str | None = None,
+        now: float | None = None,
+    ) -> LearningInteraction | None:
+        """把学习者**原话**落进本回合未决的那道题，但**不判分**（拍板 #1 的暂停缝）。
+
+        判分是下一步 `mastery_grade` 的事，这里只存原话——原话一旦落库，后续模型轮次
+        就改不动它了（`mastery_grade` 只认这一列）。按 `(path, session, turn)` 三个键
+        定位，跟上游 `record_question_answer` 同法：模型问无关澄清时这三键匹配不到行，
+        自然 no-op，不会把闲聊当成答题。
+
+        返回落定的那一行；没匹配到（这一回合没登记过题）返回 None。
+        """
+        now = time.time() if now is None else now
+        cursor = await self._db.execute(
+            "UPDATE learning_interactions SET user_answer = ?, answered_at = ?, updated_at = ? "
+            "WHERE path_id = ? AND session_id = ? AND turn_id = ? AND status = 'awaiting_input'",
+            (user_answer[:4000], now, now, path_id, session_id, turn_id),
+        )
+        if not (cursor.rowcount or 0):
+            return None
+        row = await self._db.fetch_one(
+            "SELECT * FROM learning_interactions WHERE path_id = ? AND session_id = ? "
+            "AND turn_id = ? AND status = 'awaiting_input' ORDER BY rowid DESC LIMIT 1",
+            (path_id, session_id, turn_id),
+        )
+        return self._row_to_interaction(row) if row else None
+
+    async def redo_path(self, path_id: str, *, now: float | None = None) -> int:
+        """重做整条路径：清空掌握度/复习/评定/作答历史，**节点树原样留着**。
+
+        返回被重置的节点数。题本身（`questions` 行）不删——它们是历史存档，
+        删了 `learning_interactions` 里的引用就成悬空的；只删作答记录。
+        """
+        now = time.time() if now is None else now
+        node_rows = await self._db.fetch_all(
+            "SELECT id FROM learning_nodes WHERE path_id = ?", (path_id,)
+        )
+        node_ids = [str(row["id"]) for row in node_rows]
+        if not node_ids:
+            return 0
+        marks = ",".join("?" for _ in node_ids)
+
+        async def _reset() -> None:
+            await self._db.execute(
+                "UPDATE learning_nodes SET mastery = 0, state = 'not_started', review_stage = 0, "
+                "next_review_at = NULL, last_practiced_at = NULL, assess_passed = 0, "
+                "assessed_at = NULL, updated_at = ? WHERE path_id = ?",
+                (now, path_id),
+            )
+            await self._db.execute(
+                "DELETE FROM learning_interactions WHERE path_id = ?", (path_id,)
+            )
+            await self._db.execute(
+                f"DELETE FROM question_attempts WHERE question_id IN "
+                f"(SELECT id FROM questions WHERE node_id IN ({marks}))",
+                tuple(node_ids),
+            )
+
+        await self._db.transaction(_reset)
+        return len(node_ids)
+
+    async def due_reviews(self, *, now: float | None = None) -> list[DueReview]:
+        """跨路径的到期复习（看板聚合视图）：所有路径的复习安排汇总，到期的在前。"""
+        now = time.time() if now is None else now
+        rows = await self._db.fetch_all(
+            "SELECT * FROM learning_paths ORDER BY updated_at DESC, rowid DESC"
+        )
+        items: list[DueReview] = []
+        for row in rows:
+            path = self._row_to_path(row)
+            for review in self._reviews(await self.list_nodes(path.id), now):
+                items.append(
+                    DueReview(
+                        path_id=path.id,
+                        path_title=path.title,
+                        **review.model_dump(),
+                    )
+                )
+        items.sort(key=lambda item: (not item.overdue, item.next_review_at or 0.0))
+        return items
 
     async def abandon_pending(self, path_id: str, *, now: float | None = None) -> int:
         """作废本路径的未决交互（回合被停/题被删时的清道夫）。"""
@@ -828,8 +941,10 @@ class LearningService:
         return {str(row["node_id"]): int(row["n"] or 0) for row in rows if row["node_id"]}
 
     async def _pending_by_path(self) -> dict[str, LearningInteraction]:
+        """path_id → 未决卡（口径同 `pending_interaction`：只算各路径当前绑定会话的那张）。"""
         rows = await self._db.fetch_all(
-            "SELECT * FROM learning_interactions WHERE status = 'awaiting_input'"
+            "SELECT i.* FROM learning_interactions i JOIN learning_paths p ON p.id = i.path_id "
+            "WHERE i.status = 'awaiting_input' AND i.session_id IS p.session_id"
         )
         return {str(row["path_id"]): self._row_to_interaction(row) for row in rows}
 

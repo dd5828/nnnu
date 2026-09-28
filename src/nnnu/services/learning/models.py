@@ -152,6 +152,13 @@ class ReviewItem(BaseModel):
     overdue: bool = False  # 已到期（含过期）
 
 
+class DueReview(ReviewItem):
+    """跨路径的到期复习（看板聚合视图用）：就是 ReviewItem 再加它属于哪条路径。"""
+
+    path_id: str
+    path_title: str
+
+
 class NextTarget(BaseModel):
     """下一目标：服务端由「哪些节点已过门」现算出来的一句话。
 

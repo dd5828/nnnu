@@ -4,10 +4,12 @@
 - 单选 / 多选：确定性判分。多选给部分分，公式 `(命中 − 错选) / 答案个数`（自定，§7.4 未给数）——
   全对 1 分、漏选按比例、错选抵消命中、全错 0 分；
 - 简答：先确定性（归一化后精确相等，或分词 Jaccard 达标），不达标才请 LLM 判分器；
-- 定性门评定（`QualitativeAssessor`）：判「用户自己讲的一段话」过不过，布尔，fail-closed；
 - 空作答、空答案键一律判错（fail-closed）——不去打扰模型。
 
-两条判分入口共用同一套口径：题库页路由与聊天里的 `quiz` 工具都走
+定性门（concept/design）**不在这里**：由模型自己 `mastery_assess(passed=…)` 判，
+本模块不再持有独立评定器。
+
+两条判分入口共用同一套口径：题库页路由与聊天里的 `mastery_grade` 工具都走
 `grade_with_fallback`（`grade_with_fallback` 不落库，记作答由调用方决定）。
 
 §16.5：本模块自研，上游 `deeptutor/learning` 只作对照阅读，不复制实现。
@@ -254,12 +256,6 @@ class ShortAnswerGrader:
         return parse_grader_reply(response.text, fallback=fallback or grade_short(answer, key))
 
 
-class QualitativeAssessment(BaseModel):
-    passed: bool = False
-    feedback: str = ""
-
-
-QUALITATIVE_MAX_TOKENS = 512
 # 卡片作答「短到可以只看标签」的长度上限（超过就当成一段解释，不靠单字母猜）
 SHORT_LABEL_CHARS = 24
 
@@ -297,6 +293,38 @@ def resolve_choice_submission(answer: str, options: Sequence[str]) -> str:
     return ""
 
 
+def resolve_expected_key(text: str, options: Sequence[str], *, multiple: bool) -> str:
+    """把模型给的 `expected_answer` 归一成**入库口径的答案键**；读不出返回空串。
+
+    库里客观题的 `answer` 存的是标签（多选升序拼接，如 "AC"），而模型习惯写选项原文
+    （或「A、C」这种）。判定顺序与 `resolve_choice_submission` 一致：
+    ① 整串等于某个选项原文 → 该标签；
+    ② 短答复里只提到一个合法标签 → 它（单选认，多选也认这一条会太松，故多选跳过）；
+    ③ 选项原文被包含 → 全部命中；
+    ④ 提到的合法标签 → 全部命中（多选按升序拼接）。
+
+    多选任一环节命中多个就收多个；单选只在**唯一**命中时给答案，含糊一律返回空串
+    （宁可让模型重写一遍，也不能把题目的答案键定错）。
+    """
+    raw = (text or "").strip()
+    if not raw or not options:
+        return ""
+    valid = list(LABELS[: len(options)])
+    normalized = normalize_text(raw)
+    for label, option in zip(valid, options):
+        if normalized and normalized == normalize_text(str(option)):
+            return label
+    if not multiple:
+        return resolve_choice_submission(raw, options)
+    hits = [
+        label
+        for label, option in zip(valid, options)
+        if normalize_text(str(option)) and normalize_text(str(option)) in normalized
+    ]
+    picked = hits or sorted(labels_of(raw) & set(valid))
+    return "".join(picked)
+
+
 async def grade_with_fallback(
     question: Question,
     answer: str,
@@ -327,101 +355,6 @@ async def grade_with_fallback(
             logger.warning("简答判分调用失败，保留确定性结论：%s", exc)
     feedback = result.feedback or feedback_text(result, lang=language, answer_key=question.answer)
     return result, feedback
-
-
-class QualitativeAssessor:
-    """定性门评定器（`assess`）：判「学习者自己讲的一段话」讲没讲清楚，**布尔**。
-
-    fail-closed：回复不是 JSON、或没给 passed 字段，一律判**不过**——定性门宁可让用户
-    再讲一遍，也不能把没学会的放过去。提示词在 prompts/{lang}/grading.yaml: qualitative.*
-    """
-
-    def __init__(
-        self,
-        client: LLMClient,
-        model_config: ModelConfig,
-        *,
-        language: str = "zh",
-        max_tokens: int = QUALITATIVE_MAX_TOKENS,
-    ) -> None:
-        self._client = client
-        self._model_config = model_config
-        self._language = language
-        self._max_tokens = max_tokens
-
-    async def assess(
-        self,
-        *,
-        node_title: str,
-        description: str = "",
-        answer: str,
-        tracker: CostTracker | None = None,
-    ) -> QualitativeAssessment:
-        prompts = get_prompt_manager()
-        messages = [
-            {
-                "role": "system",
-                "content": prompts.render(
-                    "grading",
-                    self._language,
-                    "qualitative.system",
-                    language=_language_name(self._language),
-                ),
-            },
-            {
-                "role": "user",
-                "content": prompts.render(
-                    "grading",
-                    self._language,
-                    "qualitative.user",
-                    title=node_title,
-                    description=description or "（未给说明）",
-                    answer=(answer or "").strip(),
-                ),
-            },
-        ]
-        response = await self._client.complete(
-            LLMRequest(
-                messages=messages,
-                model=self._model_config.model,
-                temperature=0.0,
-                max_tokens=self._max_tokens,
-            )
-        )
-        if tracker is not None and response.usage:
-            tracker.add_usage(
-                provider=self._model_config.provider_id or "",
-                model=self._model_config.model,
-                input_tokens=int(
-                    response.usage.get("prompt_tokens") or response.usage.get("input_tokens") or 0
-                ),
-                output_tokens=int(
-                    response.usage.get("completion_tokens")
-                    or response.usage.get("output_tokens")
-                    or 0
-                ),
-            )
-        parsed = parse_json_reply(response.text)
-        if not isinstance(parsed, dict) or not isinstance(parsed.get("passed"), bool):
-            logger.warning("定性评定回复读不出结论，按未通过计：%r", response.text[:200])
-            return QualitativeAssessment(passed=False, feedback="")
-        return QualitativeAssessment(
-            passed=bool(parsed["passed"]), feedback=str(parsed.get("feedback") or "").strip()
-        )
-
-
-def assessor_from_settings(*, language: str = "zh") -> QualitativeAssessor:
-    """按设置里的默认模型建一个定性评定器（与 grader_from_settings 同形）。"""
-    from nnnu.services.llm.factory import create_client, resolve_model_config
-
-    model_config = resolve_model_config()
-    client = create_client(
-        model_config.model,
-        provider_id=model_config.provider_id,
-        base_url=model_config.base_url,
-        api_key=model_config.api_key,
-    )
-    return QualitativeAssessor(client, model_config, language=language)
 
 
 def _format_options(options: list[str] | None) -> str:

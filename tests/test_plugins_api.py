@@ -4,9 +4,13 @@ import re
 
 from nnnu.runtime import bootstrap
 from nnnu.services.settings.service import get_settings_service
+from nnnu.tools.builtin.mastery import MASTERY_TOOLS
 
 # 汉字（U+4E00–U+9FFF）：用来区分「渲染出了中文」和「回退成英文键」
 CJK = re.compile("[一-鿿]")
+
+# 学习路径八件（§7.5）：工具面从单个 mastery 拆成八个
+MASTERY_TOOL_NAMES = {tool_class.definition.name for tool_class in MASTERY_TOOLS}
 
 
 def _by_name(data: dict) -> dict:
@@ -53,10 +57,13 @@ async def test_plugins_lists_chat_and_ask_user(client):
     assert set(mastery["config_schema"]) == {"path_id", "practice_count"}
     assert mastery["config_schema"]["practice_count"]["maximum"] == 5
     assert "question_bank" in tool_names
-    assert "mastery" in tool_names
-    mastery_tool = next(item for item in data["tools"] if item["definition"]["name"] == "mastery")
-    assert mastery_tool["definition"]["mount"] == "user_toggleable"
-    assert mastery_tool["definition"]["cost_hint"]  # chat.yaml: tool_cost_hints.mastery
+    # 八件（§7.5）：出题权归模型后拆开的工具面
+    assert MASTERY_TOOL_NAMES <= set(tool_names)
+    assert "mastery" not in tool_names  # 旧的九动作单工具已退役
+    for name in MASTERY_TOOL_NAMES:
+        tool = next(item for item in data["tools"] if item["definition"]["name"] == name)
+        assert tool["definition"]["mount"] == "user_toggleable"
+        assert tool["definition"]["cost_hint"]  # chat.yaml: tool_cost_hints.<name>
 
 
 async def test_availability_follows_prerequisites_not_mount(client, tmp_home):

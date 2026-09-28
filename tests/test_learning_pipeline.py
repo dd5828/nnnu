@@ -1,24 +1,26 @@
-"""mastery_path 脚本化金路径（§7.5 重做版；§14「为线性代数基础生成路径并完成 2 个节点的循环」）。
+"""mastery_path 脚本化金路径（§7.5；§14「为线性代数基础生成路径并完成 2 个节点的循环」）。
 
-一场从头到尾的戏：**4 个回合 / 14 次 LLM 调用**（脚本多一步少一步都会当场炸：
+一场从头到尾的戏：**4 个回合 / 19 次 LLM 调用**（脚本多一步少一步都会当场炸：
 少一步 = 回合没跑完就"脚本耗尽"，多一步 = 结尾 `len(scripted.calls)` 对不上）。
 
 **记账规则**（改脚本前必须懂）：`ScriptedLLM` 按调用序消费步骤，所以
-① 循环里每一轮 = 1 次调用；② **工具内的次级调用也占位**——缺题时的补题、`assess` 的
-定性评定都是真 LLM 调用（各 1 次，位置固定在「发起它的那次工具往返之后」）；
-③ **卡片阻塞本身 0 次调用**：等用户作答不花钱；答复回来后客观题是确定性判分（0 次），
-只有简答题才可能落到判分器。金路径全是单选，所以 6 张卡一共只多出 2 次补题 + 2 次评定。
+① 循环里每一轮 = 1 次调用；② **本能力已无次级调用**——出题权归模型后，题目由模型在
+循环里自己写（`mastery_quiz` 只是登记），定性门也由模型自己判（`mastery_assess`），
+没有补题调用、也没有独立评定器；③ **卡片阻塞本身 0 次调用**：等用户作答不花钱；
+④ 每道题的往返是 2 轮——「登记 + 发卡」同轮（工具顺序执行：`mastery_quiz` 登记完，
+`ask_user` 才发卡）、「判分」一轮。
 
-盯的是**回合内答题闭环**（拍板 #1：答题搬进聊天）：服务端从题库渲染卡片 → 用户在同一个
-WS 上 `ask_user_reply` 作答 → 工具当场判分、写回掌握度 → 判分结果进下一轮消息历史，
-模型这一轮就看得见。全程没有 advance（拍板 #2）：回合 3 里 `probe` 摸完没过门，
-紧接着的 `quiz` **不点名节点**也照样落在同一个节点上——下一目标是服务端现算的。
+盯的是**三段式答题闭环**（拍板 #1）：模型 `mastery_quiz` 登记题目与答案（答案留服务端）
+→ 模型自己调 `ask_user` 发卡 → 用户在同一个 WS 上 `ask_user_reply` 作答 → 模型
+`mastery_grade` 判分、写回掌握度。全程没有 advance（拍板 #2）：回合 3 里三道题
+**都不点名节点**也照样落在同一个节点上——下一目标是服务端现算的。
 
 另外守四件事：
-- 四类两套门 + probe（拍板 #3）：concept/design 走 `assess`、procedure 走题到 90 分；
-  摸底两道只到 80（至少 3 次作答才可能过门，见 mastery.py）；
-- 卡片形状：题面/选项由服务端渲染（模型不写题），定性卡是纯文本卡（无选项、可自由作答）；
-- **答案不外泄**：未作答题的解析一次都没进过任何一次请求（题干与选项该给，解析与答案键不给）；
+- 四类两套门（拍板 #3）：concept/design 走 `mastery_assess`、procedure 走题到 90 分；
+  头两道全对也只到 80（置信封顶：至少 3 次作答才可能过门，见 learning/mastery.py）；
+- **卡面归位**：模型在 `ask_user` 里瞎写的题面/选项一律不作数，服务端按库里那道题重发；
+- **模型转述无效**：判分只认 `ask_user` 缝落库的学习者原话，`mastery_grade` 的 `answer`
+  参数在有原话时被忽略（脚本里故意塞一个错答案来证这件事）；
 - **看到的 == 存下的**：流出去的正文字节 == 落库的助手消息（`_TurnTranscriptBus` 的职责）。
 """
 
@@ -44,64 +46,32 @@ NODES = [
     {"title": "特征值分解", "type": "design", "parent_index": 1},
 ]
 
-# 出题契约见 prompts/zh/mastery.yaml: quiz.task；答案统一取 B，卡片一律回 "B"，
-# 于是「第几张卡」与断言无关（选题顺序是「未作答的、后建的先来」）
-PROBE_ROWS = json.dumps(
-    {
-        "questions": [
-            {
-                "type": "single",
-                "stem": "二阶矩阵 [[1,2],[3,4]] 的行列式是多少？",
-                "options": ["-2", "-4", "2", "10"],
-                "answer": "B",
-                "explanation": "ad − bc = 1×4 − 2×3 = −2。",
-                "difficulty": "easy",
-            },
-            {
-                "type": "single",
-                "stem": "把矩阵的第一行乘以 3，行列式会怎么变？",
-                "options": ["不变", "变成 3 倍", "变成 1/3", "变成 9 倍"],
-                "answer": "B",
-                "explanation": "某一行乘 k，行列式也乘 k。",
-                "difficulty": "medium",
-            },
-        ]
-    },
-    ensure_ascii=False,
-)
-EXTRA_ROWS = json.dumps(
-    {
-        "questions": [
-            {
-                "type": "single",
-                "stem": "上三角矩阵的行列式等于什么？",
-                "options": ["主对角线之和", "主对角线之积", "0", "1"],
-                "answer": "B",
-                "explanation": "上三角矩阵的行列式是主对角线元素之积。",
-                "difficulty": "medium",
-            },
-            {
-                "type": "single",
-                "stem": "矩阵可逆的充要条件是行列式满足什么？",
-                "options": ["行列式等于 1", "行列式不为 0", "行列式大于 0", "行列式为整数"],
-                "answer": "B",
-                "explanation": "行列式非零 ⇔ 矩阵可逆。",
-                "difficulty": "hard",
-            },
-        ]
-    },
-    ensure_ascii=False,
-)
-ASSESS_PASS = json.dumps(
-    {"passed": True, "feedback": "定义、直觉与适用边界都讲到了。"}, ensure_ascii=False
-)
-# 不该出现在任何一次请求里的字符串（判分之后才允许出现的是「参考答案：B」这种标签，不是解析）
-ANSWERS_AND_EXPLANATIONS = [
-    "ad − bc = 1×4 − 2×3 = −2。",
-    "某一行乘 k，行列式也乘 k。",
-    "上三角矩阵的行列式是主对角线元素之积。",
-    "行列式非零 ⇔ 矩阵可逆。",
-]
+# 三道单选题（模型现场出的，答案键只留在服务端）；正确项故意不都在 B 上，
+# 顺带证明「标签 ↔ 选项」的映射是真在算的
+Q1 = {
+    "question": "二阶矩阵 [[1,2],[3,4]] 的行列式是多少？",
+    "question_type": "single",
+    "options": ["-2", "-4", "2", "10"],
+    "expected_answer": "A",
+    "explanation": "ad − bc = 1×4 − 2×3 = −2。",
+    "difficulty": "easy",
+}
+Q2 = {
+    "question": "把矩阵的第一行乘以 3，行列式会怎么变？",
+    "question_type": "single",
+    "options": ["不变", "变成 3 倍", "变成 1/3", "变成 9 倍"],
+    "expected_answer": "B",
+    "explanation": "某一行乘 k，行列式也乘 k。",
+    "difficulty": "medium",
+}
+Q3 = {
+    "question": "上三角矩阵的行列式等于什么？",
+    "question_type": "single",
+    "options": ["主对角线之和", "主对角线之积", "0", "1"],
+    "expected_answer": "B",
+    "explanation": "上三角矩阵的行列式是主对角线元素之积。",
+    "difficulty": "medium",
+}
 
 
 @pytest.fixture
@@ -126,18 +96,18 @@ def _script() -> ScriptedLLM:
     usage = {"prompt_tokens": 30, "completion_tokens": 12}
     return ScriptedLLM(
         [
-            # ── 回合 1（建路径）：先 paths 看库里有没有 → 没有才 build → 收尾（0 次次级调用）──
+            # ── 回合 1（建路径）：先 mastery_status（还没绑路径，它会把库里已有的列出来）→
+            #     没有对得上的才 mastery_build → 收尾 ──
             ScriptedStep(
-                tool_calls=[_call("mastery", "c1", action="paths")],
+                tool_calls=[_call("mastery_status", "c1")],
                 finish_reason="tool_calls",
                 usage=usage,
             ),
             ScriptedStep(
                 tool_calls=[
                     _call(
-                        "mastery",
+                        "mastery_build",
                         "c2",
-                        action="build",
                         topic=TOPIC,
                         title=TOPIC,
                         summary="从向量到特征值",
@@ -148,41 +118,131 @@ def _script() -> ScriptedLLM:
                 usage=usage,
             ),
             ScriptedStep(chunks=["路径建好了，我们就从第一个节点开始。"], usage=usage),
-            # ── 回合 2（节点1 概念 → 定性门）：讲解 + assess（卡里等用户讲一遍）→
-            #     定性评定（1 次次级调用）→ 收尾 ──
+            # ── 回合 2（节点1 概念 → 定性门）：status → 讲解 + ask_user 请人讲一遍 →
+            #     模型自己判 mastery_assess → 收尾（全程 0 次次级调用）──
             ScriptedStep(
                 chunks=["线性组合就是「加法」与「数乘」这两件事：把向量拼起来描述同一个空间。"],
-                tool_calls=[_call("mastery", "c3", action="assess")],
+                tool_calls=[_call("mastery_status", "c3")],
                 finish_reason="tool_calls",
                 usage=usage,
             ),
-            ScriptedStep(chunks=[ASSESS_PASS], usage=usage),
+            ScriptedStep(
+                tool_calls=[
+                    _call(
+                        "ask_user",
+                        "c4",
+                        question="请用自己的话把「向量与线性组合」讲一遍：它是什么、为什么成立、什么时候用得上。",
+                        options=[],
+                        context="节点《向量与线性组合》",
+                    )
+                ],
+                finish_reason="tool_calls",
+                usage=usage,
+            ),
+            ScriptedStep(
+                tool_calls=[
+                    _call(
+                        "mastery_assess",
+                        "c5",
+                        passed=True,
+                        feedback="定义、直觉与适用边界都讲到了。",
+                    )
+                ],
+                finish_reason="tool_calls",
+                usage=usage,
+            ),
             ScriptedStep(chunks=["讲清楚了，这个节点算过关。"], usage=usage),
-            # ── 回合 3（节点2 操作 → 定量门 90）：讲解 + probe 摸两道（没到门）→
-            #     补题 1 次 → 同回合再 quiz 出两道（补题 1 次）→ 收尾 ──
+            # ── 回合 3（节点2 操作 → 定量门 90）：三道题，每题「登记+发卡」一轮、「判分」一轮。
+            #     头两道全对只到 80（2 次封顶），第三道才到 100 —— 门要两次以上证据 ──
             ScriptedStep(
                 chunks=["行列式是线性变换对面积（体积）的缩放倍数。"],
-                tool_calls=[_call("mastery", "c4", action="probe")],
+                tool_calls=[_call("mastery_status", "c6")],
                 finish_reason="tool_calls",
                 usage=usage,
             ),
-            ScriptedStep(chunks=[PROBE_ROWS], usage=usage),
+            # 第一张卡：ask_user 的参数是**故意瞎写的**——服务端会按库里那道题归位
             ScriptedStep(
-                tool_calls=[_call("mastery", "c5", action="quiz", author=4, cards=2)],
+                tool_calls=[
+                    _call("mastery_quiz", "c7", **Q1),
+                    _call(
+                        "ask_user",
+                        "c8",
+                        question="【模型自己编的题面，不该出现在卡上】",
+                        options=[{"label": "Z", "description": "【编的选项】"}],
+                        context="【编的小字】",
+                    ),
+                ],
                 finish_reason="tool_calls",
                 usage=usage,
             ),
-            ScriptedStep(chunks=[EXTRA_ROWS], usage=usage),
-            ScriptedStep(chunks=["四道都对了，这个节点过了 90 分的门。"], usage=usage),
-            # ── 回合 4（节点3 设计 → 定性门）：讲解 + assess（不点名节点，走服务端的下一目标）→
-            #     定性评定 → 收尾 ──
+            ScriptedStep(
+                tool_calls=[_call("mastery_grade", "c9")],
+                finish_reason="tool_calls",
+                usage=usage,
+            ),
+            ScriptedStep(
+                tool_calls=[
+                    _call("mastery_quiz", "c10", **Q2),
+                    _call(
+                        "ask_user",
+                        "c11",
+                        question="【编的题面】",
+                        options=[],
+                    ),
+                ],
+                finish_reason="tool_calls",
+                usage=usage,
+            ),
+            ScriptedStep(
+                tool_calls=[_call("mastery_grade", "c12")],
+                finish_reason="tool_calls",
+                usage=usage,
+            ),
+            ScriptedStep(
+                tool_calls=[
+                    _call("mastery_quiz", "c13", **Q3),
+                    _call(
+                        "ask_user",
+                        "c14",
+                        question="【编的题面】",
+                        options=[],
+                    ),
+                ],
+                finish_reason="tool_calls",
+                usage=usage,
+            ),
+            # 这一笔判分故意传了个错答案（学习者在卡上敲的是 B）：服务端落库的原话优先，忽略它
+            ScriptedStep(
+                tool_calls=[_call("mastery_grade", "c15", answer="A")],
+                finish_reason="tool_calls",
+                usage=usage,
+            ),
+            ScriptedStep(chunks=["三道都对了，这个节点过了 90 分的门。"], usage=usage),
+            # ── 回合 4（节点3 设计 → 定性门）：status → ask → assess → 收尾 ──
             ScriptedStep(
                 chunks=["特征值分解要解决的问题是：换一组基，让线性变换只表现为缩放。"],
-                tool_calls=[_call("mastery", "c6", action="assess")],
+                tool_calls=[_call("mastery_status", "c16")],
                 finish_reason="tool_calls",
                 usage=usage,
             ),
-            ScriptedStep(chunks=[ASSESS_PASS], usage=usage),
+            ScriptedStep(
+                tool_calls=[
+                    _call(
+                        "ask_user",
+                        "c17",
+                        question="请用自己的话讲讲「特征值分解」要解决什么问题。",
+                        options=[],
+                        context="节点《特征值分解》",
+                    )
+                ],
+                finish_reason="tool_calls",
+                usage=usage,
+            ),
+            ScriptedStep(
+                tool_calls=[_call("mastery_assess", "c18", passed=True)],
+                finish_reason="tool_calls",
+                usage=usage,
+            ),
             ScriptedStep(
                 chunks=["整条路径的节点都过了，接下来可以加新节点或换主题。"], usage=usage
             ),
@@ -265,11 +325,8 @@ def _events_of(events: list[dict], kind: str) -> list[dict]:
 
 
 def _signatures(events: list[dict]) -> list[str]:
-    """工具调用签名表（`name:action`）——比裸计数更能定位漂移在哪一步。"""
-    return [
-        f"{event['payload']['tool_name']}:{event['payload']['args'].get('action')}"
-        for event in _events_of(events, "tool_call")
-    ]
+    """工具调用序（工具名）——比裸计数更能定位漂移在哪一步。"""
+    return [event["payload"]["tool_name"] for event in _events_of(events, "tool_call")]
 
 
 def _response_of(events: list[dict]) -> str:
@@ -329,9 +386,11 @@ async def test_mastery_golden_path(ws_client):
         assert len(errors) == 1 and "补题数量 99" in errors[0]["payload"]["message"]
         assert scripted.calls == [], "配置或路径就错的回合不该打模型"
 
-        # ---- 回合 1：先 paths（库里空的）→ build 建树 ----
+        # ---- 回合 1：先 mastery_status（库里空的）→ mastery_build 建树 ----
         created = _run(ws, ws_client, message="我要学线性代数基础")
-        assert _signatures(created) == ["mastery:paths", "mastery:build"]
+        assert _signatures(created) == ["mastery_status", "mastery_build"]
+        # 还没建树不是「调用出错」：模型接着 build 就得，所以 ok=True
+        assert _results(created)[0]["ok"] is True
         assert len(_events_of(created, "cost_summary")) == 1
         assert _response_of(created) == "路径建好了，我们就从第一个节点开始。"
 
@@ -368,7 +427,7 @@ async def test_mastery_golden_path(ws_client):
         first = _run(
             ws, ws_client, message="开始学吧", answers=("线性组合就是把向量按标量加起来……",)
         )
-        assert _signatures(first) == ["mastery:assess"]
+        assert _signatures(first) == ["mastery_status", "ask_user", "mastery_assess"]
         asks = _asks(first)
         assert len(asks) == 1
         # 定性卡：没有选项、允许自由作答，题面是「请用自己的话讲一遍」
@@ -377,9 +436,10 @@ async def test_mastery_golden_path(ws_client):
         # 用户的答复经 ask_user_reply 回到工具里（事件里也能看到回执）
         replies = _events_of(first, "ask_user_reply")
         assert len(replies) == 1 and replies[0]["payload"]["answer"].startswith("线性组合")
-        assessed = _results(first)[0]["detail"]
+        assessed = _results(first)[-1]["detail"]
         assert assessed["cleared"] is True and assessed["mastery"] == 100.0
-        assert assessed["cards"][0]["grading"]["source"] == "assessor"
+        # 定性门由**模型自己判**，没有独立评定器的那次调用（旧版这里是 "assessor"）
+        assert assessed["cards"][0]["grading"]["source"] == "model"
 
         detail = _detail(ws_client, path_id)
         assert _node_of(detail, node1["id"])["assess_passed"] is True
@@ -388,40 +448,68 @@ async def test_mastery_golden_path(ws_client):
         assert detail["next_target"]["node_id"] == node2["id"]
         assert detail["next_target"]["action"] == "probe"  # 没碰过的定量节点先摸底
 
-        # ---- 回合 3：操作节点。probe 两道 → 没过门 → 同一回合再 quiz 两道 → 过门 ----
-        second = _run(ws, ws_client, message="继续", answers=("B", "B", "B", "B"))
-        # 两个动作都**不点名节点**：第二张卡的目标是服务端在 probe 之后重算的
-        assert _signatures(second) == ["mastery:probe", "mastery:quiz"]
-        cards_payload = _results(second)[0]["detail"]
-        assert len(cards_payload["cards"]) == 2
-        # 摸底两道全对也只到 80（置信封顶），所以没过门——这是「门要两次以上证据」的设计
-        assert cards_payload["mastery"] == 80.0 and cards_payload["cleared"] is False
-        assert [card["grading"]["correct"] for card in cards_payload["cards"]] == [True, True]
-        # 补题是真的发生了（每张卡都从题库里来，题面与选项由服务端渲染）
+        # ---- 回合 3：操作节点。三道题都不点名节点（下一目标服务端现算），
+        #      头两道只到 80 没过门，第三道才 100 —— 门要两次以上证据 ----
+        second = _run(ws, ws_client, message="继续", answers=("A", "B", "B"))
+        assert _signatures(second) == [
+            "mastery_status",
+            "mastery_quiz",
+            "ask_user",
+            "mastery_grade",
+            "mastery_quiz",
+            "ask_user",
+            "mastery_grade",
+            "mastery_quiz",
+            "ask_user",
+            "mastery_grade",
+        ]
+        # 判分结果在 tool_result 里是第 3 / 6 / 9 条（每条签名各配一条 result）
+        first_grade = _results(second)[3]["detail"]
+        second_grade = _results(second)[6]["detail"]
+        third_grade = _results(second)[9]["detail"]
+        # 一次作答封顶 50 → 两次封顶 80 → 三次不封顶 100：门要两次以上证据
+        assert first_grade["mastery"] == 50.0 and first_grade["cleared"] is False
+        assert first_grade["cards"][0]["grading"]["correct"] is True
+        assert second_grade["mastery"] == 80.0 and second_grade["cleared"] is False
+        assert third_grade["mastery"] == 100.0 and third_grade["cleared"] is True
+
         asks = _asks(second)
-        assert len(asks) == 4
-        assert all(ask["options"] and ask["allow_free_text"] is True for ask in asks)
-        assert {ask["context"] for ask in asks} == {
-            "节点《矩阵与行列式》· 第 1/2 题",
-            "节点《矩阵与行列式》· 第 2/2 题",
-        }
-        # 判分之后才给答案键：出卡时 payload 里没有 answer/explanation
+        assert len(asks) == 3
+        # **卡面归位**：脚本里 ask_user 传的是「【模型自己编的题面…】」，卡片上必须是库里那道题
+        assert [ask["question"] for ask in asks] == [Q1["question"], Q2["question"], Q3["question"]]
+        assert [ask["options"] for ask in asks] == [
+            [
+                {"label": label, "description": text}
+                for label, text in zip("ABCD", question["options"])
+            ]
+            for question in (Q1, Q2, Q3)
+        ]
+        assert "编" not in json.dumps(asks, ensure_ascii=False)
+        assert all(ask["allow_free_text"] is True for ask in asks)
+        assert {ask["context"] for ask in asks} == {"节点《矩阵与行列式》"}
+        # 出卡时不给答案键与解析（判分之后才允许出现）
         assert all("answer" not in ask and "explanation" not in ask for ask in asks)
 
-        quiz_payload = _results(second)[1]["detail"]
-        assert quiz_payload["mastery"] == 100.0 and quiz_payload["cleared"] is True
-        assert quiz_payload["cards"][0]["question"]["answer"] == "B"  # 这一处是判完之后
+        # **模型转述无效**：第 3 题的判分脚本传了 answer="A"（错的），
+        # 学习者在卡上敲的是 B —— 服务端落库的原话优先，判出来必须是「对」
+        assert third_grade["cards"][0]["answer"] == "B"
+        assert third_grade["cards"][0]["question"]["answer"] == "B"  # 这一处是判完之后
+        # 第一题的正确项是 A（不是默认的 B），标签映射确实在算
+        assert first_grade["cards"][0]["answer"] == "A"
 
         questions = _questions_of(ws_client, node2["id"])
-        assert len(questions) == 4  # 摸底 2 道 + 练习补 2 道
+        assert len(questions) == 3  # 三道都是模型现场出的
         assert {question["source"] for question in questions} == {"mastery"}
         assert all(question["node_id"] == node2["id"] for question in questions)
+        assert sorted(question["stem"] for question in questions) == sorted(
+            [Q1["question"], Q2["question"], Q3["question"]]
+        )
         attempts = [
             attempt
             for question in questions
             for attempt in (await ws_client.app.state.questions.list_attempts(question["id"]))
         ]
-        assert len(attempts) == 4 and all(attempt.correct for attempt in attempts)
+        assert len(attempts) == 3 and all(attempt.correct for attempt in attempts)
 
         detail = _detail(ws_client, path_id)
         node = _node_of(detail, node2["id"])
@@ -432,9 +520,10 @@ async def test_mastery_golden_path(ws_client):
 
         # ---- 回合 4：设计节点。assess 不点名 → 服务端给的下一目标还是它 ----
         third = _run(ws, ws_client, message="最后这一节呢", answers=("换一组基以后只看缩放倍数……",))
-        assert _signatures(third) == ["mastery:assess"]
-        assert _asks(third)[0]["context"] == "节点《特征值分解》· 用自己的话讲一遍"
-        assert _results(third)[0]["detail"]["cleared"] is True
+        assert _signatures(third) == ["mastery_status", "ask_user", "mastery_assess"]
+        assess_payload = _results(third)[-1]["detail"]
+        assert assess_payload["cards"][0]["answer"].startswith("换一组基")  # 原话进库了
+        assert assess_payload["cleared"] is True
 
         detail = _detail(ws_client, path_id)
         assert detail["stats"] == {
@@ -449,13 +538,18 @@ async def test_mastery_golden_path(ws_client):
         assert detail["weak_points"] == []
         assert detail["next_target"]["action"] == "complete"  # 全过门了
 
-        # 交互日志：6 张卡（2 摸底 + 2 练习 + 2 评定）全部落定，没有一张挂着
+        # 交互日志：5 张卡（3 道题 + 2 次定性评定）全部落定，没有一张挂着
         rows = await ws_client.app.state.db.fetch_all(
             "SELECT kind, status, grade_source FROM learning_interactions ORDER BY created_at"
         )
-        assert len(rows) == 6
+        assert len(rows) == 5
         assert all(row["status"] == "graded" for row in rows)
         assert [row["kind"] for row in rows].count("assess") == 2
+        # 两道定性门都是模型自判（旧版的 assessor 已退役）
+        assert [row["grade_source"] for row in rows if row["kind"] == "assess"] == [
+            "model",
+            "model",
+        ]
 
         # ---- 「看到的 == 存下的」：三段正文流出去多少，库里就存多少 ----
         assistant = [
@@ -470,10 +564,13 @@ async def test_mastery_golden_path(ws_client):
         assert assistant[3] == _response_of(third)
         assert _streamed_text(second) == _response_of(second)
 
-        # ---- 答案不外泄：未作答题的解析一次都没进过任何一次请求 ----
-        dumped = [json.dumps(request.messages, ensure_ascii=False) for request in scripted.calls]
-        for probe in ANSWERS_AND_EXPLANATIONS:
-            assert not any(probe in text for text in dumped), probe
+        # ---- 判分只认落库的原话：库里存的是学习者在卡上敲的那份，不是模型转述的 ----
+        # （出题权归模型后，答案键本来就在模型上下文里，没什么可拦的；真正要守的是这一列——
+        #   第 3 题的判分脚本塞了 answer="A"，库里仍然必须是学习者敲的 B）
+        stored = await ws_client.app.state.db.fetch_all(
+            "SELECT user_answer FROM learning_interactions WHERE kind = 'quiz' ORDER BY created_at"
+        )
+        assert [row["user_answer"] for row in stored] == ["A", "B", "B"]
 
-    # 14 步一步不剩：每个回合的调用次数都在账上（记账规则见模块头）
-    assert len(scripted.calls) == 14
+    # 19 步一步不剩：每个回合的调用次数都在账上（记账规则见模块头）
+    assert len(scripted.calls) == 19

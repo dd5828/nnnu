@@ -56,6 +56,10 @@ class AskUserTool(BaseTool):
                     },
                     "description": "可选项列表（可为空；为空时卡片只收自由文本）",
                 },
+                "context": {
+                    "type": "string",
+                    "description": "卡片上那行小字副标题（如「节点《向量与线性组合》」），可空",
+                },
             },
             "required": ["question"],
         },
@@ -69,5 +73,11 @@ class AskUserTool(BaseTool):
         question = str(ctx.args.get("question", ""))
         options = normalize_options(ctx.args.get("options"))
         ask_id = new_id("ask")
-        answer = await ask_fn(question, options, ask_id, allow_free_text=True)
+        answer = await ask_fn(
+            question,
+            options,
+            ask_id,
+            allow_free_text=True,
+            context=str(ctx.args.get("context") or "").strip(),
+        )
         return ToolResult(ok=True, output=answer or "(用户未作答)")

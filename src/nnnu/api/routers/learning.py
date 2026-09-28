@@ -1,11 +1,14 @@
-"""学习路径 REST（§9.1 的三个端点 + 本批新增的编辑端点）。
+"""学习路径 REST（§9.1 的三个端点 + 本批新增的编辑与看板操作端点）。
 
 §9.1 只列了 `GET /learning/paths`、`GET /learning/paths/{id}`、
 `POST /learning/paths/{id}/session`。用户拍板「路径修改 = 路径页直接编辑（纯 REST、零 LLM）」，
 所以补了路径/节点的增删改。**没有 advance**：门就是游标（拍板 #2），推进是服务端每回合
 现算的下一目标（`PathDetail.next_target`），模型与前端都没有推进按钮。
-看板数据全部并进那两个 GET，不新增看板端点；**不新增 `POST /learning/paths`**
+单条路径的看板数据并进那两个 GET；**不新增 `POST /learning/paths`**
 （路径由聊天驱动生成，拍板 #3）。偏离清单见 STAGE_LOG。
+
+对齐上游时补的三个看板操作端点：`skip-question`（作废未决卡）、`redo`（清进度留树）、
+`GET /learning/reviews`（跨路径的到期复习聚合，这是唯一一个跨路径的读端点）。
 
 `POST .../session` 照 `sessions.py:114 regenerate` 的形态：即发即返回
 `{path_id, session_id, turn_id}`，正文在 WS 上流（前端拿到 turn_id 后显式订阅）。
@@ -183,6 +186,42 @@ async def move_node(node_id: str, body: MoveBody, http_request: Request):
     if detail is None:
         return _not_found(f"学习路径 {node.path_id} 不存在")
     return _detail_json(detail)
+
+
+@router.post("/api/v1/learning/paths/{path_id}/skip-question")
+async def skip_question(path_id: str, http_request: Request):
+    """跳过当前未决的那道题：卡作废，**掌握度与作答历史都不动**（不是判错）。
+
+    没有未决的题时 `skipped=0`，不算错误——前端按一次刷新用即可。
+    """
+    service = _service(http_request)
+    if await service.get_path_model(path_id) is None:
+        return _not_found(f"学习路径 {path_id} 不存在")
+    skipped = await service.abandon_pending(path_id)
+    detail = await service.get_path(path_id)
+    if detail is None:
+        return _not_found(f"学习路径 {path_id} 不存在")
+    return {**_detail_json(detail), "skipped": skipped}
+
+
+@router.post("/api/v1/learning/paths/{path_id}/redo")
+async def redo_path(path_id: str, http_request: Request):
+    """重做整条路径：掌握度/评定/复习/作答历史全清，**节点树与题目原样留着**。"""
+    service = _service(http_request)
+    if await service.get_path_model(path_id) is None:
+        return _not_found(f"学习路径 {path_id} 不存在")
+    reset = await service.redo_path(path_id)
+    detail = await service.get_path(path_id)
+    if detail is None:
+        return _not_found(f"学习路径 {path_id} 不存在")
+    return {**_detail_json(detail), "reset": reset}
+
+
+@router.get("/api/v1/learning/reviews")
+async def list_reviews(http_request: Request):
+    """到期复习聚合（跨路径，看板的「该复习了」）：到期的排在前面。"""
+    reviews = await _service(http_request).due_reviews()
+    return {"reviews": [review.model_dump() for review in reviews]}
 
 
 @router.post("/api/v1/learning/paths/{path_id}/session")
