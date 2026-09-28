@@ -13,13 +13,15 @@ router = APIRouter()
 
 
 def _availability(name: str) -> bool:
-    """此刻这个工具能不能真干活（读配置判断，不查会话状态）。"""
+    """此刻这个工具能不能真干活（读配置判断，不查会话状态）。
+
+    videogen 不在此列：它压根不注册（见 bootstrap.register_builtins），
+    挂上去只有友好报错、没有真生成（§7.2 未交付）。
+    """
     if name == "imagegen":
         from nnnu.services.media.service import image_generation_available
 
         return image_generation_available()
-    if name == "videogen":
-        return False  # 只有友好提示、没有真生成（§7.2 未交付）
     return True
 
 

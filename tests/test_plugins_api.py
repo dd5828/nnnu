@@ -65,12 +65,13 @@ async def test_availability_follows_prerequisites_not_mount(client, tmp_home):
     tools = _by_name((await client.get("/api/v1/plugins")).json())
     assert tools["ask_user"]["available"] is True
     assert tools["imagegen"]["available"] is False  # image_model 还是空的
-    assert tools["videogen"]["available"] is False  # 只有友好报错，没真生成
+    # videogen 只有友好报错的桩，干脆不注册——不该出现在工具清单里
+    assert "videogen" not in tools
 
     get_settings_service().save_area("models", {"image_model": "gpt-image-1"})
     tools = _by_name((await client.get("/api/v1/plugins")).json())
     assert tools["imagegen"]["available"] is True
-    assert tools["videogen"]["available"] is False  # 配了图也不代表视频能生成
+    assert "videogen" not in tools
 
 
 async def test_descriptions_and_cost_hints_render_both_langs(client, repo_prompts):
