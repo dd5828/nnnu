@@ -1,4 +1,4 @@
-"""搜索域（§7.2）：四提供商、配置解析、web_search/paper_search/web_fetch 工具。"""
+"""搜索域（§7.2）：五提供商、配置解析、web_search/paper_search/web_fetch 工具。"""
 
 import httpx
 import pytest
@@ -6,6 +6,7 @@ import pytest
 from nnnu.core.tool_protocol import ToolContext
 from nnnu.services.search import service as search_service
 from nnnu.services.search.providers import (
+    BingCnProvider,
     BochaProvider,
     DuckDuckGoProvider,
     SearxNGProvider,
@@ -23,6 +24,19 @@ DDG_HTML = """
 <td class="result-snippet">这是第一条结果的摘要</td>
 <a rel="nofollow" class="result-link" href="https://example.com/b">结果二</a>
 <td class="result-snippet">这是第二条结果的摘要</td>
+</body></html>
+"""
+
+BING_HTML = """
+<html><body>
+<li class="b_algo">
+  <h2><a href="https://example.com/a">结果一标题</a></h2>
+  <div class="b_caption"><p class="b_lineclamp2">这是第一条结果的摘要<a target="_blank" class="b_algoReadMore" href="https://example.com/a">阅读更多</a></p></div>
+</li>
+<li class="b_algo">
+  <h2><a href="https://example.com/b?x=1&amp;y=2">结果<b>二</b>标题</a></h2>
+  <div class="b_caption"><p class="b_lineclamp2">这是第二条结果的摘要</p></div>
+</li>
 </body></html>
 """
 
@@ -49,6 +63,36 @@ def _ctx(**args) -> ToolContext:
 
 
 # ---- 提供商 ----
+
+
+async def test_bing_cn_parses_results():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "cn.bing.com" in str(request.url)
+        return httpx.Response(200, text=BING_HTML)
+
+    response = await BingCnProvider().search("测试", 5, transport=_transport(handler))
+    assert response.error is None
+    assert [hit.title for hit in response.hits] == ["结果一标题", "结果二标题"]
+    assert response.hits[0].url == "https://example.com/a"
+    # 标题里的标签剥掉、URL 里的实体还原
+    assert response.hits[1].url == "https://example.com/b?x=1&y=2"
+    assert "这是第一条结果的摘要" in response.hits[0].snippet
+    assert "阅读更多" not in response.hits[0].snippet
+
+
+async def test_bing_cn_truncates_to_max_results():
+    response = await BingCnProvider().search(
+        "测试", 1, transport=_transport(lambda r: httpx.Response(200, text=BING_HTML))
+    )
+    assert len(response.hits) == 1
+
+
+async def test_bing_cn_http_error():
+    response = await BingCnProvider().search(
+        "测试", 5, transport=_transport(lambda r: httpx.Response(503))
+    )
+    assert response.error is not None
+    assert "503" in response.error
 
 
 async def test_duckduckgo_parses_lite_html():
@@ -161,11 +205,12 @@ async def test_service_uses_configured_provider_and_key(tmp_home):
     assert "bochaai.com" in captured["url"]
 
 
-async def test_service_defaults_to_duckduckgo(tmp_home):
+async def test_service_defaults_to_bing_cn(tmp_home):
+    """未配置 provider 时走免密钥默认（大陆可达的必应中文版，P3 降级项的收口）。"""
     response = await search_service.web_search(
-        "测试", transport=_transport(lambda r: httpx.Response(200, text=DDG_HTML))
+        "测试", transport=_transport(lambda r: httpx.Response(200, text=BING_HTML))
     )
-    assert response.provider == "duckduckgo"
+    assert response.provider == "bing_cn"
     assert len(response.hits) == 2
 
 

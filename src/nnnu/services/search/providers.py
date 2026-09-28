@@ -1,10 +1,13 @@
 """web_search 提供商（§7.2）：≥3 可配置 + 免密钥默认。
 
 adapted from DeepTutor (Apache-2.0) deeptutor/services/search/providers/：
-- DuckDuckGo 免密钥默认（lite 端点 HTML 解析，零依赖）；
+- DuckDuckGo（lite 端点 HTML 解析，零依赖）；
 - SearXNG（自建实例，format=json）；
 - Bocha（博查，POST /v1/web-search）；
 - serpapi_compat（任意 SerpAPI 兼容端点 GET search.json）。
+
+新增（非上游，自写）：BingCn 免密钥默认——lite.duckduckgo.com 在大陆网络
+连不通（P3 验收降级），改用 cn.bing.com 结果页 HTML 解析，同为零依赖。
 
 全部 httpx 异步；transport 参数供测试注入（§12.1 同法）。
 """
@@ -22,6 +25,13 @@ SEARCH_TIMEOUT_S = 15.0
 # DDG lite 页面结构：<a rel="nofollow" class="result-link">标题</a> + <td class="result-snippet">摘要</td>
 _DDG_LINK_RE = re.compile(r'<a[^>]*class="result-link"[^>]*>(.*?)</a>', re.S)
 _DDG_SNIPPET_RE = re.compile(r'<td[^>]*class="result-snippet"[^>]*>(.*?)</td>', re.S)
+
+# Bing cn 结果页结构：<h2>…<a href="URL">标题</a>…</h2> + <p class="b_lineclamp*">摘要
+# <a class="b_algoReadMore">阅读更多</a></p>（尾部这个「阅读更多」不是摘要正文，先去元素再剥标签）
+_BING_TITLE_RE = re.compile(r'<h2[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>', re.S)
+_BING_SNIPPET_RE = re.compile(r'<p[^>]*class="b_lineclamp[^"]*"[^>]*>(.*?)</p>', re.S)
+_BING_READMORE_RE = re.compile(r'<a[^>]*class="b_algoReadMore"[^>]*>.*?</a>', re.S)
+
 _TAG_RE = re.compile(r"<[^>]+>")
 
 
@@ -43,8 +53,60 @@ class SearchProvider(Protocol):
     ) -> SearchResponse: ...
 
 
+class BingCnProvider:
+    """免密钥默认：cn.bing.com 结果页 HTML 解析（大陆可达，零第三方依赖）。"""
+
+    BASE_URL = "https://cn.bing.com/search"
+
+    async def search(
+        self,
+        query: str,
+        max_results: int,
+        *,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> SearchResponse:
+        url = base_url or self.BASE_URL
+        headers = {"User-Agent": "Mozilla/5.0 (nnnu search tool)"}
+        async with httpx.AsyncClient(timeout=SEARCH_TIMEOUT_S, transport=transport) as client:
+            try:
+                response = await client.get(url, params={"q": query}, headers=headers)
+            except httpx.HTTPError as exc:
+                return SearchResponse(
+                    query=query,
+                    provider="bing_cn",
+                    error=f"搜索请求失败：{exc.__class__.__name__}",
+                )
+            if response.status_code != 200:
+                return SearchResponse(
+                    query=query,
+                    provider="bing_cn",
+                    error=f"搜索引擎返回 HTTP {response.status_code}",
+                )
+        # 标题锚点与摘要块在结果页里一一对应，各自按出现序取；数量不一致时缺的摘要留空
+        titles = _BING_TITLE_RE.findall(response.text)
+        snippets = [
+            _strip_tags(_BING_READMORE_RE.sub("", block))
+            for block in _BING_SNIPPET_RE.findall(response.text)
+        ]
+        hits = [
+            SearchHit(
+                title=_strip_tags(title),
+                url=html.unescape(target),
+                snippet=snippets[index] if index < len(snippets) else "",
+                source="Bing",
+            )
+            for index, (target, title) in enumerate(titles[:max_results])
+        ]
+        return SearchResponse(query=query, provider="bing_cn", hits=hits)
+
+
 class DuckDuckGoProvider:
-    """免密钥默认：lite 端点 HTML 解析（无第三方依赖，测试注入 MockTransport）。"""
+    """免密钥备选：lite 端点 HTML 解析（无第三方依赖，测试注入 MockTransport）。
+
+    大陆网络不可达（P3 验收降级），默认已改 BingCn；保留供境外部署选用。
+    """
 
     BASE_URL = "https://lite.duckduckgo.com/lite/"
 
@@ -264,10 +326,12 @@ class SerpApiCompatProvider:
 
 
 PROVIDERS: dict[str, SearchProvider] = {
+    "bing_cn": BingCnProvider(),
     "duckduckgo": DuckDuckGoProvider(),
     "searxng": SearxNGProvider(),
     "bocha": BochaProvider(),
     "serpapi_compat": SerpApiCompatProvider(),
 }
 
-DEFAULT_PROVIDER = "duckduckgo"
+# 未配置 provider 时的免密钥默认：必应中文版（境外部署可改回 duckduckgo）
+DEFAULT_PROVIDER = "bing_cn"

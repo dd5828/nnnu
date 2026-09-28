@@ -128,7 +128,7 @@
       "temperature": "Temperature (0–2)",
       "reasoningEffort": "Reasoning effort",
       "searchProvider": "Search provider",
-      "searchProviderDesc": "Empty = DuckDuckGo (no key needed); pick Bocha / SearXNG / SerpAPI-compatible as needed",
+      "searchProviderDesc": "Empty = Bing (China, no key needed); pick Bocha / SearXNG / SerpAPI-compatible as needed",
       "searchBaseUrl": "Search base URL",
       "searchBaseUrlDesc": "Empty = provider default; set this for a self-hosted SearXNG or similar",
       "searchApiKey": "Search API key",

@@ -188,7 +188,7 @@ SPECS: dict[str, AreaSpec] = {
                 "choice",
                 "",
                 "settings.models.searchProvider",
-                choices=("", "duckduckgo", "searxng", "bocha", "serpapi_compat"),
+                choices=("", "bing_cn", "duckduckgo", "searxng", "bocha", "serpapi_compat"),
                 description_key="settings.models.searchProviderDesc",
             ),
             SettingField(

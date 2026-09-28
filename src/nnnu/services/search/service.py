@@ -3,7 +3,7 @@
 配置来源：settings models 区（search_provider/search_base_url/search_api_key）
 + user-secrets 域 "search"（按 provider 分槽）+ 环境变量兜底
 （BOCHA_API_KEY / SERPAPI_API_KEY / SEARCH_API_KEY）。
-未配置 provider 时用免密钥默认 DuckDuckGo。
+未配置 provider 时用免密钥默认（BingCn，见 providers.DEFAULT_PROVIDER）。
 """
 
 import os

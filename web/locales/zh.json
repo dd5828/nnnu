@@ -128,7 +128,7 @@
       "temperature": "温度（0–2）",
       "reasoningEffort": "推理档位",
       "searchProvider": "联网搜索服务商",
-      "searchProviderDesc": "留空 = 免密钥的 DuckDuckGo；Bocha/SearXNG/SerpAPI 兼容端点按需选",
+      "searchProviderDesc": "留空 = 免密钥的必应中文版（大陆可达）；Bocha/SearXNG/SerpAPI 兼容端点按需选",
       "searchBaseUrl": "搜索接口地址",
       "searchBaseUrlDesc": "留空 = 用服务商默认地址；自建 SearXNG 等端点填这里",
       "searchApiKey": "搜索 API 密钥",
