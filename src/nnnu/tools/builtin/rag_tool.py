@@ -98,6 +98,7 @@ class RagSearchTool(BaseTool):
                     "kb": hit.kb_id,
                     "page": hit.page,
                     "snippet": snippet,
+                    "title": filename,
                 }
             )
         return ToolResult(ok=True, output="\n".join(lines), detail={"sources": sources})

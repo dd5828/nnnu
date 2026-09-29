@@ -22,7 +22,9 @@ VALID_CASES: dict[str, dict] = {
     "thinking_done": {"text": "完整思考"},
     "tool_call": {"tool_name": "add", "args": {"a": 1}, "call_id": "call-1"},
     "tool_result": {"call_id": "call-1", "ok": True, "summary": "=3"},
-    "citation": {"sources": [{"doc_id": "d1", "kb": "kb1", "page": 2, "snippet": "..."}]},
+    "citation": {
+        "sources": [{"doc_id": "d1", "kb": "kb1", "page": 2, "snippet": "...", "title": "标题"}]
+    },
     "ask_user": {
         "question": "选哪个?",
         "options": [

@@ -80,6 +80,8 @@ export interface CitationSource {
   kb: string;
   page: number | null;
   snippet: string;
+  /** 来源标题（P6 补，老库里的引用 JSON 没有这个键 → 一律当空串处理）。 */
+  title?: string;
 }
 
 export interface CitationPayload {

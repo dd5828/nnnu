@@ -13,6 +13,7 @@ from nnnu.core.tool_protocol import BaseTool, ToolContext, ToolDefinition, ToolM
 
 FETCH_TIMEOUT_S = 10.0
 CONTENT_MAX_CHARS = 200_000
+SNIPPET_MAX_CHARS = 300
 
 
 def _is_private_host(hostname: str) -> bool:
@@ -77,17 +78,22 @@ class WebFetchTool(BaseTool):
             return ToolResult(ok=False, output=f"抓取失败：{error}")
         max_chars = int(ctx.args.get("max_chars", 50000))
 
-        def fetch() -> tuple[str, str | None]:
+        def fetch() -> tuple[str, str, str | None]:
             from markitdown import MarkItDown
 
             try:
                 result = MarkItDown().convert(url)
-                return result.text_content.strip(), None
+                # 标题优先取文档元数据（markitdown 的 DocumentConverterResult.title），
+                # 取不到回落到域名——引用面板要给人一个能判断「该不该点」的名字，
+                # 光一串 URL 做不到。getattr 而非直接取属性：转换器不是只有那一个实现。
+                raw_title = getattr(result, "title", "") or ""
+                title = str(raw_title).strip() or (urlparse(url).hostname or url)
+                return result.text_content.strip(), title, None
             except Exception as exc:  # markitdown 抛混杂异常：统一转友好文案
-                return "", f"{type(exc).__name__}: {exc}"
+                return "", "", f"{type(exc).__name__}: {exc}"
 
         try:
-            text, fetch_error = await asyncio.wait_for(
+            text, title, fetch_error = await asyncio.wait_for(
                 asyncio.to_thread(fetch), timeout=FETCH_TIMEOUT_S
             )
         except TimeoutError:
@@ -100,4 +106,21 @@ class WebFetchTool(BaseTool):
         text = text[:max_chars]
         if truncated:
             text += "\n…（内容过长已截断）"
-        return ToolResult(ok=True, output=text, detail={"url": url})
+        # 抓下来的页面本身就是一份可验证的来源（§7.6 报告要「≥5 条可点击验证」）：
+        # 之前只回 detail.url，引用面板里根本不出现抓取过的页
+        return ToolResult(
+            ok=True,
+            output=text,
+            detail={
+                "url": url,
+                "sources": [
+                    {
+                        "doc_id": url,
+                        "kb": "web",
+                        "page": None,
+                        "snippet": text[:SNIPPET_MAX_CHARS],
+                        "title": title,
+                    }
+                ],
+            },
+        )

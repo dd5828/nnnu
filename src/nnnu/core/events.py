@@ -80,10 +80,21 @@ class ToolResultPayload(BaseModel):
 
 
 class CitationSource(BaseModel):
+    """一条引用来源（§6.1）。
+
+    `title` 是 P6 补的（§7.6 验收要求来源「可点击验证」）：联网检索的 doc_id 是 URL，
+    光有 doc_id 只能显示一串链接文本，用户没法判断该不该点。默认空值——老库里
+    落盘的 citation JSON 没有这个键，反序列化不能炸。
+
+    契约测试（tests/test_contract_stream.py）只逐字比顶层 payload 字段，嵌套模型
+    不在范围内，所以这里加字段不需要同步改契约断言。
+    """
+
     doc_id: str
     kb: str
     page: int | None = None
     snippet: str = ""
+    title: str = ""
 
 
 class CitationPayload(BaseModel):

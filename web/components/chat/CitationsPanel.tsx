@@ -3,30 +3,20 @@
 /**
  * 引用面板（§6.1 citation 事件 / done.citations）：来源列表。
  *
- * 知识库引用可点：跳到知识中心详情页并直接开阅读器到那一页（深链接
- * `?doc=&page=`）。附件引用（kb === "attachment"）没有可跳的页面，保持纯文本。
+ * 落点分三支（见 `lib/citations.ts`）：联网来源是新窗口可点的外链
+ * （§7.6 验收要求来源「可点击验证」）、知识库引用跳知识中心详情页并直接开阅读器
+ * 到那一页（深链接 `?doc=&page=`）、附件引用没有可跳的页面，保持纯文本。
  */
 
 import { useState } from "react";
 import Link from "next/link";
-import { BookOpen, ChevronDown } from "lucide-react";
+import { BookOpen, ChevronDown, ExternalLink } from "lucide-react";
 import { useI18n } from "@/hooks/useI18n";
+import { citationTarget } from "@/lib/citations";
 import type { CitationSource } from "@/types/stream";
 
 /** 先露几条：检索默认 top_k=5，一次列全把回答挤没了；剩下的折起来，想看得自己展 */
 const VISIBLE_SOURCES = 3;
-
-/** 引用 → 知识中心深链接；附件引用返回 null（不跳）。 */
-function locatePath(source: CitationSource): string | null {
-  if (!source.kb || source.kb === "attachment") {
-    return null;
-  }
-  const query = new URLSearchParams({ doc: source.doc_id });
-  if (source.page !== null && source.page !== undefined) {
-    query.set("page", String(source.page));
-  }
-  return `/knowledge/${source.kb}?${query.toString()}`;
-}
 
 export default function CitationsPanel({ sources }: { sources: CitationSource[] }) {
   const { t } = useI18n();
@@ -44,20 +34,32 @@ export default function CitationsPanel({ sources }: { sources: CitationSource[] 
       </div>
       <ol className="space-y-1.5">
         {shown.map((source, index) => {
-          const path = locatePath(source);
-          const label = `${source.kb || source.doc_id}${
+          const target = citationTarget(source);
+          const page =
             source.page !== null && source.page !== undefined
               ? ` · ${t("chat.page", { n: String(source.page) })}`
-              : ""
-          }`;
+              : "";
+          const label = `${target.label}${page}`;
           return (
             <li key={`${source.doc_id}-${index}`} className="text-xs">
               <span className="mr-1 inline-block min-w-4 rounded bg-accent px-1 text-center font-medium text-primary">
                 {index + 1}
               </span>
-              {path ? (
+              {target.kind === "external" ? (
+                <a
+                  href={target.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  data-testid="citation-external"
+                  title={source.doc_id}
+                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                >
+                  {label}
+                  <ExternalLink className="h-3 w-3 shrink-0" />
+                </a>
+              ) : target.kind === "internal" ? (
                 <Link
-                  href={path}
+                  href={target.href}
                   data-testid="citation-link"
                   className="text-muted hover:underline"
                 >

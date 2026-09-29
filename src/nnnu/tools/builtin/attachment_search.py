@@ -111,6 +111,7 @@ class AttachmentSearchTool(BaseTool):
                     "kb": "attachment",
                     "page": hit["page"],
                     "snippet": snippet,
+                    "title": hit["name"],
                 }
             )
         return ToolResult(ok=True, output="\n".join(lines), detail={"sources": sources})

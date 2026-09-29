@@ -154,6 +154,7 @@ async def test_rag_hit_carries_page_and_citation(tmp_path, tmp_home):
     assert top.kb == kb.id
     assert top.page in (1, 2)
     assert top.snippet and top.snippet in result.output
+    assert top.title  # §7.6：引用面板拿它当标签（这里是文件名）
 
 
 async def test_rag_searches_only_the_named_kb(tmp_path, tmp_home):
