@@ -5,6 +5,7 @@
 import { create } from "zustand";
 import { useLanguageStore } from "@/i18n/language-store";
 import { apiFetch } from "@/lib/api";
+import { CAPABILITY_RESEARCH, type ResearchDepth, type ResearchMode } from "@/lib/capabilities";
 import { ChatSocket, type SocketStatus } from "@/lib/ws";
 import type {
   AskUserOption,
@@ -12,6 +13,10 @@ import type {
   CostSummaryPayload,
   StreamEventEnvelope,
 } from "@/types/stream";
+
+/** 随消息下发的回合参数（§7.6）：服务端 `TurnRequest.config` 是直通的自由 dict，
+ *  能力自己从里面取自己认识的键——研究档位、模式，以及确认按钮的 `research_action`。 */
+export type TurnConfig = Record<string, string>;
 
 export interface AttachmentRef {
   id: string;
@@ -105,6 +110,10 @@ interface ChatState {
   modelRef: string | null;
   /** 会话级能力选择（§6.4 粘性）：'chat' | 'deep_solve'，随每条消息下发并落库 */
   capability: string;
+  /** 深度研究档位与产出模式（§7.6）：只在 capability=deep_research 时用得上，
+   *  同样随每条消息的 config 下发（服务端按它拆子问题、选成稿提示词） */
+  researchDepth: ResearchDepth;
+  researchMode: ResearchMode;
 
   init: () => void;
   refreshSessions: () => Promise<void>;
@@ -115,9 +124,11 @@ interface ChatState {
   setKbIds: (ids: string[]) => void;
   setModelRef: (ref: string | null) => void;
   setCapability: (value: string) => void;
+  setResearchDepth: (value: ResearchDepth) => void;
+  setResearchMode: (value: ResearchMode) => void;
   renameSession: (id: string, title: string) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
-  send: (text: string, attachments: AttachmentRef[]) => Promise<void>;
+  send: (text: string, attachments: AttachmentRef[], extraConfig?: TurnConfig) => Promise<void>;
   stop: () => void;
   regenerate: () => void;
   replyAskUser: (answer: string) => void;
@@ -391,6 +402,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   kbIds: [],
   modelRef: null,
   capability: "chat",
+  researchDepth: "standard",
+  researchMode: "report",
 
   init: () => {
     if (initialized) {
@@ -471,6 +484,10 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
   setCapability: (value: string) => set(() => ({ capability: value })),
 
+  setResearchDepth: (value: ResearchDepth) => set(() => ({ researchDepth: value })),
+
+  setResearchMode: (value: ResearchMode) => set(() => ({ researchMode: value })),
+
   renameSession: async (id: string, title: string) => {
     await apiFetch(`/api/v1/sessions/${id}`, {
       method: "PATCH",
@@ -488,7 +505,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     await refreshSessions(set);
   },
 
-  send: async (text: string, attachments: AttachmentRef[]) => {
+  send: async (text: string, attachments: AttachmentRef[], extraConfig?: TurnConfig) => {
     if (!text.trim() && attachments.length === 0) {
       return;
     }
@@ -516,6 +533,15 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       model: get().modelRef,
       // 能力同款（§6.4 粘性）：后端按请求里的值跑本回合并写回会话
       capability: get().capability,
+      // 回合参数（§7.6）：档位/模式**只在研究能力下发**——config.mode 是各能力共用的键名，
+      // 解题能力读的是 full/hint，随手把研究模式塞进去会被它判成非法参数（E2E ⑫ 抓到过）。
+      // 确认按钮那次再叠一个 research_action（extraConfig 由调用方给）
+      config: {
+        ...(get().capability === CAPABILITY_RESEARCH
+          ? { depth: get().researchDepth, mode: get().researchMode }
+          : {}),
+        ...extraConfig,
+      },
       language: useLanguageStore.getState().lang,
     });
   },

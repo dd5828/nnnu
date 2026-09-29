@@ -6,10 +6,15 @@
  */
 
 import Link from "next/link";
-import { GraduationCap, ListChecks, RefreshCw } from "lucide-react";
+import { Binoculars, Download, GraduationCap, ListChecks, RefreshCw } from "lucide-react";
 import { useChatStore, type UiMessage } from "@/hooks/useChat";
 import { useI18n } from "@/hooks/useI18n";
-import { CAPABILITY_MASTERY, CAPABILITY_QUESTION } from "@/lib/capabilities";
+import {
+  CAPABILITY_MASTERY,
+  CAPABILITY_QUESTION,
+  CAPABILITY_RESEARCH,
+  isResearchOutline,
+} from "@/lib/capabilities";
 import CitationsPanel from "./CitationsPanel";
 import CostBadge from "./CostBadge";
 import Markdown from "./Markdown";
@@ -18,12 +23,30 @@ import SaveToNotebook from "./SaveToNotebook";
 import ThinkingBlock from "./ThinkingBlock";
 import ToolCallCard from "./ToolCallCard";
 
+/** 导出 Markdown（§7.6）：报告正文就在 message.content 里，纯前端存盘即可，
+ *  不绕后端（不走文件系统 = 不用管清理，也不给后端加一个只读端点）。 */
+function downloadMarkdown(text: string, stem: string) {
+  const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${stem}-${new Date().toISOString().slice(0, 10)}.md`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function AssistantMessage({ message }: { message: UiMessage }) {
   const { t } = useI18n();
   const regenerate = useChatStore((s) => s.regenerate);
   const active = useChatStore((s) => s.active);
+  const send = useChatStore((s) => s.send);
   const capability = useChatStore((s) => s.capability);
   const isLast = useChatStore((s) => s.messages[s.messages.length - 1]?.id === message.id);
+  const isResearch = capability === CAPABILITY_RESEARCH;
+  // 停在大纲上等答复的那一条：确认按钮只在这时出现（报告那一条不出现）
+  const awaitingConfirm = isResearch && isLast && !active && isResearchOutline(message.content);
   return (
     <div className="flex flex-col items-start gap-1.5">
       {message.thinking && <ThinkingBlock text={message.thinking} streaming={false} />}
@@ -63,6 +86,30 @@ export default function AssistantMessage({ message }: { message: UiMessage }) {
             <GraduationCap className="h-3 w-3" />
             {t("chat.goToLearning")}
           </Link>
+        )}
+        {isResearch && message.content && (
+          <button
+            type="button"
+            data-testid="export-markdown"
+            onClick={() => downloadMarkdown(message.content, t("chat.exportFileStem"))}
+            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] text-muted transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <Download className="h-3 w-3" />
+            {t("chat.exportMarkdown")}
+          </button>
+        )}
+        {awaitingConfirm && (
+          <button
+            type="button"
+            data-testid="research-confirm"
+            onClick={() =>
+              void send(t("chat.researchConfirmMessage"), [], { research_action: "confirm" })
+            }
+            className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] text-primary transition-colors hover:bg-primary/20"
+          >
+            <Binoculars className="h-3 w-3" />
+            {t("chat.researchConfirm")}
+          </button>
         )}
         {isLast && !active && (
           <button

@@ -21,6 +21,7 @@ const TYPE_LABEL_KEYS: Record<NotebookRecordType, string> = {
   chat: "notebooks.typeChat",
   solve: "notebooks.typeSolve",
   question: "notebooks.typeQuestion",
+  research: "notebooks.typeResearch",
 };
 
 function dateLabel(seconds: number): string {
@@ -144,7 +145,11 @@ export default function NotebookDetailPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="truncate text-sm font-medium">{record.title}</span>
-                          <span className="shrink-0 rounded bg-accent px-1.5 py-0.5 text-[10px] text-muted">
+                          <span
+                            data-testid="nb-record-type"
+                            data-type={record.type}
+                            className="shrink-0 rounded bg-accent px-1.5 py-0.5 text-[10px] text-muted"
+                          >
                             {t(TYPE_LABEL_KEYS[record.type] ?? "notebooks.typeNote")}
                           </span>
                           <span className="shrink-0 text-[11px] text-muted">

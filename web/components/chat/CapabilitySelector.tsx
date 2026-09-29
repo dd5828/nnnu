@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { Check, GraduationCap, ListChecks, MessagesSquare, Sigma } from "lucide-react";
+import { Binoculars, Check, GraduationCap, ListChecks, MessagesSquare, Sigma } from "lucide-react";
 import { useChatStore } from "@/hooks/useChat";
 import { useI18n } from "@/hooks/useI18n";
 import {
@@ -16,6 +16,7 @@ import {
   CAPABILITY_LABEL_KEYS,
   CAPABILITY_MASTERY,
   CAPABILITY_QUESTION,
+  CAPABILITY_RESEARCH,
   CAPABILITY_SOLVE,
 } from "@/lib/capabilities";
 
@@ -24,6 +25,7 @@ const OPTIONS = [
   { value: CAPABILITY_SOLVE, icon: Sigma },
   { value: CAPABILITY_QUESTION, icon: ListChecks },
   { value: CAPABILITY_MASTERY, icon: GraduationCap },
+  { value: CAPABILITY_RESEARCH, icon: Binoculars },
 ];
 
 export default function CapabilitySelector() {

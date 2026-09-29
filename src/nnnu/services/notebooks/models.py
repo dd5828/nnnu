@@ -9,7 +9,7 @@ from nnnu.core.ids import new_id
 
 # 批一产 chat（聊天问答）/ solve（深度解题）/ note（手写笔记）；
 # question 是批二加的（出题能力的题目清单可存进笔记本）；research 随 §7.15 后续条目再加。
-RecordType = Literal["chat", "solve", "note", "question"]
+RecordType = Literal["chat", "solve", "note", "question", "research"]
 
 
 class Notebook(BaseModel):

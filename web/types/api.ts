@@ -155,8 +155,9 @@ export interface KbDocContent {
 
 // ---- 笔记本（§8.2 / §9.1，对应 nnnu/services/notebooks/models.py） ----
 
-/** 记录类型：批一三种 + 批二补的 question（出题回合存进笔记本的记录）。 */
-export type NotebookRecordType = "chat" | "solve" | "note" | "question";
+/** 记录类型：批一三种 + 批二补的 question（出题回合存进笔记本的记录）+ P6 的 research。
+ *  与后端 `services/notebooks/models.py:RecordType` 同一张表（多了就两边一起加）。 */
+export type NotebookRecordType = "chat" | "solve" | "note" | "question" | "research";
 
 export interface NotebookRecord {
   id: string;

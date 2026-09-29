@@ -104,6 +104,21 @@ async def test_record_accepts_question_type(client):
     assert created.json()["type"] == "question"
 
 
+async def test_record_accepts_research_type(client):
+    """批三把「研究」记录类型补上了（P6 §7.6）：调研报告能一键存进笔记本。"""
+    notebook = await _new_notebook(client)
+    created = await client.post(
+        f"/api/v1/notebooks/{notebook['id']}/records",
+        json={
+            "type": "research",
+            "content_md": "## 研究报告\n\n综合结论：…\n\n## 参考资料\n\n1. [甲](https://a.example)",
+            "source_ref": "sess-r",
+        },
+    )
+    assert created.status_code == 200, created.text
+    assert created.json()["type"] == "research"
+
+
 @pytest.mark.parametrize(
     "body,code",
     [
