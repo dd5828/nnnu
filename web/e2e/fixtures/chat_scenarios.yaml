@@ -191,3 +191,54 @@ steps:
   - chunks: ["两题都对，掌握度到 80 了——再做一遍过 90 的门（两次作答封顶八十）。"]
     finish_reason: stop
     usage: { prompt_tokens: 100, completion_tokens: 30 }
+  # Turn 14（测试⑮）：deep_research 第一回合，quick 档 = 2 个子问题。澄清段（静默）先把主题
+  # 打磨一遍；分解段（静默）吐 JSON 大纲——两段的正文都不进聊天，用户只看得到大纲。
+  # 每步 1.5s 停顿留出步骤条「当前阶段」的观察窗
+  - chunks:
+      - "2025 年公开的 RAG 工程方案，面向要选型的开发者：范围限定在检索端与生成端的主流做法，核心问题是主流路线有哪些、各自的代价与适用场景是什么。"
+    finish_reason: stop
+    delay_ms: 1500
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  - chunks:
+      - |
+        ```json
+        {"sub_topics": [
+          {"title": "主流技术路线", "overview": "朴素 RAG、进阶 RAG 与模块化 RAG 的分野与代表工作"},
+          {"title": "评测与落地现状", "overview": "公开评测基准，以及真实部署里最常见的失败模式"}
+        ]}
+        ```
+    finish_reason: stop
+    delay_ms: 1500
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  # Turn 15（测试⑮）：用户点确认 → 第二回合。研究段**不调检索工具**（E2E 没有网络与密钥，
+  # 真发请求会让调用数漂移）；报告段一次成稿，正文里自带 5 条 https 链接（渲染成新窗口可点）
+  - chunks:
+      - "这一条线的主流做法是把检索质量当第一性问题：查询改写、混合检索与重排三件套已成基线，向量库本身不再是差异点。"
+    finish_reason: stop
+    delay_ms: 1500
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  - chunks:
+      - "评测端以无参考指标为主，落地端最常翻车的地方是「检索到了但没用上」和「引用了不存在的来源」，两者都要靠重排与引用校验兜。"
+    finish_reason: stop
+    delay_ms: 1500
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  - chunks:
+      - |
+        2025 年的 RAG 已经不只是「检索 + 拼接」：主流做法在朴素 RAG 之外叠加查询改写、混合检索与重排，并逐步把各环节拆成可替换模块。
+
+        ## 三条主流技术路线
+
+        - **朴素 RAG**：向量检索加拼接上下文，仍是多数产品的基线（[Lewis 等，2020](https://arxiv.org/abs/2005.11401)）。
+        - **进阶 RAG**：检索前后加查询改写与重排，检索质量的提升最直接（[Gao 等，2023](https://arxiv.org/abs/2312.10997)）。
+        - **模块化 RAG**：索引、检索、生成拆成可组合模块，按任务动态路由（[模块化 RAG 综述](https://arxiv.org/abs/2407.21059)）。
+
+        ## 评测与常见失败
+
+        无参考指标已成事实标准（[RAGAS](https://arxiv.org/abs/2309.15217)）；工程上最常见的翻车是「检索到了但没用上」和「引用了不存在的来源」。
+
+        ## 落地建议
+
+        先把检索召回量化，再谈生成质量：重排与引用校验应当作必选项（[实践综述](https://arxiv.org/abs/2410.12837)）。
+    finish_reason: stop
+    delay_ms: 1500
+    usage: { prompt_tokens: 100, completion_tokens: 200 }

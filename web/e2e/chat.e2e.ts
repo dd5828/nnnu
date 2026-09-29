@@ -478,3 +478,99 @@ test("⑭ 学习路径：聊天建路径 → 看板下一目标 → 聊天里刷
   await expect(next).toHaveAttribute("data-action", "probe");
   await expect(page.getByTestId("l-next-title")).toContainText("矩阵与行列式");
 });
+
+test("⑮ 深度研究：两段式回合（大纲确认 → 检索成稿），报告可导出可存笔记本", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "新对话" }).click();
+  const box = page.locator("textarea").first();
+  await expect(box).toBeVisible();
+
+  // 切到「深度研究」：设置行随之出现（别的能力下这两个下拉根本不渲染）
+  await page.getByTestId("capability-selector").click();
+  await page.locator('[data-testid="capability-option"][data-value="deep_research"]').click();
+  await expect(page.getByTestId("capability-selector")).toContainText("深度研究");
+  await expect(page.getByTestId("research-depth")).toHaveAttribute("data-value", "standard");
+  await expect(page.getByTestId("research-mode")).toHaveAttribute("data-value", "report");
+  // 选 quick 档：2 个子问题 ⇒ 第二回合恰好 3 步（脚本按调用序消费，档位必须对上）
+  await page.getByTestId("research-depth").click();
+  await page.locator('[data-testid="research-depth-option"][data-value="quick"]').click();
+  await expect(page.getByTestId("research-depth")).toHaveAttribute("data-value", "quick");
+
+  await box.fill("调研 2025 年 RAG 的主流方案");
+  await box.press("Enter");
+
+  // ---- 第一回合：澄清 → 分解 → 出大纲就收工（四阶段一次全渲染，前两段依次点亮）----
+  // 步骤条只活在回合进行中（ActiveTurnView），所以这几条得在各段的观察窗里断言
+  await expect(page.getByTestId("stage-bar")).toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId("stage-pill")).toHaveCount(4);
+  await expect(page.locator('[data-testid="stage-pill"][data-stage="rephrasing"]')).toHaveAttribute(
+    "data-state",
+    "active",
+    { timeout: 10000 }
+  );
+  await expect(
+    page.locator('[data-testid="stage-pill"][data-stage="decomposing"]')
+  ).toHaveAttribute("data-state", "active", { timeout: 15000 });
+  // 后两段还挂着：这一回合就停在大纲上等人回话（§7.6 的两段式）
+  await expect(
+    page.locator('[data-testid="stage-pill"][data-stage="researching"]')
+  ).toHaveAttribute("data-state", "pending");
+  await expect(page.locator('[data-testid="stage-pill"][data-stage="reporting"]')).toHaveAttribute(
+    "data-state",
+    "pending"
+  );
+  // 澄清段的产出（精炼后的主题）走 handoff 进大纲，分解段的 JSON 一个字都不进聊天
+  await expect(page.getByRole("heading", { name: "研究大纲" })).toBeVisible({ timeout: 20000 });
+  await expect(page.getByRole("heading", { name: "研究大纲" })).toHaveCount(1);
+  await expect(page.getByText("2025 年公开的 RAG 工程方案")).toBeVisible();
+  await expect(page.getByText("主流技术路线")).toBeVisible();
+  await expect(page.getByText("评测与落地现状")).toBeVisible();
+  await expect(page.getByText("sub_topics")).toHaveCount(0); // 分解段的原始 JSON 不外露
+
+  // ---- 确认入口：按钮下发 config.research_action=confirm（打字「确认」走的是同一条判定）----
+  await page.getByTestId("research-confirm").click();
+  await expect(page.getByText("确认，开始研究")).toBeVisible();
+
+  // ---- 第二回合：逐个子问题检索（2 个）→ 单次成稿 → 附参考资料收尾 ----
+  await expect(
+    page.locator('[data-testid="stage-pill"][data-stage="researching"]')
+  ).toHaveAttribute("data-state", "active", { timeout: 15000 });
+  await expect(page.locator('[data-testid="stage-pill"][data-stage="reporting"]')).toHaveAttribute(
+    "data-state",
+    "active",
+    { timeout: 20000 }
+  );
+  await expect(page.getByRole("heading", { name: "研究过程" })).toBeVisible({ timeout: 20000 });
+  await expect(page.getByRole("heading", { name: "研究报告" })).toBeVisible();
+  // 两个子问题各跑了一轮（脚本没调检索工具 → 两段都如实说没有外部证据，不许编）
+  await expect(page.getByText("本子问题没有检索到外部证据")).toHaveCount(2);
+  // 报告分节 + 内联来源渲染成新窗口可点的外链（§7.6：来源必须点得开）
+  await expect(page.getByRole("heading", { name: "三条主流技术路线" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "评测与常见失败" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "落地建议" })).toBeVisible();
+  await expect
+    .poll(async () => page.locator('a[target="_blank"][href^="https://"]').count(), {
+      timeout: 15000,
+    })
+    .toBeGreaterThanOrEqual(5);
+  // 报告到手了，确认卡不再挂着
+  await expect(page.getByTestId("research-confirm")).toHaveCount(0);
+
+  // ---- 导出 Markdown：纯前端 Blob 存盘，文件名带主题与日期 ----
+  const download = page.waitForEvent("download");
+  await page.getByTestId("export-markdown").last().click();
+  expect((await download).suggestedFilename()).toMatch(/^研究报告-\d{4}-\d{2}-\d{2}\.md$/);
+
+  // ---- 存笔记本：这条记录的来源能力是「研究」，不是通用 chat ----
+  await page.getByTestId("save-to-notebook").last().click();
+  const notebookOption = page.getByTestId("notebook-option").first();
+  const notebookId = await notebookOption.getAttribute("data-id");
+  await notebookOption.click();
+  await expect(page.getByTestId("save-to-notebook").last()).toContainText("已存入", {
+    timeout: 15000,
+  });
+  await page.goto(`/notebooks/${notebookId}`);
+  const record = page.getByTestId("nb-record").filter({ hasText: "三条主流技术路线" });
+  await expect(record).toBeVisible({ timeout: 15000 });
+  await expect(record.getByTestId("nb-record-type")).toHaveAttribute("data-type", "research");
+});
