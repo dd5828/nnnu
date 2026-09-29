@@ -20,6 +20,7 @@ KNOWN_PREFIXES = (
     "lpath",
     "lnode",
     "lint",  # 答题交互行（learning_interactions）
+    "rrun",  # 一次调研的草稿本（research_runs）
 )
 
 

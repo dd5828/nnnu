@@ -81,6 +81,7 @@ def create_app() -> FastAPI:
         from nnnu.services.learning.service import LearningService, set_learning_service
         from nnnu.services.notebooks.service import NotebookService
         from nnnu.services.question_bank.service import QuestionBankService, set_question_bank
+        from nnnu.services.research.service import ResearchService, set_research_service
         from nnnu.services.sessions.db import Database
         from nnnu.services.sessions.schema import db_path
         from nnnu.services.sessions.service import SessionManager
@@ -105,6 +106,10 @@ def create_app() -> FastAPI:
         learning_service = LearningService(db)
         set_learning_service(learning_service)
         _app.state.learning = learning_service
+        # 深度研究（§7.6）：能力层要取仓储读写大纲，路由取 app.state
+        research_service = ResearchService(db)
+        set_research_service(research_service)
+        _app.state.research = research_service
         _app.state.runtime = TurnRuntimeManager(
             sessions=session_manager, costs=cost_service, orchestrator=orchestrator
         )
@@ -154,6 +159,7 @@ def create_app() -> FastAPI:
         set_embedding_service(None)
         set_question_bank(None)
         set_learning_service(None)
+        set_research_service(None)
         await embedding.aclose()
         await cron_service.stop()
         await db.close()

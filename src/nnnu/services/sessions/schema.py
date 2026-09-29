@@ -22,7 +22,10 @@ from pathlib import Path
 # v9：P5 批三**重做**——门就是游标（删 learning_paths.current_node_id 与 advance）、
 #     四类两套门（node_type 换 memory/procedure/concept/design + assess_passed/assessed_at）、
 #     新增 learning_interactions 答题交互表（§8.2 无此表，记偏离）
-SCHEMA_VERSION = "9"
+# v10：P6 深度研究——research_runs 一次调研的草稿本（§8.2 无此表，记偏离）。
+#     研究是**两段式回合**：第一回合只跑到「子问题大纲 + 等确认」，第二回合才检索与成稿，
+#     中间隔着一次用户答复——大纲必须落库，否则第二回合不知道要研究什么。
+SCHEMA_VERSION = "10"
 
 MIGRATIONS: dict[str, list[str]] = {
     "2": [
@@ -225,6 +228,33 @@ MIGRATIONS: dict[str, list[str]] = {
         "CREATE INDEX IF NOT EXISTS idx_learning_interactions_node "
         "ON learning_interactions(node_id, created_at)",
     ],
+    "10": [
+        # 一次调研的草稿本（§7.6）：两段式回合中间隔着一次用户答复，大纲必须有地方存。
+        # 不挂外键（本仓约定是软引用）：删会话时审计行留在库里不影响读。
+        # 只记 answer_message_id：报告那条 assistant 消息的 id 在能力返回**之后**才由
+        # turn_runtime 生成（_persist_assistant 里 Message.new），能力此刻拿不到，
+        # 与其留一列永远写不进去的 report_message_id，不如不加。
+        """CREATE TABLE IF NOT EXISTS research_runs (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            topic TEXT NOT NULL DEFAULT '',
+            refined_topic TEXT NOT NULL DEFAULT '',
+            mode TEXT NOT NULL DEFAULT 'report',
+            depth TEXT NOT NULL DEFAULT 'standard',
+            subtopics TEXT NOT NULL DEFAULT '[]',
+            status TEXT NOT NULL DEFAULT 'confirming',
+            failed_subtopics TEXT NOT NULL DEFAULT '[]',
+            answer_message_id TEXT,
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL
+        )""",
+        # 「一路会话同一时刻只有一份在飞的调研」的唯一真源（照 learning_interactions 那条）：
+        # confirming 等确认、researching 正在检索；reported/partial/abandoned 都是终态，不占位
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_research_runs_active "
+        "ON research_runs(session_id) WHERE status IN ('confirming', 'researching')",
+        "CREATE INDEX IF NOT EXISTS idx_research_runs_session "
+        "ON research_runs(session_id, created_at)",
+    ],
 }
 
 # 每级迁移应落地的产物——启动自检清单（见 _verify）。
@@ -239,6 +269,7 @@ EXPECTED_TABLES: dict[str, tuple[str, ...]] = {
     "7": ("questions", "question_attempts"),
     "8": ("learning_paths", "learning_nodes"),
     "9": ("learning_interactions",),
+    "10": ("research_runs",),
 }
 
 EXPECTED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {

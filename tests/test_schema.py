@@ -294,6 +294,93 @@ def test_migrate_v8_idempotent(tmp_home):
     assert "node_id" in _columns(tmp_home, "questions")
 
 
+def test_migrate_v9_to_v10_keeps_rows(tmp_home):
+    # 模拟批三状态：v9 库里有路径/节点/答题交互与一道题，升到 v10 后全都在，
+    # research_runs 就位、且「一路会话只有一份在飞的调研」是条**部分唯一**索引
+    data = tmp_home / "data"
+    (data / "system").mkdir(parents=True)
+    _version_file(tmp_home).write_text("9\n", encoding="utf-8")
+    path = db_path(data)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    try:
+        for level in ("2", "3", "4", "5", "6", "7", "8", "9"):
+            for statement in MIGRATIONS[level]:
+                conn.execute(statement)
+        conn.execute(
+            "INSERT INTO learning_paths (id, topic, title, session_id, created_at, updated_at) "
+            "VALUES ('lpath-v9', '线代', '线代', 'sess-v9', 1.0, 2.0)"
+        )
+        conn.execute(
+            "INSERT INTO learning_nodes (id, path_id, parent_id, title, node_type, description, "
+            "depth, sort_order, mastery, state) "
+            "VALUES ('lnode-v9', 'lpath-v9', NULL, '向量', 'concept', NULL, 0, 0, 0.0, 'not_started')"
+        )
+        conn.execute(
+            "INSERT INTO learning_interactions (id, path_id, node_id, created_at, updated_at) "
+            "VALUES ('lint-v9', 'lpath-v9', 'lnode-v9', 1.0, 1.0)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert migrate(data) == SCHEMA_VERSION
+    assert "research_runs" in _table_names(tmp_home)
+    conn = sqlite3.connect(path)
+    try:
+        node = conn.execute("SELECT title, node_type FROM learning_nodes").fetchone()
+        interaction = conn.execute("SELECT status FROM learning_interactions").fetchone()
+        # 新表默认值就位：两段式回合里「在等确认」的那条行直接 INSERT 就能读
+        conn.execute(
+            "INSERT INTO research_runs (id, session_id, created_at, updated_at) "
+            "VALUES ('rrun-v10', 'sess-v9', 1.0, 1.0)"
+        )
+        run = conn.execute(
+            "SELECT mode, depth, subtopics, status, failed_subtopics FROM research_runs"
+        ).fetchone()
+        conn.commit()
+    finally:
+        conn.close()
+    assert node == ("向量", "concept")
+    assert interaction == ("awaiting_input",)
+    assert run == ("report", "standard", "[]", "confirming", "[]")
+
+    indexes = _indexes(tmp_home, "research_runs")
+    assert indexes["idx_research_runs_active"] == (1, 1)  # 唯一 + 部分（只拦在飞行）
+
+
+def test_migrate_v9_idempotent(tmp_home):
+    migrate(tmp_home / "data")
+    assert migrate(tmp_home / "data") == SCHEMA_VERSION
+    assert {"learning_paths", "learning_nodes"} <= _table_names(tmp_home)
+    assert "node_id" in _columns(tmp_home, "questions")
+    # v10 与 v9 一样是「建表 + 部分唯一索引」，重跑不该把索引丢掉
+    assert _indexes(tmp_home, "research_runs")["idx_research_runs_active"] == (1, 1)
+
+
+def test_research_runs_allows_one_active_per_session(tmp_home):
+    # 部分唯一索引本身的行为（不走服务层）：第二条在飞行撞索引，终态行想加几条加几条
+    migrate(tmp_home / "data")
+    conn = sqlite3.connect(db_path(tmp_home / "data"))
+    try:
+        insert = (
+            "INSERT INTO research_runs (id, session_id, status, created_at, updated_at) "
+            "VALUES (?, 'sess-1', ?, 1.0, 1.0)"
+        )
+        conn.execute(insert, ("rrun-1", "confirming"))
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(insert, ("rrun-2", "researching"))
+        conn.execute(insert, ("rrun-3", "reported"))
+        # 另一条会话不受影响
+        conn.execute(
+            "INSERT INTO research_runs (id, session_id, status, created_at, updated_at) "
+            "VALUES ('rrun-4', 'sess-2', 'confirming', 1.0, 1.0)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _indexes(tmp_home, table: str) -> dict[str, tuple[int, int]]:
     """PRAGMA index_list 的（unique, partial）两列——本级的索引是否「部分唯一」就看它。"""
     conn = sqlite3.connect(db_path(tmp_home / "data"))
