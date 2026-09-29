@@ -10,6 +10,7 @@
 | arXiv 论文检索 | `src/nnnu/tools/builtin/paper_search_tool.py` | `deeptutor/tools/paper_search_tool.py` | 保留检索语义（all: 查询/年份窗口/相关度与日期排序）；实现改为 httpx 直连 arXiv Atom API + stdlib XML（原版依赖 arxiv 包） |
 | 代码沙箱（思路对照） | `src/nnnu/services/sandbox/{spec,service}.py` | `deeptutor/services/sandbox/{service.py,quota.py,spec.py}` | 参考服务门面与进程内配额思路；实现为子进程沙箱（方案 §11.2），Docker 多后端不搬运 |
 | 模型价格表 | `src/nnnu/services/cost/pricing.py` | `deeptutor/logging/stats/llm_stats.py` | 复制价格数据（P1 已声明于文件头），补充 deepseek-reasoner/kimi |
+| 深度研究提示词（§16.2 白名单 A） | `prompts/{zh,en}/deep_research.yaml` | `deeptutor/agents/research/prompts/{zh,en}/pipeline.yaml` | 只改写 rephrase/decompose/research_step/report 四段 system 文案：删 THINK/TOOL/APPEND/FINISH 标签协议、删 APPEND 队列话术、删 note 摘要 agent，报告从「大纲 + 引言 + 逐节 + 结论」多次调用压成单次成稿。**引用编号重排（`src/nnnu/services/research/citations.py`）为自研**，未搬 `utils/citation_manager.py`（§16.5 禁止复制实现层） |
 
 DeepTutor 版权声明（HKUDS，Apache-2.0 原文保留）：
 

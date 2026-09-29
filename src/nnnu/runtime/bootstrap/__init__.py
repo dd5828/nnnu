@@ -70,6 +70,7 @@ def register_builtins() -> None:
     from nnnu.capabilities.chat.capability import ChatCapability
     from nnnu.capabilities.mastery.capability import MasteryCapability
     from nnnu.capabilities.question.capability import QuestionCapability
+    from nnnu.capabilities.research.capability import DeepResearchCapability
     from nnnu.capabilities.solve.capability import SolveCapability
     from nnnu.runtime.registry.capability_registry import get_capability_registry
     from nnnu.runtime.registry.tool_registry import get_tool_registry
@@ -98,6 +99,7 @@ def register_builtins() -> None:
     get_capability_registry().register(SolveCapability.manifest, SolveCapability)
     get_capability_registry().register(QuestionCapability.manifest, QuestionCapability)
     get_capability_registry().register(MasteryCapability.manifest, MasteryCapability)
+    get_capability_registry().register(DeepResearchCapability.manifest, DeepResearchCapability)
     get_tool_registry().register(AskUserTool())
     get_tool_registry().register(AttachmentSearchTool())
     get_tool_registry().register(RagSearchTool())

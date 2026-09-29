@@ -111,6 +111,9 @@ class ToolSet:
 
 
 AskUserFn = Callable[[str, list[dict[str, str]], str], Awaitable[str]]
+# 工具结果进消息前的改写：收 (工具输出, 本次来源) 还一段文本。只改模型看到的那份，
+# `emit_tool_result` 照旧发原文——工具卡里不该多出引用记号。
+ToolResultFn = Callable[[str, list[dict[str, Any]]], str]
 
 
 @dataclass(slots=True)
@@ -123,6 +126,7 @@ class LoopDeps:
     max_output_tokens: int = 4096
     token_budget: int = 32000
     ask_user: AskUserFn | None = None
+    on_tool_result: ToolResultFn | None = None
     temperature: float | None = None
     reasoning_effort: str | None = None
     thinking_extra: dict[str, Any] | None = None
@@ -411,9 +415,11 @@ async def run_agent_loop(
                         detail=result.detail,
                         usage=result.usage,
                     )
-                    messages.append(
-                        {"role": "tool", "tool_call_id": call_id, "content": result.output}
-                    )
+                    sources = list(result.detail.get("sources") or []) if result.detail else []
+                    content = result.output
+                    if deps.on_tool_result is not None:
+                        content = deps.on_tool_result(content, sources)
+                    messages.append({"role": "tool", "tool_call_id": call_id, "content": content})
                     trace: dict[str, Any] = {
                         "tool_name": call.name,
                         "call_id": call_id,
@@ -425,8 +431,7 @@ async def run_agent_loop(
                     if trace_detail is not None:
                         trace["detail"] = trace_detail
                     outcome.tool_calls.append(trace)
-                    if result.detail and "sources" in result.detail:
-                        outcome.citations.extend(result.detail["sources"])
+                    outcome.citations.extend(sources)
                 continue
 
             # ⑤ 无工具调用 → responding → done
