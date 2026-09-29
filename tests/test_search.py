@@ -14,7 +14,7 @@ from nnnu.services.search.providers import (
 )
 from nnnu.services.secrets.store import get_secrets_store
 from nnnu.services.settings.service import get_settings_service
-from nnnu.tools.builtin.paper_search_tool import PaperSearchTool, _search_arxiv
+from nnnu.tools.builtin.paper_search_tool import PaperSearchTool, _query_ladder, _search_arxiv
 from nnnu.tools.builtin.web_fetch import WebFetchTool, _validate_url
 from nnnu.tools.builtin.web_search import WebSearchTool
 
@@ -52,6 +52,9 @@ ARXIV_ATOM = """<?xml version="1.0" encoding="UTF-8"?>
   </entry>
 </feed>
 """
+
+
+EMPTY_ATOM = '<?xml version="1.0" encoding="UTF-8"?>\n<feed xmlns="http://www.w3.org/2005/Atom"/>\n'
 
 
 def _transport(handler):
@@ -240,7 +243,15 @@ async def test_web_search_tool_output_and_sources(tmp_home):
     assert "标题A" in result.output
     assert "https://a.example" in result.output
     assert result.detail == {
-        "sources": [{"doc_id": "https://a.example", "kb": "web", "page": None, "snippet": "摘要A"}]
+        "sources": [
+            {
+                "doc_id": "https://a.example",
+                "kb": "web",
+                "page": None,
+                "snippet": "摘要A",
+                "title": "标题A",  # §7.6：来源要能被人认出来才敢点
+            }
+        ]
     }
 
 
@@ -255,6 +266,58 @@ async def test_paper_search_parses_atom():
     assert paper["url"] == "https://arxiv.org/abs/2301.00001"
     assert paper["authors"] == ["Alice", "Bob"]
     assert paper["year"] == "2023"
+
+
+async def test_paper_search_prefers_phrase_then_falls_back():
+    """检索式阶梯：先按词组精确匹配，0 条再退回裸写。
+
+    长查询裸写会被 arXiv 拆散成 OR 语义、拿回一堆噪音（实测拿一篇综述的完整标题去搜，
+    第一条是毫不相干的论文），加引号才锚得住；但词组太长又会 0 命中，所以两级都要有。
+    """
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        expression = request.url.params["search_query"]
+        seen.append(expression)
+        return httpx.Response(200, text=EMPTY_ATOM if 'all:"' in expression else ARXIV_ATOM)
+
+    papers = await _search_arxiv("RAG evaluation benchmark", 3, transport=_transport(handler))
+    assert seen == ['all:"RAG evaluation benchmark"', "all:RAG evaluation benchmark"]
+    assert len(papers) == 1  # 短语落空不影响最终结果：宽松那轮的结果照常返回
+
+
+async def test_paper_search_phrase_hit_takes_one_request():
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.params["search_query"])
+        return httpx.Response(200, text=ARXIV_ATOM)
+
+    papers = await _search_arxiv("RAG survey", 3, transport=_transport(handler))
+    assert seen == ['all:"RAG survey"']  # 短语就命中，不多跑一趟
+    assert len(papers) == 1
+
+
+async def test_paper_search_single_token_skips_phrase():
+    """单个词没有「词组」可言：直接用裸写，省一次往返。"""
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.params["search_query"])
+        return httpx.Response(200, text=ARXIV_ATOM)
+
+    await _search_arxiv("RAG", 3, transport=_transport(handler))
+    assert seen == ["all:RAG"]
+
+
+def test_query_ladder_cleans_quotes_and_spaces():
+    """查询自带的引号会截断 arXiv 语法，先清掉；空白压平后只剩一个词就当单词查询。"""
+    assert _query_ladder('agentic "RAG"   2025') == [
+        'all:"agentic RAG 2025"',
+        "all:agentic RAG 2025",
+    ]
+    assert _query_ladder(' "RAG" ') == ["all:RAG"]
+    assert _query_ladder("") == ["all:"]
 
 
 async def test_paper_search_tool_sources():
@@ -283,7 +346,9 @@ async def test_paper_search_tool_sources():
         module._search_arxiv = original
     assert result.ok is True
     assert "论文一" in result.output
-    assert result.detail["sources"][0]["kb"] == "arxiv"
+    source = result.detail["sources"][0]
+    assert source["kb"] == "arxiv"
+    assert source["title"] == "论文一"  # §7.6：引用面板要靠它给人看，不然只有一串 arxiv 链接
 
 
 async def test_web_fetch_rejects_private_hosts():
@@ -297,6 +362,7 @@ async def test_web_fetch_rejects_private_hosts():
 async def test_web_fetch_tool_fetches(tmp_home, monkeypatch):
     class FakeResult:
         text_content = "# 抓到的内容\n正文段落"
+        title = "示例页"
 
     class FakeMarkItDown:
         def __init__(self, *args, **kwargs):
@@ -311,6 +377,29 @@ async def test_web_fetch_tool_fetches(tmp_home, monkeypatch):
     result = await tool.run(_ctx(url="https://example.com/page", max_chars=5000))
     assert result.ok is True
     assert "抓到的内容" in result.output
+    # 抓下来的页面本身就是一份可验证的来源，不能再像以前那样只回 detail.url
+    source = result.detail["sources"][0]
+    assert source["doc_id"] == "https://example.com/page"
+    assert source["kb"] == "web"
+    assert source["title"] == "示例页"
+    assert source["snippet"].startswith("# 抓到的内容")
+
+
+async def test_web_fetch_source_title_falls_back_to_host(tmp_home, monkeypatch):
+    class FakeResult:
+        text_content = "正文"  # 没有 title 属性：取不到就退回域名
+        title = None
+
+    class FakeMarkItDown:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def convert(self, source):
+            return FakeResult()
+
+    monkeypatch.setattr("markitdown.MarkItDown", FakeMarkItDown)
+    result = await WebFetchTool().run(_ctx(url="https://example.com/x", max_chars=5000))
+    assert result.detail["sources"][0]["title"] == "example.com"
 
 
 # ---- 搜索密钥草稿流（域 "search" 分槽） ----

@@ -24,26 +24,29 @@ def _build_query(query: str) -> str:
     return f"all:{query}"
 
 
-async def _search_arxiv(
-    query: str,
-    max_results: int,
-    *,
-    sort_by: str = "relevance",
-    years_limit: int | None = None,
-    transport: httpx.AsyncBaseTransport | None = None,
-) -> list[dict]:
-    """arXiv Atom API 检索；返回 [{title, authors, year, abstract, url, arxiv_id, published}]。"""
-    params: dict = {
-        "search_query": _build_query(query),
-        "max_results": str(max(1, min(int(max_results), 20))),
-        "sortBy": "submittedDate" if sort_by == "date" else "relevance",
-    }
-    async with httpx.AsyncClient(timeout=TIMEOUT_S, transport=transport) as client:
-        response = await client.get(ARXIV_API_URL, params=params)
-    if response.status_code != 200:
-        raise RuntimeError(f"arXiv API 返回 HTTP {response.status_code}")
+def _phrase_query(query: str) -> str:
+    """整句当一个词组匹配（arXiv 语法：带引号的 `all:"…"`）。"""
+    return f'all:"{query}"'
+
+
+def _query_ladder(query: str) -> list[str]:
+    """检索式阶梯：先按词组精确匹配，一个结果都没有再退回按词裸写。
+
+    裸写的 `all:一串关键词` 会被 arXiv 解析器拆散成 OR 语义，长查询直接变成噪音
+    （实测拿一篇综述的完整标题去搜，第一条回来的是毫不相干的引力波论文）；
+    加引号能锚住，但词组太长的查询会 0 命中。所以两个都留着：精确优先，落空退宽松。
+    单个词的查询没有「词组」可言，直接用裸写，省一次往返。
+    """
+    cleaned = " ".join(query.replace('"', " ").split())
+    if len(cleaned.split()) < 2:
+        return [_build_query(cleaned)]
+    return [_phrase_query(cleaned), _build_query(cleaned)]
+
+
+def _parse_atom(text: str, max_results: int, years_limit: int | None) -> list[dict]:
+    """Atom 响应 → 论文列表（先按年份窗口过滤，再按 max_results 截断）。"""
     try:
-        root = ET.fromstring(response.text)
+        root = ET.fromstring(text)
     except ET.ParseError:
         raise RuntimeError("arXiv 响应解析失败") from None
 
@@ -77,6 +80,33 @@ async def _search_arxiv(
     return papers
 
 
+async def _search_arxiv(
+    query: str,
+    max_results: int,
+    *,
+    sort_by: str = "relevance",
+    years_limit: int | None = None,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> list[dict]:
+    """arXiv Atom API 检索；返回 [{title, authors, year, abstract, url, arxiv_id, published}]。"""
+    limit = max(1, min(int(max_results), 20))
+    params_base = {
+        "max_results": str(limit),
+        "sortBy": "submittedDate" if sort_by == "date" else "relevance",
+    }
+    async with httpx.AsyncClient(timeout=TIMEOUT_S, transport=transport) as client:
+        for expression in _query_ladder(query):
+            response = await client.get(
+                ARXIV_API_URL, params={"search_query": expression, **params_base}
+            )
+            if response.status_code != 200:
+                raise RuntimeError(f"arXiv API 返回 HTTP {response.status_code}")
+            papers = _parse_atom(response.text, limit, years_limit)
+            if papers:
+                return papers
+    return []
+
+
 class PaperSearchTool(BaseTool):
     definition = ToolDefinition(
         name="paper_search",
@@ -84,7 +114,8 @@ class PaperSearchTool(BaseTool):
         parameters={
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "关键词（可含标题/作者）"},
+                # 查询写短是检索质量的一半：长串关键词会被 arXiv 解析器拆散成 OR
+                "query": {"type": "string", "description": "检索词（2~4 个词，或论文标题）"},
                 "max_results": {"type": "integer", "minimum": 1, "maximum": 10, "default": 3},
                 "sort_by": {
                     "type": "string",
@@ -137,6 +168,7 @@ class PaperSearchTool(BaseTool):
                     "kb": "arxiv",
                     "page": None,
                     "snippet": paper["abstract"][:ABSTRACT_MAX_CHARS],
+                    "title": paper["title"],
                 }
             )
         return ToolResult(ok=True, output="\n".join(lines), detail={"sources": sources})

@@ -17,7 +17,7 @@ class WebSearchTool(BaseTool):
         parameters={
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "搜索关键词或问题"},
+                "query": {"type": "string", "description": "检索词（2~5 个词）"},
                 "max_results": {"type": "integer", "minimum": 1, "maximum": 10, "default": 5},
             },
             "required": ["query"],
@@ -48,6 +48,7 @@ class WebSearchTool(BaseTool):
                     "kb": "web",
                     "page": None,
                     "snippet": hit.snippet[:SNIPPET_MAX_CHARS],
+                    "title": hit.title,
                 }
             )
         return ToolResult(ok=True, output="\n".join(lines), detail={"sources": sources})
