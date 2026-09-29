@@ -1,23 +1,20 @@
-"""学习路径 REST（§9.1 三端点 + 路径/节点直改 + 起学习会话）。
+"""学习路径 REST（§9.1 三端点 + 路径/节点直改 + 打开学习会话）。
 
-看板与编辑都是零 LLM 通路（拍板 #2/#3）：路径由 `mastery` 工具在聊天里建，
-REST 只负责读看板、改树、开学习会话。**没有 advance**（门就是游标），
-这里盯信封与副作用：
+**本文件全是零 LLM 通路**（拍板 #2/#3）：路径由 `mastery` 工具在聊天里建，
+REST 只负责读看板、改树、把学习会话备好——`POST .../session` 不跑回合，
+第一句由用户自己打。**没有 advance**（门就是游标），这里盯信封与副作用：
 - 详情一次给全（树/汇总/薄弱点/复习/下一目标）；
 - 编辑端点真改树（增删移改、级联删、题目 node_id 置空）；
 - 旧的 advance 端点已经不存在（404，不是 409）；
-- `POST .../session` 起的是 mastery_path 回合并绑定会话；
+- `POST .../session` 绑定会话但**一条消息都不写**（回归锁：它以前会代用户开口）；
 - `GET /questions?node_id=` 只看这个节点的题；
 - 404/422 走统一错误信封。
 """
 
-import asyncio
-
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from nnnu.services.llm.factory import install_scripted, uninstall_scripted
-from nnnu.services.llm.scripted import ScriptedLLM, ScriptedStep
+from nnnu.services.llm.factory import uninstall_scripted
 
 NODES = [
     {"title": "向量与线性组合", "node_type": "concept"},
@@ -35,8 +32,8 @@ def _clean_llm_injection():
 
 @pytest.fixture
 async def hub(tmp_home, repo_prompts):
-    # repo_prompts 不能少：起学习会话会渲染开场白（下一目标的人话），
-    # 非可编辑安装（CI）下兜底路径探不到仓库 prompts/，渲染会静默变空串
+    # 本文件的端点自己不打模型，但 `repo_prompts` 留着：哪天有回合型用例落进这个文件，
+    # 非可编辑安装（CI）下兜底路径探不到仓库 prompts/，断言会跟着装法静默空串（踩过一次）
     from nnnu.api.main import create_app
 
     app = create_app()
@@ -223,52 +220,40 @@ async def test_no_advance_endpoint(hub):
     assert "error" not in response.json()  # 连路由都不存在，走的是 FastAPI 默认 404
 
 
-async def test_start_session_binds_path(hub):
+async def test_start_session_binds_path_without_running_a_turn(hub):
+    """点「去聊天」只备会话：绑定路径 + 标题设成路径名，**一个回合都不跑**。
+
+    这是「进路径不再自动打模型」的回归锁。以前这个端点会拿 `session_start` 文案当
+    用户消息落库，紧接着起一个 mastery_path 回合——用户一个字没打就先烧一次模型调用。
+    现在第一句由用户在输入框里自己打，端点零 LLM。
+    """
     client, app = hub
     path = await _path(hub)
-    install_scripted(
-        lambda: ScriptedLLM(
-            [
-                ScriptedStep(chunks=["先讲这一节：线性组合。"]),  # 第一回合：讲解
-                ScriptedStep(chunks=["接着上一节讲。"]),  # 第二回合：复用会话，再讲一段
-            ]
-        )
+    response = await client.post(
+        f"/api/v1/learning/paths/{path['id']}/session", json={"language": "zh"}
     )
-    try:
-        response = await client.post(
-            f"/api/v1/learning/paths/{path['id']}/session", json={"language": "zh"}
-        )
-        assert response.status_code == 200, response.text
-        body = response.json()
-        assert body["path_id"] == path["id"]
-        session = await app.state.runtime._sessions.get_session(body["session_id"])
-        assert session is not None
-        assert session.capability == "mastery_path"  # 学习会话跑的必须是学习能力
-        assert session.title == path["title"]
-        # 绑定落在路径上：会话能反查出路径（能力按会话找路径就靠这个）
-        assert (await app.state.learning.get_path_by_session(session.id)).id == path["id"]
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["path_id"] == path["id"]
+    assert "turn_id" not in body  # 不起回合，就没有回合 id
+    session = await app.state.runtime._sessions.get_session(body["session_id"])
+    assert session is not None
+    assert session.capability == "mastery_path"  # 学习会话跑的必须是学习能力
+    assert session.title == path["title"]
+    # 绑定落在路径上：会话能反查出路径（能力按会话找路径就靠这个）
+    assert (await app.state.learning.get_path_by_session(session.id)).id == path["id"]
 
-        # 回合真在跑：等它结束，正文按流式拼进库里（能力会把 delta 攒成全文）
-        await asyncio.wait_for(app.state.runtime._executions[body["turn_id"]].task, timeout=5)
-        messages = await app.state.runtime._sessions.list_messages(session.id)
-        assert [message.role for message in messages] == ["user", "assistant"]
-        assert "先讲这一节" in messages[-1].content
-        # 开场白由服务端拼：只报路径名，**具体学哪个节点让模型自己调 mastery_status 取**
-        # （状态不再由服务端塞进提示词，这是上游的用法）
-        assert path["title"] in messages[0].content
-        assert "mastery_status" in messages[0].content
+    # **没替用户开口**：库里一条消息都没有，也没有回合被登记（LLM 一次都没调）
+    assert await app.state.runtime._sessions.list_messages(session.id) == []
+    assert app.state.runtime._executions == {}
 
-        # 同一路径再进一次：复用同一个会话，不再新建
-        again = await client.post(
-            f"/api/v1/learning/paths/{path['id']}/session", json={"language": "zh"}
-        )
-        assert again.status_code == 200, again.text
-        assert again.json()["session_id"] == body["session_id"]
-        await asyncio.wait_for(
-            app.state.runtime._executions[again.json()["turn_id"]].task, timeout=5
-        )
-    finally:
-        uninstall_scripted()
+    # 同一路径再进一次：复用同一个会话，还是不起回合
+    again = await client.post(
+        f"/api/v1/learning/paths/{path['id']}/session", json={"language": "zh"}
+    )
+    assert again.status_code == 200, again.text
+    assert again.json()["session_id"] == body["session_id"]
+    assert app.state.runtime._executions == {}
 
 
 async def test_questions_filter_by_node(hub):

@@ -10,8 +10,10 @@
 对齐上游时补的三个看板操作端点：`skip-question`（作废未决卡）、`redo`（清进度留树）、
 `GET /learning/reviews`（跨路径的到期复习聚合，这是唯一一个跨路径的读端点）。
 
-`POST .../session` 照 `sessions.py:114 regenerate` 的形态：即发即返回
-`{path_id, session_id, turn_id}`，正文在 WS 上流（前端拿到 turn_id 后显式订阅）。
+`POST .../session` **只确保会话**：把路径的聊天建好（或复用原来的）、绑上路径、
+标题设成路径名，返回 `{path_id, session_id}` 就完了——**一个回合都不起**。
+第一句由用户自己在输入框里打（对齐上游 `chat-launch-intent.ts`：只把
+capability 与路径 id 装配给输入区，不代打模型），所以这个端点零 LLM。
 """
 
 import logging
@@ -20,9 +22,6 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from nnnu.runtime.orchestrator import TurnBusyError, TurnRejected
-from nnnu.runtime.turn_runtime import TurnRequest
-from nnnu.services.i18n.prompts import get_prompt_manager
 from nnnu.services.learning.models import PathDetail
 from nnnu.services.learning.service import LearningError, LearningService
 
@@ -83,7 +82,6 @@ class MoveBody(BaseModel):
 
 class SessionBody(BaseModel):
     language: str = "zh"
-    message: str | None = None  # 不给就按路径/节点拼一句（提示词 mastery.yaml: session_start）
 
 
 @router.get("/api/v1/learning/paths")
@@ -226,7 +224,14 @@ async def list_reviews(http_request: Request):
 
 @router.post("/api/v1/learning/paths/{path_id}/session")
 async def start_session(path_id: str, body: SessionBody, http_request: Request):
-    """开/续学习会话：绑定路径 → 起一个 mastery_path 回合，正文在 WS 上流。"""
+    """打开这条路径的聊天：**确保会话已建好并绑上路径**——不跑回合（零 LLM）。
+
+    第一句由用户自己打。以前这里会按下一目标渲染一句「继续学《…》」当用户消息
+    再立刻起一个回合，等于用户一个字没打就先烧一次模型调用；上游不是这么干的
+    （`chat-launch-intent.ts` 只把 capability 与路径 id 装配给输入区，不代打模型）。
+    现在前端拿到 session_id 后 attach 订阅、把能力强切 `mastery_path`，
+    等用户在输入框里开口，回合才由 `send()` 触发。
+    """
     service = _service(http_request)
     detail = await service.get_path(path_id)
     if detail is None:
@@ -248,30 +253,4 @@ async def start_session(path_id: str, body: SessionBody, http_request: Request):
     if session.title != detail.path.title:
         await runtime._sessions.rename_session(session.id, detail.path.title)
 
-    # 开场白由服务端按**下一目标**拼（门就是游标：没有「当前节点」，只有现算的下一目标）
-    target = detail.next_target
-    message = (body.message or "").strip()
-    if not message:
-        manager = get_prompt_manager()
-        key = "path_complete" if target.done else "session_start"
-        message = manager.render(
-            "mastery",
-            language,
-            key,
-            title=detail.path.title,
-            node=target.node_title or detail.path.title,
-        )
-    request = TurnRequest(
-        session_id=session.id,
-        capability=CAPABILITY,
-        message=message,
-        config={"path_id": path_id},
-        language=language,
-    )
-    try:
-        turn = await runtime.start_turn(request)
-    except TurnBusyError as exc:
-        return _error(409, "session_busy", str(exc), recoverable=True)
-    except TurnRejected as exc:
-        return _error(400, "turn_rejected", str(exc))
-    return {"path_id": path_id, "session_id": session.id, "turn_id": turn["turn_id"]}
+    return {"path_id": path_id, "session_id": session.id}

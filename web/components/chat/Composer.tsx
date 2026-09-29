@@ -11,6 +11,7 @@ import ModelSelector from "@/components/chat/ModelSelector";
 import { useChatStore, type AttachmentRef } from "@/hooks/useChat";
 import { useI18n } from "@/hooks/useI18n";
 import { apiFetch } from "@/lib/api";
+import { CAPABILITY_MASTERY } from "@/lib/capabilities";
 
 const MAX_FILES = 5;
 
@@ -20,6 +21,7 @@ export default function Composer() {
   const stop = useChatStore((s) => s.stop);
   const active = useChatStore((s) => s.active);
   const ensureSession = useChatStore((s) => s.ensureSession);
+  const capability = useChatStore((s) => s.capability);
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<AttachmentRef[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -27,6 +29,10 @@ export default function Composer() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composingRef = useRef(false);
+
+  // 学习路径的聊天里空输入框是常态（第一句不再由服务端代打），给一句提示说清怎么起头
+  const placeholderKey =
+    capability === CAPABILITY_MASTERY ? "chat.placeholderMastery" : "chat.placeholder";
 
   // 高度跟着内容长（上限交给 max-h-40），多行写作才不会卡在 36px 里滚动
   useEffect(() => {
@@ -132,7 +138,7 @@ export default function Composer() {
             onCompositionEnd={() => {
               composingRef.current = false;
             }}
-            placeholder={t("chat.placeholder")}
+            placeholder={t(placeholderKey)}
             rows={1}
             className="max-h-40 min-h-[2.25rem] w-full resize-none bg-transparent px-1.5 py-1.5 text-sm outline-none placeholder:text-muted"
           />

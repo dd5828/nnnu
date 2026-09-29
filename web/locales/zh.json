@@ -22,6 +22,7 @@
     "noSessions": "还没有会话",
     "emptyHint": "提问、贴题目或上传文档——回答会带上知识库的引用出处。",
     "placeholder": "想问点什么… Enter 发送，Shift+Enter 换行",
+    "placeholderMastery": "直接问这条路径的任意问题，或说一句「继续」——会照下一个目标检验你",
     "send": "发送",
     "stop": "停止",
     "regenerate": "重新生成",

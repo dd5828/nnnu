@@ -403,10 +403,18 @@ test("⑭ 学习路径：聊天建路径 → 看板下一目标 → 聊天里刷
   await expect(page.getByText("还没有薄弱点")).toBeVisible();
   await expect(page.getByText("还没有复习安排")).toBeVisible();
 
-  // ---- 去聊天里学：REST 起回合（正文走 WS，前端显式订阅），开场白由服务端按下一目标拼 ----
+  // ---- 去聊天里学：端点只备会话（零 LLM），**第一句由用户自己打** ----
   await page.getByTestId("l-next-go").click();
   await page.waitForURL(/\/$/, { timeout: 15000 });
-  await expect(page.getByText("继续学《线性代数基础》")).toBeVisible({ timeout: 20000 });
+  // 能力真切过去了：输入框换成学习路径那句提示（服务端不再代打「继续学《…》」）
+  await expect(box).toHaveAttribute("placeholder", /继续/);
+  // 而且没有回合在跑：定住一会儿，消息区仍是空的（代打的话这里会先冒出题卡）
+  await page.waitForTimeout(1500);
+  await expect(page.getByTestId("ask-card")).toHaveCount(0);
+  // 用户开口，回合才起
+  await box.fill("继续学线性代数基础");
+  await box.press("Enter");
+  await expect(page.getByText("继续学线性代数基础")).toBeVisible({ timeout: 20000 });
   await expect(page.getByText("先摸底：这两道做做看")).toBeVisible({ timeout: 20000 });
 
   // ---- 刷卡答题：卡面由服务端按**登记的那道题**归位（模型在 ask_user 里说什么都不作数），

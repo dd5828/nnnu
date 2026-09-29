@@ -230,7 +230,11 @@ class TurnRuntimeManager:
             return
         # 已结束/跨重启：从最后 assistant 消息合成（§7.20 补发缓存事件的降级面）
         last = await self._sessions.get_last_message(session_id)
-        if last is None or last.role != "assistant":
+        if last is None:
+            # 空会话：没有可恢复的东西，也**不是错**——「打开一条学习路径的聊天」就是这样，
+            # 用户还没开口。回 error 会被前端当成不可恢复的故障弹红条（useChat 的 topError）。
+            return
+        if last.role != "assistant":
             yield {
                 "type": StreamEventType.ERROR.value,
                 "session_id": session_id,

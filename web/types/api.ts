@@ -371,11 +371,11 @@ export interface LearningPathDetail {
   next_target: NextTarget;
 }
 
-/** 对应 POST /learning/paths/{id}/session：正文在 WS 上流，前端拿 turn_id 后订阅。 */
+/** 对应 POST /learning/paths/{id}/session：只把这条路径的会话备好（绑定 + 改标题）。
+ *  没有 turn_id——端点不跑回合，第一句由用户在输入框里打（对齐上游 launch-intent）。 */
 export interface LearningSessionResponse {
   path_id: string;
   session_id: string;
-  turn_id: string;
 }
 
 /** 跳过此题 / 重做路径的响应：路径详情 + 这一步动了多少（skipped 张卡 / reset 个节点）。 */

@@ -84,5 +84,3 @@ quiz:
 
 path_complete: |
   整条路径的节点都已过门，也没有到期的复习了。可以到学习看板加新节点，或者换一个新主题重新建路径。
-
-session_start: "继续学《{title}》。先调 mastery_status 看这一轮要攻克哪个知识点，然后照它的门直接动手检验：memory / procedure 先出 1–2 题摸底，concept / design 请用户用自己的话讲一遍再评。不必先长篇讲解——等他答完或讲完，再针对缺口补。"

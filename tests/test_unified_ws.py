@@ -1,4 +1,4 @@
-"""WS 全协议：事件序、双连接隔离、心跳、stop、断线补发（验收③）、合成 done。"""
+"""WS 全协议：事件序、双连接隔离、心跳、stop、断线补发（验收③）、合成 done、空会话 resume。"""
 
 import asyncio
 import threading
@@ -197,6 +197,24 @@ async def test_resume_finished_synthesized_done(ws_client):
     done = events2[-1]
     assert done["payload"]["synthesized"] is True
     assert done["payload"]["response"] == "已完成回答"
+
+
+async def test_resume_empty_session_is_not_an_error(ws_client):
+    """空会话 resume 不是故障：刚打开一条学习路径的聊天就是这样，用户还没开口。
+
+    「从学习看板点进聊天」现在**不跑回合**（第一句由用户自己打），所以 attach 后
+    必然 resume 一个零消息会话。这里以前回一条不可恢复的 error，前端把它当顶部
+    红条弹出来（`useChat` 的 topError），等于每次进路径都报一次假故障。
+    """
+    install_scripted(lambda: ScriptedLLM([ScriptedStep(chunks=["好，我们从向量开始。"])]))
+    empty = ws_client.post("/api/v1/sessions", json={"capability": "mastery_path"}).json()
+    with ws_client.websocket_connect("/api/v1/ws") as ws:
+        ws.send_json({"type": "resume", "session_id": empty["id"]})
+        # 空会话没有可回放的东西：直接接着说话，一条 error 都不该混进来
+        ws.send_json({"type": "chat", "session_id": empty["id"], "message": "继续"})
+        events = _receive_until(ws, lambda e: e["type"] == "done")
+    assert [e for e in events if e["type"] == "error"] == []
+    assert events[0]["type"] == "turn_start"  # resume 不留痕，回合照常起
 
 
 async def test_unknown_type_error(ws_client):

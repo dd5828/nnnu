@@ -9,8 +9,8 @@
  *
  * **没有推进接口**：门就是游标，下一步由服务端每回合现算（`next_target`）。
  *
- * `useStartSession` 不改任何服务端数据（回合在后台跑），但照样失效一次：
- * 会话绑定与下一目标可能已经变了，回来时看板得是新的。
+ * `useStartSession` 只把这条路径的会话备好（绑定 + 标题），**不跑回合**——
+ * 第一句由用户在聊天里自己打。它照样失效一次缓存：会话绑定变了，回来时看板得是新的。
  */
 
 import { useCallback } from "react";
@@ -48,7 +48,7 @@ export function useLearningPath(id: string | null) {
   });
 }
 
-/** 起/续学习会话：服务端绑定路径并开一个 mastery_path 回合，正文在 WS 上流。 */
+/** 打开这条路径的聊天：服务端备好会话并绑上路径，**零 LLM**——不替用户开口。 */
 export function useStartSession() {
   const invalidate = useInvalidateLearning();
   return useMutation({

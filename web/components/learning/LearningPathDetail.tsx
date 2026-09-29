@@ -8,8 +8,9 @@
  * **没有推进按钮**（门就是游标）：服务端每回合现算 `next_target`，这页只把
  * 「下一目标 + 为什么要做它」摆出来（`l-next` 面板），真学还得去聊天里学。
  *
- * 「开始学习会话」= 起一个 mastery_path 回合（正文在 WS 上流）→ `attachSession`
- * 把它接上 → 跳聊天页看讲解。REST 起的回合不会自己进客户端的订阅，不 attach 就是空转。
+ * 「开始学习会话 / 去聊天」= 备好这条路径的会话（服务端绑定路径、改标题，**零 LLM**）
+ * → `attachSession` 订阅它 + 把能力强切成 mastery_path → 跳聊天页。**不代用户开口**：
+ * 回合由用户在输入框里打的第一句触发，所以 attach 后消息区是空的，这是正常的。
  */
 
 import { useMemo, useState } from "react";
@@ -39,6 +40,7 @@ import {
 } from "@/hooks/useLearning";
 import { useQuestionList } from "@/hooks/useQuestions";
 import { useNow } from "@/hooks/useNow";
+import { CAPABILITY_MASTERY } from "@/lib/capabilities";
 import {
   gateKey,
   nextActionKey,
@@ -60,6 +62,7 @@ export default function LearningPathDetail() {
   const search = useSearchParams();
   const pathId = params?.id ?? null;
   const attachSession = useChatStore((s) => s.attachSession);
+  const setCapability = useChatStore((s) => s.setCapability);
 
   const { data, isLoading, error } = useLearningPath(pathId);
   const startSession = useStartSession();
@@ -106,8 +109,13 @@ export default function LearningPathDetail() {
     }
     setNotice(null);
     try {
+      // 只备会话（零 LLM）：绑定路径、标题设成路径名。**不代打模型**——
+      // 第一句由用户在聊天里自己说（对齐上游 launch-intent 的用法）。
       const response = await startSession.mutateAsync({ pathId, language: lang });
-      attachSession(response.session_id); // REST 起的回合要显式订阅，否则页面空转
+      attachSession(response.session_id); // 订阅这个会话，回合起在 WS 上
+      // 能力必须切过去：store 里的值跟着每条消息下发，不切的话用户进去打的第一句
+      // 会按旧能力（多半是 chat）跑，盘点进来的路径等于白进
+      setCapability(CAPABILITY_MASTERY);
       router.push("/");
     } catch (err) {
       setNotice(String(err));

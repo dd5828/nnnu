@@ -94,5 +94,3 @@ quiz:
 
 path_complete: |
   Every node in this path is cleared and nothing is due for review. Add new nodes on the learning board, or start a new topic with a new path.
-
-session_start: "Let's continue \"{title}\". Call mastery_status first to see which knowledge point this round is about, then go straight to its gate: for memory / procedure ask 1–2 questions to probe, for concept / design ask the learner to explain it in their own words and judge that. No need to lecture first — fill the gaps after they answer."
