@@ -54,7 +54,7 @@ const THEME_LABEL_KEYS: Record<string, string> = {
   glass: "common.themeGlass",
 };
 
-export default function Sidebar() {
+export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { t, lang, switchLanguage } = useI18n();
   const { theme, switchTheme } = useTheme();
   const mounted = useMounted();
@@ -74,6 +74,7 @@ export default function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={onNavigate} // 窄屏：点导航项即收起抽屉（桌面端本来就没开）
                 className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm hover:bg-accent"
               >
                 <Icon className="size-4" />
