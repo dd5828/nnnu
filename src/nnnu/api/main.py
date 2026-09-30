@@ -22,6 +22,7 @@ from nnnu.api.routers import (
     notebooks,
     plugins,
     questions,
+    renders,
     research,
     sessions,
     settings,
@@ -154,6 +155,14 @@ def create_app() -> FastAPI:
             await kb_service.recover_stale()
         except Exception:  # 恢复失败不该拦住启动：库各自的 manifest 仍是权威
             logger.exception("知识库启动恢复失败，继续启动")
+        # 可视化/动画（§7.7/§7.8）：产物存储给路由下载用，渲染服务给能力层取用；
+        # NNNU_MANIM_MOCK=1 时装配假渲染器（测试与 E2E），否则真 Manim 渲染器
+        from nnnu.services.render.artifacts import RenderStore
+        from nnnu.services.render.service import build_render_service, set_render_service
+
+        render_store = RenderStore(data_root)
+        _app.state.renders = render_store
+        set_render_service(build_render_service(render_store))
         yield
         await kb_service.shutdown()
         set_kb_service(None)
@@ -161,6 +170,7 @@ def create_app() -> FastAPI:
         set_question_bank(None)
         set_learning_service(None)
         set_research_service(None)
+        set_render_service(None)
         await embedding.aclose()
         await cron_service.stop()
         await db.close()
@@ -200,6 +210,7 @@ def create_app() -> FastAPI:
     app.include_router(questions.router)
     app.include_router(learning.router)
     app.include_router(research.router)
+    app.include_router(renders.router)
     app.include_router(plugins.router)
     app.include_router(chat.router)
     app.include_router(sessions.router)

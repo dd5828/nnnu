@@ -29,7 +29,10 @@ dependencies = [
 # server 为空别名占位（对齐未来 CLI-only 拆分），重依赖随对应阶段填充。
 server = []
 rag = ["onnxruntime>=1.18"]  # §7.9 本地 ONNX 嵌入；不装则只能用远程嵌入端点
-math-animator = []
+# §7.8 数学动画真机渲染；还要系统装 ffmpeg（用到 Tex 时另需 LaTeX，本仓库提示词
+# 禁用 Tex 所以基本用不上）。本机与 CI 都没装、未验证——假渲染器见
+# services/render/service.py（NNNU_MANIM_MOCK=1）
+math-animator = ["manim>=0.19.0"]
 partners = ["nnnu[server]"]
 dev = [
     "nnnu[server]",

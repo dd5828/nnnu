@@ -21,6 +21,7 @@ KNOWN_PREFIXES = (
     "lnode",
     "lint",  # 答题交互行（learning_interactions）
     "rrun",  # 一次调研的草稿本（research_runs）
+    "rnd",  # 一次渲染的产物目录（visualize / math_animator）
 )
 
 
