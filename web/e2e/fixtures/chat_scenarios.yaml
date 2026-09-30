@@ -291,3 +291,235 @@ steps:
   - chunks: ["综合来看：先按规模与运维能力划线，再在候选里比召回质量。"]
     finish_reason: stop
     usage: { prompt_tokens: 100, completion_tokens: 30 }
+  # Turn 17（测试⑲-1）：visualize 第一回合（SVG）。三阶段各吃一次 LLM 调用：分析段回 JSON 定类型、
+  # 生成段回恰好一个渲染围栏、复查段回 JSON 判 ok。阶段原文都被 SilentBus 吞掉，正文是代码按契约拼的
+  # （标题 + 一句说明 + 恰好一个围栏）；分析/生成段的 delay 留出阶段条的观察窗
+  - chunks:
+      - '{"render_type": "svg", "title": "Transformer 编码器结构", "description": "从输入嵌入到编码器输出：多头自注意力与逐位置前馈各带残差连接与层归一化。", "elements": ["输入嵌入 + 位置编码", "多头自注意力", "逐位置前馈网络", "编码器输出"], "rationale": "结构示意图要坐标级控制，SVG 最合适。"}'
+    finish_reason: stop
+    delay_ms: 1200
+    usage: { prompt_tokens: 100, completion_tokens: 60 }
+  - chunks:
+      - |
+        ```svg
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 264">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" />
+            </marker>
+          </defs>
+          <g class="c-gray">
+            <rect class="box" x="120" y="16" width="240" height="36" rx="8" />
+            <text class="t" x="240" y="34" text-anchor="middle">输入嵌入 + 位置编码</text>
+          </g>
+          <path class="arr" d="M240 52L240 74" marker-end="url(#arrow)" />
+          <g class="c-blue">
+            <rect class="box" x="120" y="76" width="240" height="40" rx="8" />
+            <text class="t" x="240" y="96" text-anchor="middle">多头自注意力</text>
+          </g>
+          <path class="arr" d="M240 116L240 138" marker-end="url(#arrow)" />
+          <g class="c-blue">
+            <rect class="box" x="120" y="140" width="240" height="40" rx="8" />
+            <text class="t" x="240" y="160" text-anchor="middle">逐位置前馈网络</text>
+          </g>
+          <path class="arr" d="M240 180L240 202" marker-end="url(#arrow)" />
+          <g class="c-gray">
+            <rect class="box" x="120" y="204" width="240" height="36" rx="8" />
+            <text class="t" x="240" y="222" text-anchor="middle">编码器输出</text>
+          </g>
+        </svg>
+        ```
+    finish_reason: stop
+    delay_ms: 900
+    usage: { prompt_tokens: 100, completion_tokens: 220 }
+  - chunks:
+      - '{"verdict": "ok", "code": "", "notes": "四层结构完整、箭头闭合，与简报一致。"}'
+    finish_reason: stop
+    usage: { prompt_tokens: 100, completion_tokens: 40 }
+  # Turn 18（测试⑲-2）：visualize 第二回合（ECharts）。生成段回严格 JSON 的 option——
+  # 顶层要有非空的 series，不然确定性校验器会让它先修复、再降级
+  - chunks:
+      - '{"render_type": "echarts", "title": "正弦曲线", "description": "0 到 2π 上五个关键点的正弦折线，验证 ECharts 渲染链路。", "elements": ["x 轴按弧度标注", "y 轴 -1 到 1", "平滑折线"], "rationale": "定量曲线是图表的标准用例。"}'
+    finish_reason: stop
+    delay_ms: 900
+    usage: { prompt_tokens: 100, completion_tokens: 60 }
+  - chunks:
+      - |
+        ```echarts
+        {"title": {"text": "y = sin(x)", "left": "center"}, "xAxis": {"type": "category", "data": ["0", "π/2", "π", "3π/2", "2π"]}, "yAxis": {"type": "value", "min": -1, "max": 1}, "series": [{"name": "sin(x)", "type": "line", "smooth": true, "data": [0, 1, 0, -1, 0]}]}
+        ```
+    finish_reason: stop
+    delay_ms: 900
+    usage: { prompt_tokens: 100, completion_tokens: 200 }
+  - chunks:
+      - '{"verdict": "ok", "code": "", "notes": "选项是合法 JSON，坐标轴与数据对得上。"}'
+    finish_reason: stop
+    usage: { prompt_tokens: 100, completion_tokens: 40 }
+  # Turn 19（测试⑲-3）：visualize 第三回合（Mermaid）。首行必须是图类型关键字
+  - chunks:
+      - '{"render_type": "mermaid", "title": "冒泡排序流程", "description": "一轮扫描的比较与交换分支，交换后再进下一对，扫完从头再来。", "elements": ["开始与结束", "比较相邻元素", "交换分支", "下一对循环"], "rationale": "带分支的流程用流程图最直观。"}'
+    finish_reason: stop
+    delay_ms: 900
+    usage: { prompt_tokens: 100, completion_tokens: 60 }
+  - chunks:
+      - |
+        ```mermaid
+        flowchart TD
+          A[开始冒泡排序] --> B[比较相邻两个元素]
+          B --> C{前一个更大吗}
+          C -- 是 --> D[交换两个元素]
+          C -- 否 --> E[保持原位]
+          D --> F{还有下一对吗}
+          E --> F
+          F -- 是 --> B
+          F -- 否 --> G[结束本轮扫描]
+        ```
+    finish_reason: stop
+    delay_ms: 900
+    usage: { prompt_tokens: 100, completion_tokens: 200 }
+  - chunks:
+      - '{"verdict": "ok", "code": "", "notes": "分支闭合，交换后有回路，读得通。"}'
+    finish_reason: stop
+    usage: { prompt_tokens: 100, completion_tokens: 40 }
+  # Turn 20（测试⑲-4）：visualize 第四回合（HTML）。沙箱 iframe 里真跑：拖动滑杆改半径与面积；
+  # 页面里的 Math.PI 与 innerHTML 更新是给「交互型」验收用的（E2E 只断言 iframe 落地与 srcdoc）
+  - chunks:
+      - '{"render_type": "html", "title": "圆的半径与面积", "description": "一个滑杆拖动半径，圆实时缩放并显示半径与面积数值。", "elements": ["半径滑杆", "实时缩放的圆", "半径与面积读数"], "rationale": "要用户操作并看到状态变化，单文件 HTML 最合适。"}'
+    finish_reason: stop
+    delay_ms: 900
+    usage: { prompt_tokens: 100, completion_tokens: 60 }
+  - chunks:
+      - |
+        ```html
+        <!DOCTYPE html>
+        <html lang="zh">
+        <head>
+        <meta charset="utf-8" />
+        <title>圆的半径与面积</title>
+        <style>
+          body { margin: 0; padding: 16px; font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; }
+          h1 { font-size: 16px; margin: 0 0 12px; }
+          .row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+          svg { background: #111827; border-radius: 12px; }
+        </style>
+        </head>
+        <body>
+        <h1>圆的半径与面积</h1>
+        <div class="row">
+          <input id="radius" type="range" min="20" max="90" value="45" />
+          <span>半径 <b id="r">45</b>，面积 <b id="a">6362</b></span>
+        </div>
+        <svg id="board" viewBox="0 0 220 220" width="220" height="220">
+          <circle id="disc" cx="110" cy="110" r="45" fill="#38bdf8" fill-opacity="0.35" stroke="#38bdf8" stroke-width="2" />
+        </svg>
+        <script>
+          var slider = document.getElementById("radius");
+          var disc = document.getElementById("disc");
+          function update() {
+            var r = Number(slider.value);
+            disc.setAttribute("r", r);
+            document.getElementById("r").textContent = r;
+            document.getElementById("a").textContent = Math.round(Math.PI * r * r);
+          }
+          slider.addEventListener("input", update);
+          update();
+        </script>
+        </body>
+        </html>
+        ```
+    finish_reason: stop
+    delay_ms: 900
+    usage: { prompt_tokens: 100, completion_tokens: 240 }
+  - chunks:
+      - '{"verdict": "ok", "code": "", "notes": "滑杆与圆联动，读数跟着变。"}'
+    finish_reason: stop
+    usage: { prompt_tokens: 100, completion_tokens: 40 }
+  # Turn 21（测试⑳-1）：math_animator 第一回合，一次成功。四步：概念分析 JSON → 方案设计 JSON →
+  # 生成 python 围栏 → 总结 JSON；渲染（假渲染器）不占 LLM 调用，所以总调用数正好四步
+  - chunks:
+      - '{"learning_goal": "看懂单位圆上的匀速圆周运动怎么投影出正弦曲线", "math_focus": ["单位圆", "正弦函数", "纵坐标投影"], "visual_targets": ["绕圆匀速转动的点", "随角度展开的正弦曲线", "左侧圆与右侧曲线的同步对应"], "narrative_steps": ["画出单位圆与半径", "让点转过四分之一圈", "把纵坐标展开成正弦曲线", "收尾停留"]}'
+    finish_reason: stop
+    delay_ms: 1200
+    usage: { prompt_tokens: 100, completion_tokens: 80 }
+  - chunks:
+      - '{"title": "单位圆与正弦函数", "scene_outline": ["画单位圆与半径，点从 0 角出发", "每转四分之一圈停一拍，标出纵坐标", "四个节拍走满一圈", "结尾停留后收束"], "visual_style": "深色底、蓝圆黄点，元素少而清楚，每拍之间留白", "animation_notes": ["半径与点先出现，转动的每一拍都有明显停顿", "总时长约 12 秒，四个节拍各约 2.5 秒"], "code_constraints": ["所有点坐标写成 3D 形式", "不用 Tex/MathTex，标注一律用 Text", "关键步骤后加 self.wait(...)"]}'
+    finish_reason: stop
+    usage: { prompt_tokens: 100, completion_tokens: 120 }
+  - chunks:
+      - |
+        ```python
+        from manim import *
+
+
+        class UnitCircleSine(Scene):
+            def construct(self):
+                circle = Circle(radius=2.0, color=BLUE)
+                dot = Dot(color=YELLOW).move_to([2.0, 0, 0])
+                self.play(Create(circle), FadeIn(dot), run_time=1.5)
+                self.wait(1.0)
+                for k in range(1, 5):
+                    angle = k * PI / 2
+                    target = [2.0 * cos(angle), 2.0 * sin(angle), 0]
+                    self.play(dot.animate.move_to(target), run_time=1.4)
+                    self.wait(0.8)
+                self.wait(1.5)
+        ```
+    finish_reason: stop
+    delay_ms: 900
+    usage: { prompt_tokens: 100, completion_tokens: 300 }
+  - chunks:
+      - '{"summary_text": "做了个 12 秒的单位圆动画：黄点沿蓝色单位圆每四分之一圈停一拍，走满一整圈，对应正弦函数在四个关键角度上的取值。", "key_points": ["单位圆上的匀速转动", "四个四分之一圈节拍", "结尾留出停留时间"]}'
+    finish_reason: stop
+    usage: { prompt_tokens: 100, completion_tokens: 80 }
+  # Turn 22（测试⑳-2）：math_animator 第二回合，首次渲染失败 → 修复一次 → 第二次成功（5 步）。
+  # 失败靠假渲染器的注入标记 NNNU_MOCK_FAIL（写在代码注释里）；修复段照样吃一次 LLM 调用，
+  # 修好的代码里当然没有这个标记
+  - chunks:
+      - '{"learning_goal": "看懂斐波那契数列的边长怎么长出正方形与螺旋", "math_focus": ["斐波那契数列", "正方形拼接", "螺旋"], "visual_targets": ["按边长递增的正方形组", "拼出来的矩形", "沿着正方形画出的螺旋"], "narrative_steps": ["依次画出边长 1、1、2、3、5 的正方形", "拼成一个矩形", "沿对角线画螺旋", "收尾停留"]}'
+    finish_reason: stop
+    delay_ms: 1200
+    usage: { prompt_tokens: 100, completion_tokens: 80 }
+  - chunks:
+      - '{"title": "斐波那契螺旋生长", "scene_outline": ["先出来边长 1 的两个小正方形", "依次接上 2、3、5 的正方形", "整体排成一个矩形", "沿正方形内侧画螺旋后停留"], "visual_style": "浅色背景、单色描边，正方形按顺序逐个点亮", "animation_notes": ["每个正方形出现后停半拍", "总时长约 10 秒"], "code_constraints": ["所有坐标写成 3D 形式", "不用 Tex/MathTex，标注用 Text", "结尾留 1.5 秒停留"]}'
+    finish_reason: stop
+    usage: { prompt_tokens: 100, completion_tokens: 120 }
+  - chunks:
+      - |
+        ```python
+        from manim import *
+
+
+        class FibonacciSpiral(Scene):
+            def construct(self):
+                # NNNU_MOCK_FAIL：夹具故意让首次渲染失败，验收 code_retry 的修复路径
+                squares = VGroup()
+                for side in (1, 1, 2, 3, 5):
+                    squares.add(Square(side_length=side * 0.6))
+                squares.arrange(RIGHT, buff=0.2)
+                self.play(LaggedStart(*[Create(s) for s in squares], lag_ratio=0.35), run_time=3.0)
+                self.wait(1.5)
+        ```
+    finish_reason: stop
+    delay_ms: 900
+    usage: { prompt_tokens: 100, completion_tokens: 300 }
+  - chunks:
+      - |
+        ```python
+        from manim import *
+
+
+        class FibonacciSpiral(Scene):
+            def construct(self):
+                squares = VGroup()
+                for side in (1, 1, 2, 3, 5):
+                    squares.add(Square(side_length=side * 0.6))
+                squares.arrange(RIGHT, buff=0.2)
+                self.play(LaggedStart(*[Create(s) for s in squares], lag_ratio=0.35), run_time=3.0)
+                self.wait(1.5)
+        ```
+    finish_reason: stop
+    usage: { prompt_tokens: 100, completion_tokens: 300 }
+  - chunks:
+      - '{"summary_text": "做了个 10 秒的斐波那契动画：边长 1、1、2、3、5 的正方形依次拼出来，排成一排后停留；第一次渲染失败，修掉问题后第二次渲染成功。", "key_points": ["斐波那契边长逐个出现", "首次渲染失败后自动修复", "第二次尝试产出视频"]}'
+    finish_reason: stop
+    usage: { prompt_tokens: 100, completion_tokens: 80 }

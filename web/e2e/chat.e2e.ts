@@ -677,3 +677,175 @@ test("⑱ 深度研究：大纲长的报告分多段写，节标题带代码给�
   await expect(page.getByText("先做索引重建演练，再谈切换")).toBeVisible();
   await expect(page.getByText("再在候选里比召回质量")).toBeVisible(); // 结论收尾
 });
+
+/** §7.7 验收要「前端正常渲染且无 console 报错」：挂监听收集主框架的 error，
+ *  沙箱 iframe（about:srcdoc）里用户页面自己的 CDN 加载不算本应用的问题。 */
+function trackConsoleErrors(page: import("@playwright/test").Page): string[] {
+  const errors: string[] = [];
+  page.on("console", (msg) => {
+    if (msg.type() === "error" && !msg.location().url.startsWith("about:")) {
+      errors.push(msg.text());
+    }
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+  return errors;
+}
+
+test("⑲ 可视化：SVG/ECharts/Mermaid/HTML 四种图当场渲染，能全屏能下载，console 干净", async ({
+  page,
+}) => {
+  const consoleErrors = trackConsoleErrors(page);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "新对话" }).click();
+  const box = page.locator("textarea").first();
+  await expect(box).toBeVisible();
+  await page.getByTestId("capability-selector").click();
+  await page.locator('[data-testid="capability-option"][data-value="visualize"]').click();
+  await expect(page.getByTestId("capability-selector")).toContainText("可视化");
+  // 渲染类型不 pin（auto）：让分析段按需求自己挑，三回合分别落到三种图上
+  await expect(page.getByTestId("visualize-render-type")).toHaveAttribute("data-value", "auto");
+
+  // ---- 第一回合：结构示意图 → SVG。阶段条按能力声明画三格，分析段先亮 ----
+  await box.fill("画一张 Transformer 编码器的结构示意图");
+  await box.press("Enter");
+  await expect(page.getByTestId("stage-bar")).toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId("stage-pill")).toHaveCount(3);
+  await expect(page.locator('[data-testid="stage-pill"][data-stage="analyzing"]')).toHaveAttribute(
+    "data-state",
+    "active",
+    { timeout: 10000 }
+  );
+  await expect(page.getByRole("button", { name: "发送" })).toBeVisible({ timeout: 30000 });
+
+  // 正文 = 标题 + 一句说明 + 恰好一个渲染围栏；图内文字真在 SVG 里（不是贴的一张图）
+  const svgFrame = page.getByTestId("render-frame").first();
+  await expect(svgFrame).toHaveAttribute("data-kind", "svg");
+  await expect(page.getByRole("heading", { name: "Transformer 编码器结构" })).toBeVisible();
+  const svgViewer = page.getByTestId("svg-viewer");
+  await expect(svgViewer).toContainText("多头自注意力");
+  await expect(svgViewer.locator("svg")).toHaveCount(1);
+
+  // 全屏：portal 里再挂一份（Esc 关掉）；页面上那份始终在。
+  // 定位到 viewer 里的那张图——灯箱自己的关闭按钮也是个 svg 图标，数 svg 总数会多数进去
+  await svgFrame.getByTestId("render-fullscreen").click();
+  const lightbox = page.getByTestId("render-lightbox");
+  await expect(lightbox).toBeVisible();
+  await expect(lightbox.getByTestId("svg-viewer").locator("svg")).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("render-lightbox")).toHaveCount(0);
+  await expect(svgViewer.locator("svg")).toHaveCount(1);
+
+  // 下载：纯前端 Blob 存盘，文件名带类型与日期
+  const svgDownload = page.waitForEvent("download");
+  await svgFrame.getByTestId("render-download").click();
+  expect((await svgDownload).suggestedFilename()).toMatch(/^nnnu-渲染-svg-\d{4}-\d{2}-\d{2}\.svg$/);
+
+  // ---- 第二回合：定量曲线 → ECharts（只吃 JSON option，出的是 svg 渲染器）----
+  await box.fill("把 y=sin(x) 在 0 到 2π 上的曲线画成图");
+  await box.press("Enter");
+  await expect(page.getByRole("heading", { name: "正弦曲线" })).toBeVisible({ timeout: 30000 });
+  await expect(page.getByRole("button", { name: "发送" })).toBeVisible({ timeout: 30000 });
+  await expect(
+    page.getByTestId("render-frame").filter({ hasText: "ECharts 图表" })
+  ).toHaveAttribute("data-kind", "echarts");
+  await expect(page.getByTestId("echarts-viewer").locator("svg")).toHaveCount(1, {
+    timeout: 15000,
+  });
+
+  // ---- 第三回合：流程 → Mermaid 图 ----
+  await box.fill("把冒泡排序的过程画成流程图");
+  await box.press("Enter");
+  await expect(page.getByRole("heading", { name: "冒泡排序流程" })).toBeVisible({ timeout: 30000 });
+  await expect(page.getByRole("button", { name: "发送" })).toBeVisible({ timeout: 30000 });
+  await expect(page.getByTestId("render-frame").filter({ hasText: "Mermaid 图" })).toHaveAttribute(
+    "data-kind",
+    "mermaid"
+  );
+  const mermaidViewer = page.getByTestId("mermaid-viewer");
+  await expect(mermaidViewer.locator("svg")).toHaveCount(1, { timeout: 15000 });
+  await expect(mermaidViewer).toContainText("开始冒泡排序");
+
+  // ---- 第四回合：交互页 → 沙箱 iframe（allow-scripts，但不给自己同源）----
+  await box.fill("做一个可拖动的滑杆演示：拖动能实时看到圆的半径与面积变化");
+  await box.press("Enter");
+  await expect(page.getByRole("heading", { name: "圆的半径与面积" })).toBeVisible({
+    timeout: 30000,
+  });
+  await expect(page.getByRole("button", { name: "发送" })).toBeVisible({ timeout: 30000 });
+  await expect(page.getByTestId("render-frame").filter({ hasText: "HTML 页面" })).toHaveAttribute(
+    "data-kind",
+    "html"
+  );
+  const htmlFrame = page.getByTestId("html-viewer");
+  await expect(htmlFrame).toBeVisible();
+  await expect(htmlFrame).toHaveAttribute("sandbox", "allow-scripts");
+  await expect(htmlFrame).toHaveAttribute("srcdoc", /圆的半径与面积/);
+
+  // 四种图都画过一遍，主框架一条 console 报错都没有（§7.7 验收）
+  expect(consoleErrors).toEqual([]);
+});
+
+test("⑳ 数学动画：假渲染器跑通六阶段，首次渲染失败后自动修复再渲染", async ({ page }) => {
+  const consoleErrors = trackConsoleErrors(page);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "新对话" }).click();
+  const box = page.locator("textarea").first();
+  await expect(box).toBeVisible();
+  await page.getByTestId("capability-selector").click();
+  await page.locator('[data-testid="capability-option"][data-value="math_animator"]').click();
+  await expect(page.getByTestId("capability-selector")).toContainText("数学动画");
+  await expect(page.getByTestId("animator-quality")).toHaveAttribute("data-value", "medium");
+
+  // ---- 第一回合：一次渲染成功。正文 = 标题 + 总结 + 产物围栏 + 源码 + 日志节选 ----
+  await box.fill("用动画讲讲单位圆上的点怎么画出正弦曲线");
+  await box.press("Enter");
+  await expect(page.getByTestId("stage-bar")).toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId("stage-pill")).toHaveCount(6);
+  await expect(
+    page.locator('[data-testid="stage-pill"][data-stage="concept_analysis"]')
+  ).toHaveAttribute("data-state", "active", { timeout: 10000 });
+  await expect(page.getByRole("button", { name: "发送" })).toBeVisible({ timeout: 30000 });
+
+  await expect(page.getByRole("heading", { name: "单位圆与正弦函数" })).toBeVisible();
+  const card = page.getByTestId("artifact-card").first();
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("animation.mp4");
+  const downloadHref = await card.getByTestId("artifact-download").getAttribute("href");
+  expect(downloadHref).toMatch(/^\/api\/v1\/renders\/rnd-[0-9a-f]{8}\?download=1$/);
+  // 占位字节不是能解码的视频：播不了就退成「下载后本地看」的兜底卡，两条路都算通过
+  await expect(
+    page.getByTestId("artifact-video").or(page.getByTestId("artifact-fallback")).first()
+  ).toBeVisible({ timeout: 15000 });
+  // 一次成功不挂「第 N 次尝试」徽标
+  await expect(card.getByTestId("artifact-attempts")).toHaveCount(0);
+  // 源码与渲染日志节选都在正文里（日志是流水线回吐的假渲染器日志）
+  await expect(page.getByRole("heading", { name: "代码", exact: true })).toBeVisible();
+  await expect(page.getByText("class UnitCircleSine").first()).toBeVisible();
+  await expect(page.getByText("[mock] 假渲染器启动").first()).toBeVisible();
+
+  // 产物端点：直取给播放器，带 ?download=1 时切成附件（走前端代理，顺带验 proxy 放行）
+  const artifactPath = downloadHref!.replace("?download=1", "");
+  const raw = await page.request.get(new URL(artifactPath, page.url()).toString());
+  expect(raw.status()).toBe(200);
+  const asAttachment = await page.request.get(new URL(downloadHref!, page.url()).toString());
+  expect(asAttachment.status()).toBe(200);
+  expect(asAttachment.headers()["content-disposition"]).toContain("attachment");
+
+  // ---- 第二回合：首版代码带 NNNU_MOCK_FAIL 注入口 → 渲染失败 → 修一版 → 第二次成功 ----
+  await box.fill("再做一个斐波那契螺旋生长的动画");
+  await box.press("Enter");
+  await expect(page.getByRole("heading", { name: "斐波那契螺旋生长" })).toBeVisible({
+    timeout: 30000,
+  });
+  await expect(page.getByRole("button", { name: "发送" })).toBeVisible({ timeout: 30000 });
+  const retryCard = page.getByTestId("artifact-card").last();
+  await expect(retryCard).toBeVisible();
+  await expect(retryCard.getByTestId("artifact-attempts")).toHaveText("第 2 次尝试成功");
+  // 正文里是修好的那版代码（注入标记只活在失败的首版里，不该露出来）
+  await expect(page.getByText("class FibonacciSpiral").first()).toBeVisible();
+  await expect(page.getByText("NNNU_MOCK_FAIL")).toHaveCount(0);
+
+  expect(consoleErrors).toEqual([]);
+});

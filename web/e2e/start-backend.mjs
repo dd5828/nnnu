@@ -72,6 +72,8 @@ const child = spawn(PYTHON, ["-m", "nnnu.api.run_server"], {
     NNNU_LLM_MOCK: "scripted",
     NNNU_LLM_SCRIPT: path.join(__dirname, "fixtures", "chat_scenarios.yaml"),
     NNNU_EMBEDDING_MOCK: "scripted",
+    // 假渲染器：math_animator 场景要跑通六阶段流水线，但不装 manim/ffmpeg（P7 遗留）
+    NNNU_MANIM_MOCK: "1",
     PYTHONIOENCODING: "utf-8",
   },
 });
