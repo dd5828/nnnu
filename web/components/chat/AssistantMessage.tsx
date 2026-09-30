@@ -15,6 +15,7 @@ import {
   CAPABILITY_RESEARCH,
   isResearchOutline,
 } from "@/lib/capabilities";
+import { downloadMarkdown } from "@/lib/download";
 import CitationsPanel from "./CitationsPanel";
 import CostBadge from "./CostBadge";
 import Markdown from "./Markdown";
@@ -22,20 +23,6 @@ import MasteryResultCard, { isGradedMasteryCall } from "./MasteryResultCard";
 import SaveToNotebook from "./SaveToNotebook";
 import ThinkingBlock from "./ThinkingBlock";
 import ToolCallCard from "./ToolCallCard";
-
-/** 导出 Markdown（§7.6）：报告正文就在 message.content 里，纯前端存盘即可，
- *  不绕后端（不走文件系统 = 不用管清理，也不给后端加一个只读端点）。 */
-function downloadMarkdown(text: string, stem: string) {
-  const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `${stem}-${new Date().toISOString().slice(0, 10)}.md`;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-}
 
 export default function AssistantMessage({ message }: { message: UiMessage }) {
   const { t } = useI18n();

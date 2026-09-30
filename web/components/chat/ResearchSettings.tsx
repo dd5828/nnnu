@@ -12,7 +12,6 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown } from "lucide-react";
 import { useChatStore } from "@/hooks/useChat";
 import { useI18n } from "@/hooks/useI18n";
 import {
@@ -22,6 +21,7 @@ import {
   type ResearchDepth,
   type ResearchMode,
 } from "@/lib/capabilities";
+import { ToolbarDropdown, ToolbarOption } from "./ToolbarDropdown";
 
 export default function ResearchSettings() {
   const { t } = useI18n();
@@ -58,7 +58,7 @@ export default function ResearchSettings() {
 
   return (
     <div ref={rootRef} className="flex items-center gap-1">
-      <Dropdown
+      <ToolbarDropdown
         testId="research-depth"
         value={depth}
         label={t(`chat.researchDepth_${depth}`)}
@@ -68,7 +68,7 @@ export default function ResearchSettings() {
         onToggle={() => setOpen((prev) => (prev === "depth" ? null : "depth"))}
       >
         {RESEARCH_DEPTHS.map((option) => (
-          <Option
+          <ToolbarOption
             key={option}
             testId="research-depth-option"
             value={option}
@@ -78,8 +78,8 @@ export default function ResearchSettings() {
             onPick={() => pick(() => setDepth(option as ResearchDepth))}
           />
         ))}
-      </Dropdown>
-      <Dropdown
+      </ToolbarDropdown>
+      <ToolbarDropdown
         testId="research-mode"
         value={mode}
         label={t(`chat.researchMode_${mode}`)}
@@ -89,7 +89,7 @@ export default function ResearchSettings() {
         onToggle={() => setOpen((prev) => (prev === "mode" ? null : "mode"))}
       >
         {RESEARCH_MODES.map((option) => (
-          <Option
+          <ToolbarOption
             key={option}
             testId="research-mode-option"
             value={option}
@@ -99,84 +99,7 @@ export default function ResearchSettings() {
             onPick={() => pick(() => setMode(option as ResearchMode))}
           />
         ))}
-      </Dropdown>
+      </ToolbarDropdown>
     </div>
-  );
-}
-
-function Dropdown({
-  testId,
-  value,
-  label,
-  title,
-  disabled,
-  open,
-  onToggle,
-  children,
-}: {
-  testId: string;
-  value: string;
-  label: string;
-  title: string;
-  disabled: boolean;
-  open: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        data-testid={testId}
-        data-value={value}
-        onClick={onToggle}
-        disabled={disabled}
-        aria-expanded={open}
-        title={title}
-        className="flex items-center gap-1 rounded-lg px-2 py-2 text-xs text-muted transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        <span className="truncate">{label}</span>
-        <ChevronDown className="h-3 w-3 shrink-0" />
-      </button>
-      {open && (
-        <div className="absolute bottom-full left-0 z-50 mb-1.5 w-[min(260px,calc(100vw-32px))] overflow-hidden rounded-xl border border-border bg-surface py-1 shadow-lg">
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Option({
-  testId,
-  value,
-  selected,
-  label,
-  description,
-  onPick,
-}: {
-  testId: string;
-  value: string;
-  selected: boolean;
-  label: string;
-  description: string;
-  onPick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      data-testid={testId}
-      data-value={value}
-      onClick={onPick}
-      className={`flex w-full items-start gap-2.5 px-3 py-2 text-left text-xs transition-colors ${
-        selected ? "bg-primary/5" : "hover:bg-accent"
-      }`}
-    >
-      <span className="min-w-0 flex-1">
-        <span className="block font-medium">{label}</span>
-        <span className="mt-0.5 block text-[11px] text-muted">{description}</span>
-      </span>
-      {selected && <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />}
-    </button>
   );
 }

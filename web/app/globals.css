@@ -193,3 +193,106 @@ body {
 .no-scrollbar::-webkit-scrollbar {
   display: none; /* Chromium / Safari */
 }
+
+/* ── 渲染图的预置 class（§7.7）──
+   模型产出的 SVG 只写 class 不写死颜色/字体：背景由宿主管、文字跟着明暗主题走。
+   这些类名与 `prompts/{zh,en}/visualize.yaml` 里 rules.svg 的清单一一对应，改一边
+   记得改另一边（提示词里是向模型承诺过的）。 */
+.svg-host svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+  font-family: var(--font-sans), sans-serif;
+}
+/* 每行文字垂直居中在自己的 y 上：提示词里就是这么告诉模型的（标签居中 = y 取框中心） */
+.svg-host svg text {
+  dominant-baseline: central;
+}
+.svg-host svg .t {
+  font-size: 14px;
+  fill: var(--foreground);
+}
+.svg-host svg .ts {
+  font-size: 12px;
+  fill: var(--muted);
+}
+.svg-host svg .th {
+  font-size: 14px;
+  font-weight: 600;
+  fill: var(--foreground);
+}
+.svg-host svg .box {
+  fill: var(--surface);
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+.svg-host svg .arr {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+.svg-host svg .leader {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+/* 色板（八色，加在 <g> 上同时决定形状与其中文字） */
+.svg-host svg .c-gray {
+  --c-fg: #64748b;
+  --c-bg: #f1f5f9;
+  --c-bd: #cbd5e1;
+}
+.svg-host svg .c-blue {
+  --c-fg: #1d4ed8;
+  --c-bg: #dbeafe;
+  --c-bd: #93c5fd;
+}
+.svg-host svg .c-teal {
+  --c-fg: #0f766e;
+  --c-bg: #ccfbf1;
+  --c-bd: #5eead4;
+}
+.svg-host svg .c-coral {
+  --c-fg: #c2410c;
+  --c-bg: #ffedd5;
+  --c-bd: #fdba74;
+}
+.svg-host svg .c-purple {
+  --c-fg: #6d28d9;
+  --c-bg: #ede9fe;
+  --c-bd: #c4b5fd;
+}
+.svg-host svg .c-green {
+  --c-fg: #15803d;
+  --c-bg: #dcfce7;
+  --c-bd: #86efac;
+}
+.svg-host svg .c-amber {
+  --c-fg: #b45309;
+  --c-bg: #fef3c7;
+  --c-bd: #fcd34d;
+}
+.svg-host svg .c-red {
+  --c-fg: #b91c1c;
+  --c-bg: #fee2e2;
+  --c-bd: #fca5a5;
+}
+.svg-host svg [class*="c-"] text {
+  fill: var(--c-fg, var(--foreground));
+}
+.svg-host svg [class*="c-"] .box,
+.svg-host svg rect[class*="c-"] {
+  fill: var(--c-bg, var(--surface));
+  stroke: var(--c-bd, var(--border));
+}
+/* 深色主题：色板文字提亮、底色压暗，免得浅底浅字 */
+[data-theme="dark"] .svg-host svg [class*="c-"] text,
+[data-theme="glass"] .svg-host svg [class*="c-"] text {
+  fill: var(--c-bd);
+}
+[data-theme="dark"] .svg-host svg [class*="c-"] .box,
+[data-theme="glass"] .svg-host svg [class*="c-"] .box {
+  fill: color-mix(in srgb, var(--c-bd) 18%, var(--surface));
+}

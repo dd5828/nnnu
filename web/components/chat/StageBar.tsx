@@ -5,6 +5,10 @@
  * 只用既有 `status` 事件（payload 已是 {stage,message}），不新增事件类型：
  * 已过阶段打勾、当前转圈、未到灰显。不认识的能力（阶段表里没有）就按**观测到的**
  * 阶段顺序渲染——降级不炸，也照样能看出跑到哪了。
+ *
+ * 阶段键取**声明 ∪ 观测**：visualize 声明三阶段，但分析段判出 manim_video 时改跑动画
+ * 六阶段（§7.7），那六个键没在它表里，靠观测到的补在后面（不然整个阶段条一个都对不上，
+ * currentIndex 会一直是 -1）。
  */
 
 import { Check, Circle, Loader2 } from "lucide-react";
@@ -13,9 +17,9 @@ import { CAPABILITY_LABEL_KEYS, STAGE_LABEL_KEYS, STAGES_BY_CAPABILITY } from "@
 
 export default function StageBar({ capability, stages }: { capability: string; stages: string[] }) {
   const { t } = useI18n();
-  // 阶段表里有就按声明顺序（含还没到的灰点）；没有就只渲染观测到的
+  // 声明顺序打头（含还没到的灰点），观测到的未知阶段按出现顺序补在后面
   const declared = STAGES_BY_CAPABILITY[capability] ?? [];
-  const keys = declared.length > 0 ? declared : stages;
+  const keys = [...declared, ...stages.filter((key) => !declared.includes(key))];
   if (keys.length === 0) {
     return null;
   }

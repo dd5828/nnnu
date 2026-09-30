@@ -5,7 +5,15 @@
 import { create } from "zustand";
 import { useLanguageStore } from "@/i18n/language-store";
 import { apiFetch } from "@/lib/api";
-import { CAPABILITY_RESEARCH, type ResearchDepth, type ResearchMode } from "@/lib/capabilities";
+import {
+  CAPABILITY_MATH_ANIMATOR,
+  CAPABILITY_RESEARCH,
+  CAPABILITY_VISUALIZE,
+  type AnimatorQuality,
+  type ResearchDepth,
+  type ResearchMode,
+  type VisualizeRenderType,
+} from "@/lib/capabilities";
 import { ChatSocket, type SocketStatus } from "@/lib/ws";
 import type {
   AskUserOption,
@@ -114,6 +122,10 @@ interface ChatState {
    *  同样随每条消息的 config 下发（服务端按它拆子问题、选成稿提示词） */
   researchDepth: ResearchDepth;
   researchMode: ResearchMode;
+  /** 可视化渲染类型（§7.7）：'auto' = 让分析段自己挑；只在 capability=visualize 时下发 */
+  visualizeRenderType: VisualizeRenderType;
+  /** 数学动画画质（§7.8）：只在 capability=math_animator 时下发 */
+  animatorQuality: AnimatorQuality;
 
   init: () => void;
   refreshSessions: () => Promise<void>;
@@ -126,6 +138,8 @@ interface ChatState {
   setCapability: (value: string) => void;
   setResearchDepth: (value: ResearchDepth) => void;
   setResearchMode: (value: ResearchMode) => void;
+  setVisualizeRenderType: (value: VisualizeRenderType) => void;
+  setAnimatorQuality: (value: AnimatorQuality) => void;
   renameSession: (id: string, title: string) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
   send: (text: string, attachments: AttachmentRef[], extraConfig?: TurnConfig) => Promise<void>;
@@ -404,6 +418,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   capability: "chat",
   researchDepth: "standard",
   researchMode: "report",
+  visualizeRenderType: "auto",
+  animatorQuality: "medium",
 
   init: () => {
     if (initialized) {
@@ -488,6 +504,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
   setResearchMode: (value: ResearchMode) => set(() => ({ researchMode: value })),
 
+  setVisualizeRenderType: (value: VisualizeRenderType) =>
+    set(() => ({ visualizeRenderType: value })),
+
+  setAnimatorQuality: (value: AnimatorQuality) => set(() => ({ animatorQuality: value })),
+
   renameSession: async (id: string, title: string) => {
     await apiFetch(`/api/v1/sessions/${id}`, {
       method: "PATCH",
@@ -539,6 +560,13 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       config: {
         ...(get().capability === CAPABILITY_RESEARCH
           ? { depth: get().researchDepth, mode: get().researchMode }
+          : {}),
+        // 可视化同理：render_type 是它独有的键，只在它这档下发（'auto' 也是合法值）
+        ...(get().capability === CAPABILITY_VISUALIZE
+          ? { render_type: get().visualizeRenderType }
+          : {}),
+        ...(get().capability === CAPABILITY_MATH_ANIMATOR
+          ? { quality: get().animatorQuality }
           : {}),
         ...extraConfig,
       },

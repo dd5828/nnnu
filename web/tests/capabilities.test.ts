@@ -5,14 +5,18 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  ANIMATOR_QUALITIES,
+  CAPABILITY_MATH_ANIMATOR,
   CAPABILITY_MASTERY,
   CAPABILITY_QUESTION,
   CAPABILITY_RESEARCH,
   CAPABILITY_SOLVE,
+  CAPABILITY_VISUALIZE,
   RESEARCH_DEPTHS,
   RESEARCH_MODES,
   STAGES_BY_CAPABILITY,
   STAGE_LABEL_KEYS,
+  VISUALIZE_RENDER_TYPES,
   isResearchOutline,
   recordTypeFor,
 } from "@/lib/capabilities";
@@ -54,11 +58,43 @@ describe("大纲判定", () => {
 });
 
 describe("笔记本记录类型", () => {
-  it("四个能力各归各的类型，其余算 chat", () => {
+  it("各能力各归各的类型，其余算 chat", () => {
     expect(recordTypeFor(CAPABILITY_SOLVE)).toBe("solve");
     expect(recordTypeFor(CAPABILITY_QUESTION)).toBe("question");
     expect(recordTypeFor(CAPABILITY_RESEARCH)).toBe("research");
+    expect(recordTypeFor(CAPABILITY_VISUALIZE)).toBe("visualize");
+    expect(recordTypeFor(CAPABILITY_MATH_ANIMATOR)).toBe("math_animator");
     expect(recordTypeFor(CAPABILITY_MASTERY)).toBe("chat");
     expect(recordTypeFor("chat")).toBe("chat");
+  });
+});
+
+describe("可视化与数学动画（§7.7/§7.8）", () => {
+  it("阶段清单与后端 manifest 同序，且都有中文文案键", () => {
+    expect(STAGES_BY_CAPABILITY[CAPABILITY_VISUALIZE]).toEqual([
+      "analyzing",
+      "generating",
+      "reviewing",
+    ]);
+    expect(STAGES_BY_CAPABILITY[CAPABILITY_MATH_ANIMATOR]).toEqual([
+      "concept_analysis",
+      "concept_design",
+      "code_generation",
+      "code_retry",
+      "summary",
+      "render_output",
+    ]);
+    for (const capability of [CAPABILITY_VISUALIZE, CAPABILITY_MATH_ANIMATOR]) {
+      for (const stage of STAGES_BY_CAPABILITY[capability]) {
+        expect(STAGE_LABEL_KEYS[stage]).toBeTruthy();
+      }
+    }
+  });
+
+  it("渲染类型与画质取值与后端同表", () => {
+    expect([...VISUALIZE_RENDER_TYPES]).toEqual(["auto", "svg", "echarts", "mermaid", "html"]);
+    expect([...ANIMATOR_QUALITIES]).toEqual(["low", "medium", "high"]);
+    // manim_video 不开放给用户直接 pin（§7.8 决策）：想要动画就切 math_animator 能力
+    expect((VISUALIZE_RENDER_TYPES as readonly string[]).includes("manim_video")).toBe(false);
   });
 });

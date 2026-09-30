@@ -7,8 +7,10 @@ import { useEffect, useRef, useState } from "react";
 import { CircleStop, Paperclip, Send, X } from "lucide-react";
 import CapabilitySelector from "@/components/chat/CapabilitySelector";
 import KnowledgeSelector from "@/components/chat/KnowledgeSelector";
+import MathAnimatorSettings from "@/components/chat/MathAnimatorSettings";
 import ModelSelector from "@/components/chat/ModelSelector";
 import ResearchSettings from "@/components/chat/ResearchSettings";
+import VisualizeSettings from "@/components/chat/VisualizeSettings";
 import { useChatStore, type AttachmentRef } from "@/hooks/useChat";
 import { useI18n } from "@/hooks/useI18n";
 import { apiFetch } from "@/lib/api";
@@ -146,6 +148,8 @@ export default function Composer() {
           <div className="mt-1 flex items-center gap-1">
             <CapabilitySelector />
             <ResearchSettings />
+            <VisualizeSettings />
+            <MathAnimatorSettings />
             <KnowledgeSelector />
             <ModelSelector />
             <button
