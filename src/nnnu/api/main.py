@@ -22,6 +22,7 @@ from nnnu.api.routers import (
     notebooks,
     plugins,
     questions,
+    research,
     sessions,
     settings,
     unified_ws,
@@ -198,6 +199,7 @@ def create_app() -> FastAPI:
     app.include_router(notebooks.router)
     app.include_router(questions.router)
     app.include_router(learning.router)
+    app.include_router(research.router)
     app.include_router(plugins.router)
     app.include_router(chat.router)
     app.include_router(sessions.router)

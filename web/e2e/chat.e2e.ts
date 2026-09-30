@@ -574,3 +574,37 @@ test("⑮ 深度研究：两段式回合（大纲确认 → 检索成稿），�
   await expect(record).toBeVisible({ timeout: 15000 });
   await expect(record.getByTestId("nb-record-type")).toHaveAttribute("data-type", "research");
 });
+
+test("⑯ 调研历史：跑过的那次在列表里，点进去看大纲、报告与来源", async ({ page }) => {
+  // 侧栏入口（本页是本批新增的第 14 个 nav 项，先证明它点得进来）
+  await page.goto("/");
+  await page.getByRole("link", { name: "调研" }).click();
+  await expect(page).toHaveURL(/\/research$/);
+
+  const run = page.getByTestId("research-run").filter({ hasText: "2025 年公开的 RAG 工程方案" });
+  await expect(run).toBeVisible({ timeout: 15000 });
+  await expect(run).toContainText("已成稿"); // ⑮ 跑完的那次
+  await expect(run).toContainText("2 个子问题"); // quick 档
+  await run.click();
+
+  // 详情：大纲（两个子问题）+ 报告正文（跟聊天页同一条消息）+ 来源可点
+  await expect(page.getByTestId("research-detail")).toBeVisible({ timeout: 15000 });
+  const outline = page.getByTestId("research-outline");
+  await expect(outline.getByText("主流技术路线")).toBeVisible();
+  await expect(outline.getByText("评测与落地现状")).toBeVisible();
+  await expect(outline.getByText("模块化 RAG 的分野与代表工作")).toBeVisible(); // 概述也带过来
+  await expect(page.getByTestId("research-report")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "三条主流技术路线" })).toBeVisible();
+  await expect
+    .poll(async () => page.locator('a[target="_blank"][href^="https://"]').count(), {
+      timeout: 15000,
+    })
+    .toBeGreaterThanOrEqual(5);
+
+  // 回到原始会话：订阅这条会话、把能力强切回深度研究，落在聊天页
+  await page.getByTestId("research-open-session").click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByTestId("capability-selector")).toContainText("深度研究", {
+    timeout: 15000,
+  });
+});

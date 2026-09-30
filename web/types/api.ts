@@ -1,5 +1,7 @@
 // 与后端协议对齐的 TS 类型（§7.21 手工镜像，注释指向后端模型）。
 
+import type { CitationSource } from "./stream";
+
 /** 对应 nnnu/api/routers/health.py 的 /api/v1/health 响应。 */
 export interface HealthMemory {
   rss_mb: number;
@@ -393,4 +395,47 @@ export interface DueReview extends ReviewItem {
 
 export interface DueReviewListResponse {
   reviews: DueReview[];
+}
+
+/** 一次调研（`GET /research/runs`）：库里的那一行原样 + 会话标题（JOIN 来的）。
+ *  报告正文不在列表里——它是要现查的，只在详情端点给（见 ResearchRunDetail.report）。 */
+export type ResearchRunStatus = "confirming" | "researching" | "reported" | "partial" | "abandoned";
+export type ResearchDepthValue = "quick" | "standard" | "deep";
+
+export interface ResearchSubtopic {
+  title: string;
+  overview: string;
+}
+
+export interface ResearchRun {
+  id: string;
+  session_id: string;
+  topic: string;
+  refined_topic: string;
+  mode: string;
+  depth: string;
+  subtopics: ResearchSubtopic[];
+  status: ResearchRunStatus;
+  failed_subtopics: string[];
+  answer_message_id: string | null;
+  created_at: number;
+  updated_at: number;
+  session_title: string;
+}
+
+export interface ResearchRunListResponse {
+  runs: ResearchRun[];
+  total: number;
+}
+
+/** 成稿那条助手消息：正文（`[n]` 已重排好）+ 来源（跟聊天页同一套 CitationSource 形状）。 */
+export interface ResearchRunReport {
+  message_id: string;
+  content_md: string;
+  citations: CitationSource[];
+  created_at: number;
+}
+
+export interface ResearchRunDetail extends ResearchRun {
+  report: ResearchRunReport | null;
 }

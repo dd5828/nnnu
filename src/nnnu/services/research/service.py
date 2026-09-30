@@ -16,6 +16,8 @@ from nnnu.services.research.models import (
     ACTIVE_TTL_S,
     RUN_STATUSES,
     ResearchRun,
+    RunReport,
+    RunSummary,
     SubTopic,
     parse_subtopics,
 )
@@ -130,6 +132,60 @@ class ResearchService:
             (session_id, *statuses),
         )
         return _to_run(row) if row is not None else None
+
+    async def list_runs(self, *, limit: int = 50, offset: int = 0) -> list[RunSummary]:
+        """历次调研，新的在前（「我的历次调研」全局视图，不分会话）。
+
+        会话标题 LEFT JOIN 进来：会话删了标题退化成空串，行本身照旧列出来。
+        全局排序走不到 `(session_id, created_at)` 那条索引、要全表扫——单机单人量级
+        （一次调研一行）可以接受；真到了要分页十万行的规模再补 created_at 索引。
+        """
+        rows = await self._db.fetch_all(
+            "SELECT r.*, s.title AS session_title FROM research_runs r "
+            "LEFT JOIN sessions s ON s.id = r.session_id "
+            "ORDER BY r.created_at DESC, r.rowid DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        )
+        return [
+            RunSummary(run=_to_run(row), session_title=row.get("session_title") or "")
+            for row in rows
+        ]
+
+    async def count_runs(self) -> int:
+        row = await self._db.fetch_one("SELECT COUNT(*) AS n FROM research_runs")
+        return int(row["n"]) if row is not None else 0
+
+    async def report_of(self, run: ResearchRun) -> RunReport | None:
+        """成稿那条助手消息：确认消息之后的第一条 assistant（按 rowid，不靠时间戳）。
+
+        `answer_message_id` 为空（还没确认就放弃了）或确认消息已被删 → 直接 None
+        （子查询落空时 `rowid > NULL` 恒为 NULL，一条都选不出来）。
+        """
+        if not run.answer_message_id:
+            return None
+        row = await self._db.fetch_one(
+            "SELECT * FROM messages WHERE session_id = ? AND role = 'assistant' "
+            "AND rowid > (SELECT rowid FROM messages WHERE id = ?) "
+            "ORDER BY rowid ASC LIMIT 1",
+            (run.session_id, run.answer_message_id),
+        )
+        if row is None:
+            return None
+        raw_citations = row.get("citations")
+        citations: list[dict] = []
+        if isinstance(raw_citations, str) and raw_citations:
+            try:
+                parsed = json.loads(raw_citations)
+            except (TypeError, ValueError):
+                parsed = []
+            if isinstance(parsed, list):
+                citations = [item for item in parsed if isinstance(item, dict)]
+        return RunReport(
+            message_id=row["id"],
+            content_md=row.get("content") or "",
+            citations=citations,
+            created_at=float(row.get("created_at") or 0.0),
+        )
 
     # ---- 写 ----
 

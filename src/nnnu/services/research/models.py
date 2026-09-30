@@ -128,6 +128,30 @@ class ResearchRun(BaseModel):
         return self.status in ACTIVE_STATUSES
 
 
+class RunSummary(BaseModel):
+    """「我的历次调研」列表的一行：调研本体 + 会话标题。
+
+    标题放在外层而不是塞进 `ResearchRun`：那一行是库里的原样映射（`_to_run` 一一对应），
+    标题来自 JOIN，只有列表查询有——混进模型会变成「有时有值有时空串」的字段。
+    """
+
+    run: ResearchRun
+    session_title: str = ""
+
+
+class RunReport(BaseModel):
+    """一次调研最终交付的那条助手消息（历史视图直接看报告与来源）。
+
+    报告消息的 id 在能力返回**之后**才生成（见 schema v10 注释），所以库里不存它，
+    靠 `answer_message_id`（用户确认那条用户消息）往后再找第一条 assistant 消息现查。
+    """
+
+    message_id: str
+    content_md: str = ""
+    citations: list[dict] = Field(default_factory=list)
+    created_at: float = 0.0
+
+
 def parse_subtopics(raw: Any) -> list[SubTopic]:
     """宽容解析库里那列 JSON：坏行不该让整个会话打不开。"""
     if not isinstance(raw, list):
