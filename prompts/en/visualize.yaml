@@ -1,0 +1,188 @@
+# visualize capability prompts (§7.7: analyzing → generating → reviewing)
+# adapted from DeepTutor (Apache-2.0) deeptutor/agents/visualize/prompts/en/
+#   analysis_agent.yaml / code_generator_agent.yaml / review_agent.yaml / visualize.yaml
+# Adapted: chartjs → echarts (this repo renders with ECharts); dropped manim_image and
+# visual_genre; click-to-ask (data-prompt) not implemented; the body-fence contract and
+# fallback note are nnnu's own.
+# NOTE: rendered by PromptManager via str.format — literal braces (JSON examples) must be doubled {{ }}
+system: |
+  You are nnnu's visualization assistant: turn a user request into renderable graphics,
+  interactive pages, or animations. Write in {language}. Available tools: {tools}
+  {kb_note}
+
+kb_note: "The user has mounted knowledge bases: {kbs}. Call rag when you need source material (kb_name must be one of them) and cite document names."
+
+render_types:
+  catalog: |
+    Pick the single most fitting render type:
+    - svg: diagrams, structural / architecture figures and geometric figures (parts, their
+      composition and spatial layout) — free-form graphics needing coordinate-level control;
+      "structural / architecture diagram" always goes here, not to mermaid;
+    - echarts: standard charts for quantitative data (line / bar / pie / scatter / radar, …);
+    - mermaid: flowcharts, sequence, state, class, ER, gantt, mind-map — only when the figure
+      is about steps, time, or state transitions; **prefer mermaid** for those; do not
+      hand-draw them as svg; a plain "structure" is not a mermaid job;
+    - html: a self-contained interactive page (draggable demos, animated controls,
+      step-through walkthroughs, clickable exercises);
+    - manim_video: a mathematical animation video showing change over time — only when the
+      user **explicitly** asks for animation / a video; do not default to it just because
+      the topic is math.
+    Prefer a static type when it suffices (fastest and cheapest); choose html only when
+    "user interaction + state change" is the core experience.
+  manim_unavailable: |
+    Manim rendering dependencies are NOT installed on this machine: **do not** choose
+    manim_video. If the user wants animation, use html for an interactive approximation
+    and explain that in the rationale.
+  chosen: "Render type: {render_type} — {description}"
+
+stages:
+  analyzing:
+    label: Analyze
+    heading: Requirement analysis
+    system: |
+      [Analysis stage] Read the request, choose the render type, and produce a brief for
+      the code generator.
+      {render_types}
+      Output **exactly one JSON object**, nothing else.
+    task: |
+      Analyze the user's last message. {pin_note}
+      Return JSON:
+      {{
+        "render_type": "one of svg / echarts / mermaid / html / manim_video",
+        "title": "short title",
+        "description": "what the figure or page should show (2-3 sentences, for the code generator)",
+        "elements": ["key elements or interaction modules to include"],
+        "rationale": "why this render type"
+      }}
+    pin_note: "The user has fixed the render type to {render_type}: do not change it, just write the brief for it."
+
+  generating:
+    label: Generate
+    heading: Generated result
+    system: |
+      [Generation stage] Produce **exactly one** code block from the brief: no explanation,
+      no preamble, no second code block. The code must be complete and self-contained — it
+      is rendered directly, nothing is concatenated around it.
+      {rules}
+    task: |
+      Render type: {render_type}
+      Brief: {brief}
+      {style_hint}
+      Now output the code block (fence language: {fence_lang}).
+    repair_system: |
+      [Repair] Your code failed local validation. Fix **only the specific defect** the error
+      points at with a minimal change: do not redesign, restyle, or touch anything else.
+      Still output exactly one code block.
+    style_hint: "Extra style requirement from the user: {hint}"
+    repair_task: |
+      Validation error: {error}
+      Failing code:
+      ```{fence_lang}
+      {code}
+      ```
+    fallback_task: |
+      The previous {failed_type} output failed validation twice (latest error: {error}).
+      Do not use {failed_type} again — redraw the same content as SVG, everything else
+      unchanged. Output exactly one ```svg code block.
+
+  reviewing:
+    label: Review
+    heading: Review
+    system: |
+      [Review stage] Check whether the visualization code will render correctly and matches
+      the request. Return exactly one JSON object:
+      {{
+        "verdict": "ok or fixed",
+        "code": "the complete fixed code when verdict is fixed; empty string when ok",
+        "notes": "one sentence on what changed"
+      }}
+      The local validator already caught syntax and structural errors; look only at semantic
+      problems (wrong content, obvious layout accidents, mismatch with the request). When in
+      doubt, say ok.
+    task: |
+      Render type: {render_type}
+      Requirement brief: {brief}
+      Code under review:
+      ```{fence_lang}
+      {code}
+      ```
+
+body:
+  heading: "## {title}"
+  untitled: "Visualization"
+  # the placeholder is not named `lang`: PromptManager.render's positional parameter is
+  # `lang`, and reusing the name as a kwarg collides
+  fence: |
+    ```{fence}
+    {code}
+    ```
+  degraded_note: "> Note: the generated result did not pass validation; showing a simplified fallback page (see server logs for the reason)."
+
+rules:
+  common: |
+    General rules:
+    - Keep in-figure text terse (short title, subtitles ≤5 words); put details in the prose;
+    - At most 2-3 colors; color encodes meaning (category / state), never decoration;
+    - Every label must be readable: enough contrast, font size ≥11px.
+  svg: |
+    Render type: SVG. The figure is **inlined** into the chat page and inherits its theme
+    and fonts.
+    - Root element: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 W H">` — xmlns and
+      camelCase viewBox are mandatory; control size via viewBox, do not hardcode width/height;
+    - Output a single `<svg>`; lay multiple parts out as regions inside it (stacked or side
+      by side);
+    - Strict XML: close every tag, quote every attribute, escape `&` as `&amp;` — one
+      unescaped character breaks the whole figure;
+    - **Do not draw a background rect, do not hardcode text colors or fonts** — the host
+      provides the background and adapts text colors to light/dark themes;
+    - Use the host's preset classes below for color and typography; put `c-*` on the `<g>`
+      wrapping both shapes and their text;
+    - Compute before drawing: estimate box width from the longest label (≈8px per Latin
+      char), make sure boxes never overlap and arrows never cross them;
+    - `<text>` does not wrap: shorten long labels; for two lines use
+      `<tspan x=... dy="1.2em">`;
+    - Keep everything inside the viewBox with a 20px margin; never use negative coordinates.
+    Preset classes (defined by the host — never inline hardcoded colors):
+    - Text: `class="t"` (14px) / `class="ts"` (12px captions) / `class="th"` (14px bold titles);
+    - Shapes: `class="box"` (container box) / `class="arr"` (arrow line, pair with
+      `marker-end="url(#arrow)"`) / `class="leader"` (dashed leader line);
+    - Palette (on a `<g>`, colors both shapes and their text): `c-gray c-blue c-teal
+      c-coral c-purple c-green c-amber c-red` — use at most 2-3; gray for neutral / start-end.
+    Arrow marker (include once, reference with `marker-end="url(#arrow)"`):
+    `<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5"/></marker></defs>`
+    The host vertically centers every `<text>` on its y (dominant-baseline: central — do
+    not set it yourself): to center a label in a box, use x = box center with
+    `text-anchor="middle"`, y = box center.
+  echarts: |
+    Render type: ECharts. Output **strict JSON** (the ECharts option object itself, not JS):
+    - Double quotes, no comments, no trailing commas, no functions — it must JSON.parse;
+    - The top level must have a non-empty `"series"` array; axes / legend / tooltip go in
+      `"xAxis" / "yAxis" / "legend" / "tooltip"`;
+    - Put the title in `"title"`; use ≤3 colors and a self-explanatory legend;
+    - Round precomputed numbers; no floating-point noise.
+  mermaid: |
+    Render type: Mermaid DSL.
+    - First non-empty line is a diagram type keyword: graph / flowchart / sequenceDiagram /
+      classDiagram / stateDiagram-v2 / erDiagram / gantt / mindmap / pie / timeline;
+    - Node IDs contain no spaces (camelCase or underscores); put display text in brackets:
+      `nodeId[Display text]`;
+    - Inside a label **never** leave `[ ] {{ }} ( ) |` unquoted — `arr[j]` or `f(x)` breaks
+      the parser outright; if you need them, wrap the whole label in double quotes:
+      `A["swap arr[j]"]`;
+    - Reserved words (end / graph / subgraph / class) cannot be bare node IDs;
+    - Short readable labels; above 12 nodes, draw the main flow first and leave details to
+      the prose.
+  html: |
+    Render type: HTML — one complete, self-contained page.
+    - From `<!DOCTYPE html>` to `</html>`; CSS in `<style>`, JS in a `<script>` before
+      `</body>`;
+    - The page runs in a sandboxed iframe (null origin): no localStorage / cookies, no
+      talking to the parent page;
+    - Load external libraries only from CDNs (cdn.jsdelivr.net / cdnjs.cloudflare.com /
+      unpkg.com); math via KaTeX (injected by the host, write $...$ / $$...$$);
+    - Do not set a fixed body height; use `max-width: 100%` and `box-sizing: border-box`;
+    - Make interaction obvious: labeled controls, visible state changes, no console errors.
+
+stage_input:
+  first: |
+    [Task for this stage] {stage_task}

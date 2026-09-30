@@ -15,7 +15,8 @@
 **每阶段一份新的 LoopDeps**：`token_budget` 会被循环就地扣减，跨阶段复用会把后续阶段
 的预算吃完（沿用 deep_solve 的教训）。研究阶段更极端——每个子问题一份，互不牵连。
 
-**子问题失败隔离**：子循环的 `emit_error` 在 `_QuietBus` 里降级成 warning。`StreamBus`
+**子问题失败隔离**：子循环的 `emit_error` 在 `SilentBus`（`capabilities/_shared.py`，
+visualize 共用）里降级成 warning。`StreamBus`
 对终局事件每 bus 只认一次，一个子问题检索失败就把整个回合的信封吃掉，报告就没处发了。
 降级之后「N 个子问题里 M 个没跑完」变成：warning + `partial` 状态 + 报告里一句话说明。
 
@@ -49,6 +50,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from nnnu.capabilities._shared import (
     MountedTools,
+    SilentBus,
     append_user_text,
     build_user_message,
     mount_tools,
@@ -56,7 +58,6 @@ from nnnu.capabilities._shared import (
 )
 from nnnu.core.agent_loop import LoopDeps, LoopOutcome, run_agent_loop
 from nnnu.core.capability_protocol import BaseCapability, CapabilityManifest, Stage
-from nnnu.core.events import StreamEvent
 from nnnu.core.stream_bus import StreamBus
 from nnnu.services.i18n.prompts import get_prompt_manager
 from nnnu.services.llm.factory import ModelConfig, create_client, resolve_model_config
@@ -122,72 +123,6 @@ NO_EVIDENCE_TEXT = "(本次调研没有拿到任何证据。)"
 # JSON 代码块围栏（模型很爱加）：先剥围栏再找花括号对象
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 _JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
-
-
-class _QuietBus:
-    """子循环用的 bus 壳：正文可选吞掉、error 可选降级成 warning。
-
-    不继承 `StreamBus`——继承会自带一份 `terminal_emitted`/`_history`，收尾判断就与真实
-    bus 分叉了（solve 的 `_StageBus` 与 mastery 的 `_TurnTranscriptBus` 都踩过这条）。
-    `__getattr__` 把其余方法原样转发。
-
-    - **吞正文**：分解段吐的是 JSON、澄清段吐的是给下游看的提炼、子问题段吐的是证据摘要，
-      三样都不该进聊天正文（正文由本能力自己渲染）；
-    - **error 降级**：见模块 docstring——子问题失败不能吃掉整个回合的信封；
-    - **吞思考**（`silent_thinking`）：只在并发的子问题段开——多条思考流逐 chunk 交错，
-      拼出来的思考卡是碎的，不如不发。
-    """
-
-    def __init__(
-        self,
-        bus: StreamBus,
-        *,
-        silent: bool = True,
-        silent_thinking: bool = False,
-        soften_errors: bool = False,
-    ) -> None:
-        self._bus = bus
-        self._silent = silent
-        self._silent_thinking = silent_thinking
-        self._soften_errors = soften_errors
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._bus, name)
-
-    async def emit_content_delta(self, *, text: str) -> StreamEvent | None:
-        if self._silent:
-            return None
-        return await self._bus.emit_content_delta(text=text)
-
-    async def emit_content_done(self, *, full_text: str) -> StreamEvent | None:
-        if self._silent:
-            return None
-        return await self._bus.emit_content_done(full_text=full_text)
-
-    async def emit_thinking_delta(self, *, text: str) -> StreamEvent | None:
-        if self._silent_thinking:
-            return None
-        return await self._bus.emit_thinking_delta(text=text)
-
-    async def emit_thinking_done(self, *, text: str) -> StreamEvent | None:
-        if self._silent_thinking:
-            return None
-        return await self._bus.emit_thinking_done(text=text)
-
-    async def emit_error(self, *, message: str, recoverable: bool = False) -> StreamEvent:
-        if not self._soften_errors:
-            return await self._bus.emit_error(message=message, recoverable=recoverable)
-        return await self._bus.emit_warning(message=message)
-
-    async def emit_stopped(self) -> StreamEvent | None:
-        """子循环不掌回合格：stopped 由 TurnRuntime 兜底（`turn_runtime.py` 取消分支）。
-
-        并发子问题下一个兄弟炸了要连带取消其余的，若被取消的循环各自 emit_stopped，
-        `StreamBus` 的终局防双发会把信封提前封成 stopped——真正要报的异常反而发不出去。
-        """
-        if self._soften_errors:
-            return None
-        return await self._bus.emit_stopped()
 
 
 class _SourceMarker:
@@ -714,7 +649,7 @@ class DeepResearchCapability(BaseCapability):
         )
         return await run_agent_loop(
             ctx,
-            _QuietBus(  # type: ignore[arg-type]
+            SilentBus(  # type: ignore[arg-type]
                 bus, silent=silent, silent_thinking=silent_thinking, soften_errors=soften_errors
             ),
             deps,

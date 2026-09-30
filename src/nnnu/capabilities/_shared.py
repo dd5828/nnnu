@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Collection
 
 from nnnu.core.agent_loop import ToolSet
+from nnnu.core.events import StreamEvent
 from nnnu.core.stream_bus import StreamBus
 from nnnu.runtime import home
 from nnnu.services.i18n.prompts import get_prompt_manager
@@ -343,6 +344,73 @@ def format_history_ref(ref: dict[str, Any], lang: str) -> str:
         lines.append(line[:budget])
         budget -= len(line)
     return "\n".join(lines)
+
+
+class SilentBus:
+    """子循环用的 bus 壳：正文可选吞掉、error 可选降级成 warning（原 research._QuietBus）。
+
+    不继承 `StreamBus`——继承会自带一份 `terminal_emitted`/`_history`，收尾判断就与真实
+    bus 分叉了（solve 的 `_StageBus` 与 mastery 的 `_TurnTranscriptBus` 都踩过这条）。
+    `__getattr__` 把其余方法原样转发。
+
+    两个消费方：
+    - deep_research 的并发子问题：吞正文（JSON、提炼、证据摘要都不该进聊天正文）、
+      error 降级（一个子问题失败不能吃掉整个回合的信封）、吞思考（多条思考流交错
+      会拼成碎卡）；
+    - visualize 的三个阶段：原始产出（简报 JSON、代码、复查 JSON）由能力解析后
+      自己拼最终正文，原文流出去只会让正文乱跳、还把契约围栏拆碎。
+    """
+
+    def __init__(
+        self,
+        bus: StreamBus,
+        *,
+        silent: bool = True,
+        silent_thinking: bool = False,
+        soften_errors: bool = False,
+    ) -> None:
+        self._bus = bus
+        self._silent = silent
+        self._silent_thinking = silent_thinking
+        self._soften_errors = soften_errors
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._bus, name)
+
+    async def emit_content_delta(self, *, text: str) -> StreamEvent | None:
+        if self._silent:
+            return None
+        return await self._bus.emit_content_delta(text=text)
+
+    async def emit_content_done(self, *, full_text: str) -> StreamEvent | None:
+        if self._silent:
+            return None
+        return await self._bus.emit_content_done(full_text=full_text)
+
+    async def emit_thinking_delta(self, *, text: str) -> StreamEvent | None:
+        if self._silent_thinking:
+            return None
+        return await self._bus.emit_thinking_delta(text=text)
+
+    async def emit_thinking_done(self, *, text: str) -> StreamEvent | None:
+        if self._silent_thinking:
+            return None
+        return await self._bus.emit_thinking_done(text=text)
+
+    async def emit_error(self, *, message: str, recoverable: bool = False) -> StreamEvent:
+        if not self._soften_errors:
+            return await self._bus.emit_error(message=message, recoverable=recoverable)
+        return await self._bus.emit_warning(message=message)
+
+    async def emit_stopped(self) -> StreamEvent | None:
+        """子循环不掌回合格：stopped 由 TurnRuntime 兜底（`turn_runtime.py` 取消分支）。
+
+        并发子问题下一个兄弟炸了要连带取消其余的，若被取消的循环各自 emit_stopped，
+        `StreamBus` 的终局防双发会把信封提前封成 stopped——真正要报的异常反而发不出去。
+        """
+        if self._soften_errors:
+            return None
+        return await self._bus.emit_stopped()
 
 
 def format_paged_attachment(name: str, pages: list[dict[str, Any]], lang: str) -> str:
