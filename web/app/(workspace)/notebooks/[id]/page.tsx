@@ -22,6 +22,8 @@ const TYPE_LABEL_KEYS: Record<NotebookRecordType, string> = {
   solve: "notebooks.typeSolve",
   question: "notebooks.typeQuestion",
   research: "notebooks.typeResearch",
+  visualize: "notebooks.typeVisualize",
+  math_animator: "notebooks.typeMathAnimator",
 };
 
 function dateLabel(seconds: number): string {
