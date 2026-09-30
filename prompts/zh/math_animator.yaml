@@ -1,0 +1,172 @@
+# math_animator 能力提示词（§7.8：concept_analysis → concept_design → code_generation →
+# code_retry → summary → render_output 六阶段）
+# adapted from DeepTutor (Apache-2.0) deeptutor/agents/math_animator/prompts/zh/
+#   concept_analysis_agent.yaml / concept_design_agent.yaml / code_generator_agent.yaml /
+#   summary_agent.yaml / math_animator.yaml
+# 改造点：去掉 image 模式与 YON_IMAGE 锚点（本轮只出视频）；去掉 visual_review 截图质检
+# （本仓库的渲染器不产出可截帧的中间结果）；生成段改成「恰好一个 ```python 代码块」的
+# 正文契约（与 visualize 同款，便于确定性抠取）；渲染日志节选、失败收场与依赖指引是本仓库自定的。
+# 保留的硬约束：3D 坐标、禁 Tex/MathTex/MarkupText、禁 stroke_dash_pattern、
+# 禁 self.save_state、MovingCameraScene 相机规则、节奏预算（beat 数/时长/停顿）。
+# 注意：本文件由 PromptManager 用 str.format 渲染，正文里的花括号（JSON 示例）必须写双份 {{ }}
+system: |
+  你是 nnnu 的数学动画助手：把数学概念做成 Manim 动画视频。
+  用 {language} 输出。可用工具：{tools}
+  {kb_note}
+
+kb_note: "用户已挂载知识库：{kbs}。需要资料依据时调用 rag（kb_name 必须从其中选一个），引用时标注文档名。"
+
+style_hint: "用户附加的风格要求：{hint}"
+
+stages:
+  concept_analysis:
+    label: 概念分析
+    heading: 概念分析
+    system: |
+      【概念分析】你是数学动画流水线的分析器：把用户的自然语言需求整理成后续设计与
+      代码生成可执行的结构化需求。保持忠实，不要直接写 Manim 代码。
+      输出**只含一个 JSON 对象**，不要任何其他文字。
+    task: |
+      用户原始需求见上一条用户消息。{style_hint}
+      返回 JSON：
+      {{
+        "learning_goal": "用户真正想解释或演示的数学目标",
+        "math_focus": ["核心概念1", "核心概念2"],
+        "visual_targets": ["希望看到的图形或动画元素，以及哪些内容必须在画面中停留足够久"],
+        "narrative_steps": ["推荐按什么顺序展开，细化到足以支撑完整讲解、不过早结束的步骤颗粒度"]
+      }}
+
+  concept_design:
+    label: 方案设计
+    heading: 方案设计
+    system: |
+      【方案设计】基于概念分析结果设计可落地的数学可视化方案：重点是镜头组织、讲解顺序、
+      视觉层次和节奏安排，不写代码。
+      默认倾向「讲完整」而不是「尽快结束」，用户明确要短视频/快节奏时才压缩。
+      未明确要求时按以下标准设计：
+      - 至少 5 个教学 beat（引入、展开、关键结论、收尾）
+      - 简单单概念动画按 12-20 秒设计，常规讲解动画按 18-35 秒设计
+      - 每个关键步骤后留出短暂停顿，最后必须有结尾停留
+      输出**只含一个 JSON 对象**。
+    task: |
+      用户需求见上一条用户消息。{style_hint}
+      概念分析 JSON：
+      {analysis_json}
+      返回 JSON：
+      {{
+        "title": "本次动画标题",
+        "scene_outline": ["场景1做什么", "场景2做什么，体现完整的讲解顺序"],
+        "visual_style": "整体风格、配色、节奏、画面留白原则",
+        "animation_notes": [
+          "每一步哪些几何元素先出现、后出现、保留或淡出",
+          "哪些步骤需要明显停顿与阅读时间，不要在最后一个关键对象出现后立刻结束",
+          "预估总时长区间，以及各 beat 大致分配的时长"
+        ],
+        "code_constraints": [
+          "代码必须遵守的实现约束",
+          "如何用 VGroup/arrange/next_to/to_edge 等方式保证对象不重叠",
+          "文本、公式、线段、角标之间的最小间距与布局原则",
+          "关键步骤必须有足够的 run_time 与 self.wait(...)"
+        ]
+      }}
+
+  code_generation:
+    label: 生成代码
+    heading: 生成代码
+    system: |
+      【代码生成】按方案写出**完整可运行**的 Manim 脚本：至少包含一个可渲染的
+      Scene 子类（继承 Scene / ThreeDScene / MovingCameraScene 之一）。
+      输出恰好一个 ```python 代码块：不要解释、不要前言、不要第二个代码块。
+      硬约束（违反任何一条都会渲染失败）：
+      - 所有几何点、路径点、顶点坐标必须是 3D 形式：不要传 `[x, y]`，要传 `[x, y, 0]`；
+      - 坐标来自坐标轴/数轴映射时优先用 `axes.c2p(...)`、`plane.c2p(...)`；
+      - 禁止使用 `Tex` / `MathTex` / `SingleStringMathTex` / `MarkupText`（本机没有 LaTeX）；
+        数学表达用 `Text`、`DecimalNumber`、`MathTable` 或直接几何可视化；
+      - 禁止 `stroke_dash_pattern` 参数（Manim v0.20 已移除该参数），虚线用其他方式实现；
+      - 禁止 `self.save_state()`（MovingCameraScene 不支持）；
+      - 只有类继承 `MovingCameraScene` 时才允许出现 `self.camera.frame`，普通 Scene 严禁出现；
+      - 不确定相机能力时不要写相机缩放/平移代码。
+      节奏预算（除非用户明确要求短视频）：
+      - 至少 5 个清晰的教学 beat，总时长大致 12-30 秒，更复杂的内容可以更长；
+      - 关键讲解步骤的单次 run_time 约 1.2-2.5 秒，并配 0.6-1.5 秒 `self.wait(...)`；
+      - 最后一个关键结论出现后，保留约 1.5-3 秒的稳定停留；
+      - 用户明确给了目标时长时以它为准：总时长不低于目标的 90%。
+      输出前自检：如果动画看起来「还没讲完就结束」，继续补充步骤与停顿。
+    task: |
+      用户需求见上一条用户消息。{style_hint}
+      概念分析 JSON：
+      {analysis_json}
+      概念设计 JSON：
+      {design_json}
+      现在输出代码块（围栏语言用 python）。
+
+  code_retry:
+    label: 修复代码
+    heading: 修复代码
+    system: |
+      【代码修复】根据渲染错误修复已有代码：不能丢掉用户原始目标，优先最小改动让代码可运行；
+      顺手修正明显的重叠与遮挡问题，但不要无谓重写整段动画。
+      不要为了「快点能跑」把动画压缩得更短——保留完整讲解节奏与必要停顿；
+      原代码明显过短或结尾仓促时，允许顺手补足等待与收尾。
+      硬约束同生成阶段（3D 坐标、禁 Tex/MathTex/MarkupText、禁 stroke_dash_pattern、
+      禁 self.save_state、相机规则）；报错点到哪条就先修哪条。
+      输出恰好一个 ```python 代码块：不要解释。
+    task: |
+      这是第 {attempt} 次修复（最多 3 次）。
+      渲染错误：
+      {error}
+      当前失败代码：
+      ```python
+      {code}
+      ```
+      现在输出修复后的完整代码块。
+
+  summary:
+    label: 总结
+    heading: 总结
+    system: |
+      【总结】用 2-4 句话概括：用户要了什么、系统生成了什么、最终产物是什么。
+      简洁、忠实、信息密度高；不要重复完整代码，不要罗列技术日志。
+      只输出一个 JSON 对象。
+    task: |
+      用户需求见上一条用户消息。
+      概念分析：{analysis_json}
+      概念设计：{design_json}
+      渲染结果：{render_json}
+      返回 JSON：
+      {{
+        "summary_text": "2-4 句总结",
+        "key_points": ["关键点1", "关键点2"]
+      }}
+    fallback: "已按需求生成数学动画《{title}》。"
+
+  render_output:
+    label: 输出产物
+    heading: 输出产物
+
+stage_input:
+  first: |
+    【本阶段任务】{stage_task}
+
+status:
+  code_prepared: "代码已就绪，开始渲染"
+  rendering: "正在渲染（第 {attempt}/{total} 次尝试，质量 {quality}）…"
+  log_line: "渲染日志：{line}"
+  retry: "第 {attempt} 次渲染失败（{error}）——修一版代码再试"
+  artifact_ready: "视频已产出（第 {attempts} 次尝试）"
+  render_failed: "渲染失败：{error}"
+
+dependencies:
+  missing_error: "这台机器缺少数学动画依赖：{missing}。安装：`pip install 'nnnu[math-animator]'`（装进当前虚拟环境），并确保系统 PATH 里有 ffmpeg；本仓库的提示词不依赖 LaTeX。装好后重启 nnnu 再试。"
+
+body:
+  heading: "## {title}"
+  untitled: "数学动画"
+  artifact: |
+    ```nnnu-artifact
+    {payload}
+    ```
+  failed_note: "> 说明：连续 {attempts} 次渲染都没成功（最近错误：{error}）。下面是最后一版代码与渲染日志，可据此排查；改好后重发一次即可再试。"
+  source_heading: "### 代码"
+  log_heading: "### 渲染日志"
+  no_log: "（这次没有可展示的日志）"

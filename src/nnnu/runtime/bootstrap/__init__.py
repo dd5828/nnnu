@@ -25,6 +25,7 @@ DATA_SUBDIRS: tuple[str, ...] = (
     "user/co_writer",
     "user/skills",
     "user/knowledge",
+    "user/renders",
     "user/uploads",
     "user/workspace",
     "user/logs",
@@ -69,9 +70,11 @@ def register_builtins() -> None:
     """内置工具/能力注册清单（§6.11）：幂等，随阶段追加。"""
     from nnnu.capabilities.chat.capability import ChatCapability
     from nnnu.capabilities.mastery.capability import MasteryCapability
+    from nnnu.capabilities.math_animator.capability import MathAnimatorCapability
     from nnnu.capabilities.question.capability import QuestionCapability
     from nnnu.capabilities.research.capability import DeepResearchCapability
     from nnnu.capabilities.solve.capability import SolveCapability
+    from nnnu.capabilities.visualize.capability import VisualizeCapability
     from nnnu.runtime.registry.capability_registry import get_capability_registry
     from nnnu.runtime.registry.tool_registry import get_tool_registry
     from nnnu.tools.builtin.ask_user import AskUserTool
@@ -100,6 +103,8 @@ def register_builtins() -> None:
     get_capability_registry().register(QuestionCapability.manifest, QuestionCapability)
     get_capability_registry().register(MasteryCapability.manifest, MasteryCapability)
     get_capability_registry().register(DeepResearchCapability.manifest, DeepResearchCapability)
+    get_capability_registry().register(VisualizeCapability.manifest, VisualizeCapability)
+    get_capability_registry().register(MathAnimatorCapability.manifest, MathAnimatorCapability)
     get_tool_registry().register(AskUserTool())
     get_tool_registry().register(AttachmentSearchTool())
     get_tool_registry().register(RagSearchTool())

@@ -1,0 +1,180 @@
+# math_animator capability prompts (§7.8: concept_analysis → concept_design → code_generation
+# → code_retry → summary → render_output)
+# adapted from DeepTutor (Apache-2.0) deeptutor/agents/math_animator/prompts/en/
+#   concept_analysis_agent.yaml / concept_design_agent.yaml / code_generator_agent.yaml /
+#   summary_agent.yaml / math_animator.yaml
+# Adapted: image mode and YON_IMAGE anchors dropped (video only for now); visual_review
+# dropped (our renderer produces no frameable intermediates); generation returns exactly one
+# ```python fence (same body contract as visualize, for deterministic extraction); the log
+# excerpt, failure wrap-up and install guidance are nnnu's own.
+# Kept hard constraints: 3D coordinates, no Tex/MathTex/MarkupText, no stroke_dash_pattern,
+# no self.save_state, MovingCameraScene camera rule, pacing budget (beats/duration/waits).
+# NOTE: rendered by PromptManager via str.format — literal braces (JSON examples) must be doubled {{ }}
+system: |
+  You are nnnu's math animation assistant: turn a math concept into a Manim animation video.
+  Write in {language}. Available tools: {tools}
+  {kb_note}
+
+kb_note: "The user has mounted knowledge bases: {kbs}. Call rag when you need source material (kb_name must be one of them) and cite document names."
+
+style_hint: "Extra style requirement from the user: {hint}"
+
+stages:
+  concept_analysis:
+    label: Analyze
+    heading: Concept analysis
+    system: |
+      [Concept analysis] You are the analyzer of the math animation pipeline: turn the user's
+      natural-language request into structured requirements the designer and code generator
+      can execute. Stay faithful; do not write Manim code.
+      Output **exactly one JSON object**, nothing else.
+    task: |
+      The user's original request is the previous user message. {style_hint}
+      Return JSON:
+      {{
+        "learning_goal": "the math goal the user really wants to explain or demonstrate",
+        "math_focus": ["core concept 1", "core concept 2"],
+        "visual_targets": ["figures or animation elements to show, and which must stay on screen long enough"],
+        "narrative_steps": ["the order to unfold in, with detail fine enough to support a complete explanation that does not end too early"]
+      }}
+
+  concept_design:
+    label: Design
+    heading: Concept design
+    system: |
+      [Concept design] Design a concrete visualization plan from the analysis: focus on shot
+      organization, explanation order, visual hierarchy and pacing. Do not write code.
+      Default to "explain it fully" rather than "finish fast"; compress only when the user
+      explicitly asks for a short/fast video.
+      Unless the user says otherwise:
+      - at least 5 teaching beats (intro, development, key conclusion, wrap-up)
+      - simple single-concept animations ~12-20s; regular explanations ~18-35s
+      - a brief pause after each key step, and always a closing hold
+      Output **exactly one JSON object**.
+    task: |
+      The user's request is the previous user message. {style_hint}
+      Concept analysis JSON:
+      {analysis_json}
+      Return JSON:
+      {{
+        "title": "title of this animation",
+        "scene_outline": ["what scene 1 does", "what scene 2 does, in full explanation order"],
+        "visual_style": "overall style, palette, pacing, whitespace principles",
+        "animation_notes": [
+          "which elements appear first/later/stay/fade at each step",
+          "which steps need clear pauses and reading time; do not end right after the last key object appears",
+          "estimated total duration range and rough per-beat allocation"
+        ],
+        "code_constraints": [
+          "implementation constraints the code must respect",
+          "how VGroup/arrange/next_to/to_edge keep objects from overlapping",
+          "minimum spacing and layout principles for text, formulas, lines, labels",
+          "key steps need enough run_time and self.wait(...)"
+        ]
+      }}
+
+  code_generation:
+    label: Generate
+    heading: Code generation
+    system: |
+      [Code generation] Write a **complete, runnable** Manim script from the plan: at least one
+      renderable Scene subclass (inheriting Scene / ThreeDScene / MovingCameraScene).
+      Output exactly one ```python code block: no explanation, no preamble, no second block.
+      Hard constraints (violating any one of them breaks rendering):
+      - all geometric points, path points and vertices must be 3D: pass `[x, y, 0]`, never `[x, y]`;
+      - when coordinates come from axes, prefer `axes.c2p(...)` / `plane.c2p(...)`;
+      - do NOT use `Tex` / `MathTex` / `SingleStringMathTex` / `MarkupText` (no LaTeX on this
+        machine); express math via `Text`, `DecimalNumber`, `MathTable` or direct geometry;
+      - do NOT pass `stroke_dash_pattern` (removed in Manim v0.20); implement dashes another way;
+      - do NOT call `self.save_state()` (unsupported by MovingCameraScene);
+      - `self.camera.frame` is allowed only when the class inherits `MovingCameraScene`;
+        a plain Scene must never touch it;
+      - when unsure about camera abilities, write no camera zoom/pan at all.
+      Pacing budget (unless the user explicitly asks for a short video):
+      - at least 5 clear teaching beats, roughly 12-30 seconds total; longer for complex content;
+      - single run_time of a key step around 1.2-2.5s, paired with 0.6-1.5s `self.wait(...)`;
+      - keep a ~1.5-3s stable hold after the final key conclusion;
+      - when the user gives an explicit target duration, honor it: at least 90% of the target.
+      Self-check before answering: if the animation looks like it "ends before it finishes
+      explaining", add steps and pauses.
+    task: |
+      The user's request is the previous user message. {style_hint}
+      Concept analysis JSON:
+      {analysis_json}
+      Concept design JSON:
+      {design_json}
+      Now output the code block (fence language: python).
+
+  code_retry:
+    label: Repair
+    heading: Code repair
+    system: |
+      [Code repair] Fix the existing code from the rendering error: keep the user's original
+      goal, prefer the minimal change that makes it run; also fix obvious overlaps and
+      occlusions, but do not rewrite the whole animation without reason.
+      Do not compress the animation just to "make it run": keep the full explanation pacing
+      and necessary waits; if the original was clearly too short or rushed at the end, you may
+      top up waits and the closing hold.
+      Hard constraints as in generation (3D coordinates, no Tex/MathTex/MarkupText, no
+      stroke_dash_pattern, no self.save_state, camera rules); fix first what the error names.
+      Output exactly one ```python code block: no explanation.
+    task: |
+      This is repair attempt {attempt} of at most 3.
+      Rendering error:
+      {error}
+      Current failing code:
+      ```python
+      {code}
+      ```
+      Now output the complete repaired code block.
+
+  summary:
+    label: Summary
+    heading: Summary
+    system: |
+      [Summary] Sum up in 2-4 sentences: what the user asked for, what was generated, and what
+      the final artifact is. Be concise, faithful and dense; do not repeat the full code and do
+      not list technical logs.
+      Output one JSON object only.
+    task: |
+      The user's request is the previous user message.
+      Concept analysis: {analysis_json}
+      Concept design: {design_json}
+      Render result: {render_json}
+      Return JSON:
+      {{
+        "summary_text": "2-4 sentence summary",
+        "key_points": ["point 1", "point 2"]
+      }}
+    fallback: "Generated the math animation \"{title}\" as requested."
+
+  render_output:
+    label: Deliver
+    heading: Deliver
+
+stage_input:
+  first: |
+    [Task for this stage] {stage_task}
+
+status:
+  code_prepared: "Code ready, starting the render"
+  rendering: "Rendering (attempt {attempt}/{total}, quality {quality})…"
+  log_line: "Render log: {line}"
+  retry: "Render attempt {attempt} failed ({error}) — repairing the code and retrying"
+  artifact_ready: "Video ready (attempt {attempts})"
+  render_failed: "Render failed: {error}"
+
+dependencies:
+  missing_error: "This machine is missing math-animation dependencies: {missing}. Install with `pip install 'nnnu[math-animator]'` (into the current virtualenv) and make sure ffmpeg is on PATH; the prompts in this repo do not need LaTeX. Restart nnnu and try again."
+
+body:
+  heading: "## {title}"
+  untitled: "Math animation"
+  artifact: |
+    ```nnnu-artifact
+    {payload}
+    ```
+  failed_note: "> Note: all {attempts} render attempts failed (latest error: {error}). Below are the last code version and the render log for troubleshooting; fix and resend to try again."
+  source_heading: "### Code"
+  log_heading: "### Render log"
+  no_log: "(no log available this time)"
