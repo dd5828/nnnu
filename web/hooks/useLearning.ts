@@ -9,15 +9,20 @@
  *
  * **没有推进接口**：门就是游标，下一步由服务端每回合现算（`next_target`）。
  *
- * `useStartSession` 只把这条路径的会话备好（绑定 + 标题），**不跑回合**——
- * 第一句由用户在聊天里自己打。它照样失效一次缓存：会话绑定变了，回来时看板得是新的。
+ * `useStartSession` / `useOpenPathChat` 只把这条路径的会话备好（绑定 + 标题），**不跑回合**——
+ * 第一句由用户在聊天里自己打；`useLeavePath` 是它的反面（只解绑，进度全留）。
+ * 绑定变了照样失效一次缓存：回来时看板得是新的。
  */
 
 import { useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
+import { useChatStore } from "@/hooks/useChat";
+import { CAPABILITY_MASTERY } from "@/lib/capabilities";
 import type {
   DueReviewListResponse,
+  LearningLeaveResponse,
   LearningNode,
   LearningPath,
   LearningPathActionResponse,
@@ -56,6 +61,34 @@ export function useStartSession() {
       apiFetch<LearningSessionResponse>(`/api/v1/learning/paths/${pathId}/session`, {
         method: "POST",
         body: JSON.stringify({ language }),
+      }),
+    onSuccess: () => invalidate(),
+  });
+}
+
+/** 打开某条路径的聊天（列表卡片「去聊天」与详情页共用）：备会话（零 LLM）→ 订阅 →
+ *  能力强切 `mastery_path` → 跳聊天页。第一句仍由用户在输入框里自己打（不代打模型）。 */
+export function useOpenPathChat() {
+  const router = useRouter();
+  const attachSession = useChatStore((state) => state.attachSession);
+  const setCapability = useChatStore((state) => state.setCapability);
+  const startSession = useStartSession();
+  const open = async (pathId: string, language: string) => {
+    const response = await startSession.mutateAsync({ pathId, language });
+    attachSession(response.session_id);
+    setCapability(CAPABILITY_MASTERY); // 不切的话进去第一句会按旧能力跑
+    router.push("/");
+  };
+  return { open, isPending: startSession.isPending };
+}
+
+/** 脱离路径（对齐 `mastery_leave`）：只解开会话绑定，进度/题目/作答全留。 */
+export function useLeavePath() {
+  const invalidate = useInvalidateLearning();
+  return useMutation({
+    mutationFn: (pathId: string) =>
+      apiFetch<LearningLeaveResponse>(`/api/v1/learning/paths/${pathId}/leave`, {
+        method: "POST",
       }),
     onSuccess: () => invalidate(),
   });

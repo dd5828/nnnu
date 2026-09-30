@@ -5,14 +5,27 @@
  */
 
 import { execSync, spawn } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..", "..");
 const E2E_HOME = path.resolve(__dirname, "..", ".e2e-home");
-const PYTHON = path.join(REPO, ".venv", "Scripts", "python.exe");
+
+/** 后端解释器：NNNU_E2E_PYTHON > 仓库 .venv（Windows Scripts/、类 Unix bin/）> PATH。
+ *  CI 里没建 venv（依赖直接装在 runner 的 python 上），走最后一档。 */
+function resolvePython() {
+  if (process.env.NNNU_E2E_PYTHON) return process.env.NNNU_E2E_PYTHON;
+  const venv =
+    process.platform === "win32"
+      ? path.join(REPO, ".venv", "Scripts", "python.exe")
+      : path.join(REPO, ".venv", "bin", "python");
+  if (existsSync(venv)) return venv;
+  return process.platform === "win32" ? "python" : "python3";
+}
+
+const PYTHON = resolvePython();
 
 // 1) 每次运行先清空 E2E 数据目录：scripted 步骤与回合一一对应，脏数据会导致错位
 rmSync(E2E_HOME, { recursive: true, force: true });
@@ -33,6 +46,10 @@ writeFileSync(
   path.join(E2E_HOME, "data", "system", "user-secrets", "llm.json"),
   JSON.stringify({ keys: { deepseek: "sk-e2e-stub" }, pending: {} }, null, 2)
 );
+
+// 1c) 提示词目录搬进 E2E home：后端按 <home>/prompts 找文案，找不到才回退仓库根——
+//     pip 装出来的包（CI）没有那个回退路径，必须在这里给一份
+cpSync(path.join(REPO, "prompts"), path.join(E2E_HOME, "prompts"), { recursive: true });
 
 // 2) 样例 PDF（附件引用场景用；输出到本目录 .artifacts/）
 execSync(

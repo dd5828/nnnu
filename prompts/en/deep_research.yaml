@@ -3,8 +3,9 @@
 # adapted from DeepTutor (Apache-2.0) deeptutor/agents/research/prompts/en/pipeline.yaml
 # (§16.2 allowlist A). What changed: dropped the upstream THINK/TOOL/APPEND/FINISH label
 # protocol (we use a native tool-calling loop), dropped the APPEND queue talk (no dynamic
-# blocks in v1), dropped the note-summary agent (tool results go into context as-is), and
-# collapsed the report from outline + intro + per-section + conclusion into a single pass.
+# blocks in v1), dropped the note-summary agent (tool results go into context as-is).
+# The report itself has two modes: long runs (outline with >= 3 items) follow the upstream
+# shape - intro + per-section + conclusion; short runs and mode=answer stay single-pass.
 # Citation renumbering is our own (services/research/citations.py); upstream's
 # utils/citation_manager.py was not copied (§16.5 forbids copying implementation).
 #
@@ -115,8 +116,9 @@ stages:
         blur them into vagueness;
       - Where sources disagree or evidence is thin, say so ("the evidence here is inconsistent",
         "there is no direct evidence"), and never fill the gap by inventing;
-      - Inline citations: copy the CIT-{k}-nn tokens from the subtopic summaries to the end of the
-        sentences they support. Do not invent numbers and do not cite where no evidence backs it;
+      - Inline citations: copy the bracketed tokens in the subtopic summaries (form [CIT-2-1]) to
+        the end of the sentences they support. Do not invent numbers and do not cite where no
+        evidence backs it;
       - Use markdown: two-level headings for sections, lists or tables where they help, LaTeX for
         formulas;
       - Do not narrate the research process ("I searched ..."); the reader wants conclusions;
@@ -130,10 +132,63 @@ stages:
         to be looked at from several angles";
       - Keep concrete facts, numbers, dates, and named entities. Where evidence is inconsistent
         or thin, say so plainly;
-      - Inline citations: copy the CIT-{k}-nn tokens from the subtopic summaries to the end of the
-        sentences they support. Do not invent numbers and do not cite where no evidence backs it;
+      - Inline citations: copy the bracketed tokens in the subtopic summaries (form [CIT-2-1]) to
+        the end of the sentences they support. Do not invent numbers and do not cite where no
+        evidence backs it;
       - Do not narrate the search process, and do not write the reference list yourself - the
         system appends the real sources.
+    intro:
+      task: "Write the opening of this report (research topic: {topic})."
+      system: |
+        [Report stage · Opening] The report is written in pieces - opening, one section per
+        subtopic, then a conclusion - and you write only the opening.
+        Requirements:
+        - The first sentence answers the research topic directly (a reader who stops after the
+          opening still has the conclusion); then give the background, scope, and how the report
+          is organised;
+        - Use only facts from the material below; never bring in sources that are not there;
+        - Inline citations: copy the bracketed tokens in the material (form [CIT-2-1]) verbatim
+          to the end of the sentences they support; never number them yourself;
+        - 2-4 paragraphs. No "Introduction"/"Summary" heading, and no narration of the search
+          process;
+        - Do not write the reference list yourself - the system appends the real sources.
+    section:
+      heading: "## {index}. {title}"
+      progress_status: "Writing ({index}/{total}): {title}"
+      task: |
+        - Overall topic: {topic}
+        - This section ({index}/{total}): **{title}** — {overview}
+        Write the body of this section.
+      system: |
+        [Report stage · Section] The report is written in pieces - opening, one section per
+        subtopic, then a conclusion - and you write exactly one section.
+        Requirements:
+        - Work only from the material below (the research summary for this subtopic): lead with a
+          claim and keep concrete facts and numbers; do not write a mere chain of "X says ... and
+          Y says ...";
+        - Do not write a section heading - the system adds the number and title from the outline;
+          start straight with the prose;
+        - Inline citations: copy the bracketed tokens in the material (form [CIT-{index}-1]; all
+          of them carry this section's number) verbatim to the end of the sentences they support.
+          Never number them yourself and never cite sources that are not in the material;
+        - Never state anything the material does not support; where evidence is inconsistent or
+          thin, say so in the prose;
+        - Use markdown (lists or tables where they help, LaTeX for formulas) and no narration of
+          the search process.
+    conclusion:
+      task: "Write the conclusion of this report (research topic: {topic})."
+      system: |
+        [Report stage · Conclusion] The report is written in pieces - opening, one section per
+        subtopic, then a conclusion - and you write only the conclusion.
+        Requirements:
+        - Synthesise the subtopic findings below into an explicit conclusion: what is settled,
+          under what conditions it holds, and what remains unclear; give practical advice where
+          it helps;
+        - Do not restate the whole report and do not write a "Conclusion" heading;
+        - Inline citations: copy the bracketed tokens in the material (form [CIT-2-1]) verbatim
+          to the end of the sentences they support; never number them yourself;
+        - 2-4 paragraphs. No narration of the search process, and do not write the reference
+          list yourself.
     references_heading: |
       ## References
     references_item: "{index}. [{title}]({url}) — {snippet}"

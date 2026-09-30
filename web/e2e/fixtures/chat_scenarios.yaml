@@ -242,3 +242,52 @@ steps:
     finish_reason: stop
     delay_ms: 1500
     usage: { prompt_tokens: 100, completion_tokens: 200 }
+  # Turn 16（测试⑱）：deep_research 标准档，脚本给 3 个子问题 → 成稿走多段路：
+  # 澄清 + 分解（大纲）→ 3 个子问题各一次摘要 → 引言 + 3 节 + 结论，共 10 步。
+  # 节标题与编号由代码按大纲给（`## k. 标题`），所以各节的正文块里**故意一个字标题都不写**；
+  # 引言与各节的 delay_ms 留出观察窗：第 1 节出现时第 3 节还没影（写一段发一段）
+  - chunks:
+      - "2025 年向量数据库选型，面向自托管场景的开发者：范围限定在主流产品、性能与成本、迁移与运维三块，核心问题是怎么选、各自的代价是什么。"
+    finish_reason: stop
+    delay_ms: 1500
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  - chunks:
+      - |
+        ```json
+        {"sub_topics": [
+          {"title": "主流产品对比", "overview": "Milvus、Qdrant、pgvector 等代表产品的定位"},
+          {"title": "性能与成本", "overview": "召回质量、延迟与自托管成本"},
+          {"title": "迁移与运维", "overview": "从现有方案迁移与日常运维的坑"}
+        ]}
+        ```
+    finish_reason: stop
+    delay_ms: 1500
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  - chunks: ["主流产品各有取舍：专用向量库在规模上占优，数据库插件胜在运维面小。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  - chunks: ["性能上召回质量与延迟强相关，自托管的成本大头在内存。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  - chunks: ["迁移的坑集中在索引重建与数据一致性，运维要把备份演练做足。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  - chunks: ["选型没有唯一答案：小规模用数据库插件省事，规模上来再换专用库。"]
+    finish_reason: stop
+    delay_ms: 1500
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  - chunks: ["这一节展开产品对比：Milvus 偏大规模，Qdrant 轻量好上手，pgvector 与现有数据库同源。"]
+    finish_reason: stop
+    delay_ms: 1500
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  - chunks: ["这一节看性能与成本：内存是主要开销，召回质量与延迟要一起量。"]
+    finish_reason: stop
+    delay_ms: 1500
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  - chunks: ["这一节说迁移与运维：先做索引重建演练，再谈切换。"]
+    finish_reason: stop
+    delay_ms: 1500
+    usage: { prompt_tokens: 100, completion_tokens: 30 }
+  - chunks: ["综合来看：先按规模与运维能力划线，再在候选里比召回质量。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 100, completion_tokens: 30 }

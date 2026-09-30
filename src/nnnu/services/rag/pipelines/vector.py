@@ -159,7 +159,8 @@ class VectorEngine(BaseEngine):
         keep = self._keep_mask(loaded, excluded_docs)
         ranked, scores = await self._vector_rank(loaded, query, keep, top_k, embedder)
         if mode == "vector":
-            return self._to_hits(loaded, kb_id, ranked[:top_k], scores)
+            # 向量模式的 score 本来就是余弦，metadata 里再给一份，跨库合并只看 metadata
+            return self._to_hits(loaded, kb_id, ranked[:top_k], scores, cosines=scores)
         lexical = loaded.bm25.search(
             query, top_k * CANDIDATE_MULTIPLIER, excluded_docs=excluded_docs
         )
@@ -174,6 +175,7 @@ class VectorEngine(BaseEngine):
             [chunk_id for chunk_id, _ in fused[:top_k]],
             dict(fused),
             lexical_ranks={chunk_id: rank for rank, chunk_id in enumerate(lexical_ids, start=1)},
+            cosines=scores,
         )
 
     async def _vector_rank(
@@ -230,9 +232,11 @@ class VectorEngine(BaseEngine):
         scores: dict[str, float] | None,
         *,
         lexical_ranks: dict[str, int] | None = None,
+        cosines: dict[str, float] | None = None,
     ) -> list[Hit]:
         score_map = scores or {}
         rank_map = lexical_ranks or {}
+        cosine_map = cosines or {}
         hits: list[Hit] = []
         for chunk_id in ranked:
             chunk = loaded.by_id.get(chunk_id)
@@ -242,6 +246,9 @@ class VectorEngine(BaseEngine):
             if chunk_id in rank_map:
                 # 词法名次：跨 KB 融合同分时，有字面命中的库排前面（见 search_all_ready）
                 metadata["lexical_rank"] = rank_map[chunk_id]
+            if chunk_id in cosine_map:
+                # 原始余弦：跨库排序按「同查询内的相对余弦」加权（见 search_all_ready）
+                metadata["cosine"] = cosine_map[chunk_id]
             hits.append(
                 Hit(
                     doc_id=chunk.doc_id,

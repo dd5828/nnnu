@@ -6,7 +6,8 @@
   大纲）→ 大纲渲染进正文 + 建一行 `research_runs`（status=confirming）→ **回合就结束了**。
 - 第二回合：用户答复（点确认按钮，或直接打字「确认」）。**确认与否都在这一回合里判**——
   确认就按大纲开查，提修改意见就重跑一次分解（handoff 带旧大纲 + 用户原话）再开查。
-  之后 `researching` 按子问题逐个跑 → `reporting` 单次成稿 → 收尾。
+  之后 `researching` 按子问题逐个跑 → `reporting` 成稿（长主题分「引言 → 逐节 → 结论」
+  多段写，短主题/answer 模式单次写完，见下）→ 收尾。
 
 大纲存库而不是从前端回传：`regenerate`（`turn_runtime.py` 的 regenerate 不带 config）与
 断线重连都会把前端手里的 config 弄丢，而第二回合离了大纲就不知道该研究什么。
@@ -23,6 +24,14 @@
 看到的仍是 1、2、3…；进度 status 在各自真正起跑（拿到并发槽）时才发。代价是并发期间
 子循环的思考流会互相穿插归不了位，子问题段因此连 thinking 一起静默（`silent_thinking`）。
 
+**多段成稿**：报告模式且实际大纲不少于 `STAGED_REPORT_MIN_SUBTOPICS` 时，成稿不再一次
+写完，而是「引言 → 逐节 → 结论」各起一次调用，写一段发一段（长主题一次成稿要么撞上
+输出上限被拦腰截断，要么被模型压成什么都说了又什么都没说清的摘要）。分节标题与编号由
+代码按大纲生成（`## k. 标题`），报告结构与用户确认过的大纲一一对应；各节只拿自己那条
+子问题摘要，引言与结论拿全部。每段各自过一次 `book.renumber`——号在正文里首次引用时才
+发，逐段发的顺序就是正文顺序，与整篇一次重排等价。节写崩了就退回那条原始摘要（带着
+记号，照样能重排），至少不丢证据。
+
 收尾：`content_done(合并全文)` + `cost_summary` + `done(response=合并全文)`。
 **done 不带 citations**：来源已经作为「参考资料」写进报告正文了，再喂一份给通用的
 「引用来源」面板就是同一批来源显示两遍（会话导出也会跟着重复一遍）。别的能力靠面板
@@ -36,7 +45,7 @@ import json
 import logging
 import re
 from contextlib import suppress
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from nnnu.capabilities._shared import (
     MountedTools,
@@ -96,6 +105,19 @@ STAGE_TOOLS: dict[str, tuple[str, ...]] = {
 # 子问题同时在飞的个数。取 3 是折中：deep 档 6 个子问题正好两批跑完，又不会把上游
 # 检索接口（Bing / arXiv）一轮打满触发限流；单用户自托管场景并发再高也换不来更多带宽。
 MAX_PARALLEL_SUBTOPICS = 3
+
+# 多段成稿的触发线：报告模式且**实际**大纲不少于这个数，「成稿」才拆成引言 → 逐节 → 结论
+# 各起一次调用。少于它（quick 档 2 个子问题）单次成稿更划算：多出的往返与整篇上限比那点
+# 结构收益值钱，报告不长的场景也不会被截断。判定看实际大纲而不是档位声明——模型没拆出
+# 那么多子问题时，分节成稿本来就没有意义。
+STAGED_REPORT_MIN_SUBTOPICS = 3
+
+# 引言与结论的每次输出上限：它们按设计就短（各 2~4 段），不占报告段整篇的额度；
+# 分节正文各自拿 spec.report_tokens——被拆开写以后，每节都有整篇级别的上限可用。
+REPORT_FRAME_TOKENS = 2048
+
+# 一份证据都没有时报告正文的兜底话术（成稿段失败且子问题也全军覆没时才会走到）
+NO_EVIDENCE_TEXT = "(本次调研没有拿到任何证据。)"
 
 # JSON 代码块围栏（模型很爱加）：先剥围栏再找花括号对象
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
@@ -455,6 +477,7 @@ class DeepResearchCapability(BaseCapability):
 
         book = CitationBook()
         findings: list[str] = []
+        materials: dict[int, str] = {}  # 子问题序号 → 该子问题的摘要（多段成稿按节取用）
         failed: list[str] = []
         total = len(subtopics)
         slots = asyncio.Semaphore(MAX_PARALLEL_SUBTOPICS)
@@ -536,9 +559,9 @@ class DeepResearchCapability(BaseCapability):
                 await bus.emit_content_delta(text=f"{block}\n\n")
                 pieces.append(f"{block}\n\n")
                 if outcome is not None and outcome.completed and outcome.final_text.strip():
-                    findings.append(
-                        f"### 子问题 {index}：{subtopic.title}\n\n{outcome.final_text.strip()}"
-                    )
+                    text = outcome.final_text.strip()
+                    findings.append(f"### 子问题 {index}：{subtopic.title}\n\n{text}")
+                    materials[index] = text
                     line = self._evidence_line(prompts, lang, outcome)
                 else:
                     failed.append(subtopic.title)
@@ -553,7 +576,7 @@ class DeepResearchCapability(BaseCapability):
             with suppress(asyncio.CancelledError):
                 await asyncio.gather(*tasks, return_exceptions=True)  # 也顺带领走它们的异常
 
-        # ④ 单次成稿（+ 引用重排 + 参考资料）
+        # ④ 成稿（多段或单次，+ 逐段引用重排 + 参考资料）
         await self._status(prompts, bus, lang, "reporting")
         report_heading = (
             f"## {prompts.render('deep_research', lang, 'stages.reporting.heading')}\n\n"
@@ -572,31 +595,65 @@ class DeepResearchCapability(BaseCapability):
             await bus.emit_content_delta(text=f"{notice}\n\n")
             pieces.append(f"{notice}\n\n")
 
-        report = await self._report(
-            ctx,
-            bus,
-            prompts,
-            lang,
-            preamble,
-            base_history,
-            question,
-            client,
-            mc,
-            mounted,
-            run=run,
-            spec=spec,
-            findings=findings,
-            spec_topic=topic,
-        )
-        body, dropped = book.renumber(report.final_text.strip()) if report else ("", 0)
+        dropped = 0
+
+        async def _emit_report(text: str) -> str:
+            """一段成稿正文：重排引用 → 立刻发出去（写一段用户就能看一段）。"""
+            nonlocal dropped
+            body, count = book.renumber(text.strip())
+            dropped += count
+            if body:
+                await bus.emit_content_delta(text=f"{body}\n\n")
+                pieces.append(f"{body}\n\n")
+            return body
+
+        if run.mode == "report" and len(subtopics) >= STAGED_REPORT_MIN_SUBTOPICS:
+            staged_wrote = await self._staged_report(
+                ctx,
+                bus,
+                prompts,
+                lang,
+                preamble,
+                base_history,
+                question,
+                client,
+                mc,
+                mounted,
+                run=run,
+                spec=spec,
+                topic=topic,
+                subtopics=subtopics,
+                findings=findings,
+                materials=materials,
+                book=book,
+                emit=_emit_report,
+            )
+            if not staged_wrote:
+                await _emit_report(NO_EVIDENCE_TEXT)
+        else:
+            report = await self._report(
+                ctx,
+                bus,
+                prompts,
+                lang,
+                preamble,
+                base_history,
+                question,
+                client,
+                mc,
+                mounted,
+                run=run,
+                spec=spec,
+                findings=findings,
+                spec_topic=topic,
+            )
+            body = await _emit_report(report.final_text) if report else ""
+            if not report or not report.completed or not body:
+                # 成稿段失败：把已收集的子问题摘要直接交出去，好过交一篇空气
+                logger.warning("调研 %s 成稿失败，退回子问题摘要", run.id)
+                await _emit_report("\n\n".join(findings) or NO_EVIDENCE_TEXT)
         if dropped:
             await bus.emit_warning(message=f"有 {dropped} 处引用对不上任何来源，已从报告里去掉")
-        if not report or not report.completed or not body:
-            # 成稿段失败：把已收集的子问题摘要直接交出去，好过交一篇空气
-            logger.warning("调研 %s 成稿失败，退回子问题摘要", run.id)
-            body = "\n\n".join(findings) or "(本次调研没有拿到任何证据。)"
-        await bus.emit_content_delta(text=f"{body}\n\n")
-        pieces.append(f"{body}\n\n")
         for line in book.references_lines(
             lambda **kwargs: prompts.render(
                 "deep_research", lang, "stages.reporting.references_item", **kwargs
@@ -682,7 +739,7 @@ class DeepResearchCapability(BaseCapability):
         findings: list[str],
         spec_topic: str,
     ) -> LoopOutcome:
-        """成稿段：把各子问题的发现交进去，一次写完（上游的「大纲 + 逐节」压成一次）。"""
+        """单次成稿：把各子问题的发现一次交进去、一次写完（短报告与 answer 模式走这条）。"""
         system_key = f"stages.reporting.system{'_answer' if run.mode == 'answer' else ''}"
         messages = self._messages(
             prompts,
@@ -693,9 +750,8 @@ class DeepResearchCapability(BaseCapability):
             question,
             topic=spec_topic,
             subtopics=spec.subtopics,
-            k=0,
             system_key=system_key,
-            prev_output="\n\n---\n\n".join(findings) or "（本次调研没有拿到任何证据）",
+            prev_output="\n\n---\n\n".join(findings) or NO_EVIDENCE_TEXT,
         )
         return await self._loop(
             ctx,
@@ -708,6 +764,117 @@ class DeepResearchCapability(BaseCapability):
             max_tokens=spec.report_tokens,
             allowlist=STAGE_TOOLS["reporting"],
         )
+
+    async def _staged_report(
+        self,
+        ctx: UnifiedContext,
+        bus: StreamBus,
+        prompts: Any,
+        lang: str,
+        preamble: str,
+        base_history: list[dict[str, Any]],
+        question: dict[str, Any],
+        client: LLMClient,
+        mc: ModelConfig,
+        mounted: MountedTools,
+        *,
+        run: ResearchRun,
+        spec: DepthSpec,
+        topic: str,
+        subtopics: list[SubTopic],
+        findings: list[str],
+        materials: dict[int, str],
+        book: CitationBook,
+        emit: Callable[[str], Awaitable[str]],
+    ) -> bool:
+        """多段成稿：引言 → 逐节 → 结论，各一次调用、写一段发一段（见模块 docstring）。
+
+        节标题与编号由代码按大纲生成（`## k. 标题`）：大纲是用户确认过的，报告分节必须与它
+        一一对上；各节只拿自己那条子问题摘要，引言与结论拿全部（它们要综合）。返回是否写出
+        过非空正文——一段都没写出来时调用方还要兜底。节写崩了退回原始摘要（带着引用记号，
+        照样能重排），至少不丢证据。
+        """
+        total = len(subtopics)
+        material = "\n\n---\n\n".join(findings) or NO_EVIDENCE_TEXT
+
+        async def _piece(
+            piece: str, *, prev_output: str, max_tokens: int, **task_vars: Any
+        ) -> LoopOutcome:
+            messages = self._messages(
+                prompts,
+                lang,
+                preamble,
+                "reporting",
+                base_history,
+                question,
+                prev_output=prev_output,
+                system_key=f"stages.reporting.{piece}.system",
+                task_key=f"stages.reporting.{piece}.task",
+                **task_vars,
+            )
+            return await self._loop(
+                ctx,
+                bus,
+                client=client,
+                mc=mc,
+                mounted=mounted,
+                messages=messages,
+                max_rounds=1,
+                max_tokens=max_tokens,
+                allowlist=STAGE_TOOLS["reporting"],
+            )
+
+        wrote = False
+        intro = await _piece(
+            "intro", prev_output=material, max_tokens=REPORT_FRAME_TOKENS, topic=topic
+        )
+        if intro.completed and intro.final_text.strip():
+            if await emit(intro.final_text):
+                wrote = True
+
+        for index, subtopic in enumerate(subtopics, 1):
+            text = materials.get(index)
+            if not text:
+                continue  # 这个子问题没跑完：partial_notice 已点名，正文里不再给它留空节
+            await bus.emit_status(
+                stage="reporting",
+                message=prompts.render(
+                    "deep_research",
+                    lang,
+                    "stages.reporting.section.progress_status",
+                    index=index,
+                    total=total,
+                    title=subtopic.title,
+                ),
+            )
+            heading = prompts.render(
+                "deep_research",
+                lang,
+                "stages.reporting.section.heading",
+                index=index,
+                title=subtopic.title,
+            )
+            section = await _piece(
+                "section",
+                prev_output=text,
+                max_tokens=spec.report_tokens,
+                topic=topic,
+                index=index,
+                total=total,
+                title=subtopic.title,
+                overview=subtopic.overview,
+            )
+            body = section.final_text.strip() if section.completed else ""
+            if await emit(f"{heading}\n\n{body or text}"):
+                wrote = True
+
+        conclusion = await _piece(
+            "conclusion", prev_output=material, max_tokens=REPORT_FRAME_TOKENS, topic=topic
+        )
+        if conclusion.completed and conclusion.final_text.strip():
+            if await emit(conclusion.final_text):
+                wrote = True
+        return wrote
 
     async def _finish(
         self,
@@ -793,12 +960,15 @@ class DeepResearchCapability(BaseCapability):
         *,
         prev_output: str = "",
         system_key: str | None = None,
+        task_key: str | None = None,
         **task_vars: Any,
     ) -> list[dict[str, Any]]:
         """一段循环的完整消息表：系统提示 = 公共正文 + 本段职责；用户消息 = 附件 + 本段任务。"""
         key = system_key or f"stages.{stage}.system"
         stage_system = prompts.render("deep_research", lang, key, **task_vars)
-        task = prompts.render("deep_research", lang, f"stages.{stage}.task", **task_vars)
+        task = prompts.render(
+            "deep_research", lang, task_key or f"stages.{stage}.task", **task_vars
+        )
         template = "handoff" if prev_output else "first"
         return [
             {"role": "system", "content": f"{preamble}\n\n{stage_system}"},

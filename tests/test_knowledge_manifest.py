@@ -152,6 +152,26 @@ def test_prune_unready_versions_keeps_ready_and_pinned(tmp_path):
     assert store.version_dir(tmp_path, kb_id, 2).is_dir()
 
 
+def test_prune_versions_except_removes_ready_and_leaves_unready(tmp_path):
+    """删旧版本目录：只认 ready 的，没 meta 的半成品归 prune_unready_versions 管。"""
+    kb_id = "kb-0a1b2c3d"
+    for version in (1, 2, 3):
+        store.version_dir(tmp_path, kb_id, version).mkdir(parents=True)
+    for version in (1, 2, 3):
+        store.write_ready_meta(store.version_dir(tmp_path, kb_id, version), {"version": version})
+
+    removed = store.prune_versions_except(tmp_path, kb_id, keep={2, 3})
+    assert removed == [1]
+    assert not store.version_dir(tmp_path, kb_id, 1).exists()
+    assert store.version_dir(tmp_path, kb_id, 2).is_dir()  # keep 里的不动
+    assert store.version_dir(tmp_path, kb_id, 3).is_dir()
+
+    store.version_dir(tmp_path, kb_id, 4).mkdir()  # 没有 ready meta 的半成品
+    removed = store.prune_versions_except(tmp_path, kb_id, keep={3})
+    assert removed == [2]
+    assert store.version_dir(tmp_path, kb_id, 4).is_dir()
+
+
 def test_remove_version_is_idempotent(tmp_path):
     kb_id = "kb-0a1b2c3d"
     store.version_dir(tmp_path, kb_id, 5).mkdir(parents=True)

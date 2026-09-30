@@ -22,6 +22,7 @@ import hashlib
 import json
 import logging
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
 from typing import Any
@@ -67,6 +68,9 @@ REBUILD_RETRY = "retry"
 # 知识库里图片没有意义（索引不了像素），白名单 = 附件白名单 − image/*
 KB_MIME_WHITELIST = frozenset(mime for mime in ALLOWED_MIMES if not mime.startswith("image/"))
 PROGRESS_WRITE_INTERVAL_S = 0.2  # 进度写盘节流：轮询 800ms，写太勤没意义
+# 活跃版本之外保留的旧版本个数。重建/增量每跑一次就落一个完整索引目录（每版几十 MB
+# 起），全留着就是磁盘泄漏；留一个够回退排查（新索引召回变差时能拿旧版对比），再往前的删。
+KEEP_OLD_VERSIONS = 1
 
 
 class KBError(RuntimeError):
@@ -297,6 +301,9 @@ class KBService:
 
         各库的分数尺度不同（向量余弦 / RRF 分），跨库直接比大小没有意义，
         所以每库先各自排好序，再按名次做一次全局 RRF——只吃名次不吃分数。
+        「谁更贴题」用同查询内的**相对余弦**表达成每路权重（见 `_kb_weights`）：
+        真实语料实测，噪声库的余弦顶能到 0.44~0.49、对题库 0.62~0.73，绝对阈值
+        切不开，但与最强库的比值稳定可分（这就是「跨库排序」的抓手）。
         """
         targets = [
             item for item in self.list_kbs() if item.status == KB_READY and item.active_version > 0
@@ -307,22 +314,35 @@ class KBService:
             *(self.search(item.id, query, mode=mode, top_k=top_k) for item in targets)
         )
         keyed: dict[str, Hit] = {}
-        lists: list[tuple[int, list[str]]] = []
-        for hits in per_kb:
+        entries: list[_KbList] = []
+        for manifest, hits in zip(targets, per_kb, strict=True):
             ids: list[str] = []
             for hit in hits:
                 key = f"{hit.kb_id}:{hit.metadata.get('chunk_id') or f'{hit.doc_id}#{hit.page}'}"
                 keyed[key] = hit
                 ids.append(key)
             if ids:
-                lists.append((_best_lexical_rank(hits), ids))
-        if not lists:
+                entries.append(
+                    _KbList(
+                        ids=ids,
+                        best_lexical=_best_lexical_rank(hits),
+                        top_cosine=_top_cosine(hits),
+                        signature=_active_signature(manifest),
+                    )
+                )
+        if not entries:
             return []
-        # 全局融合也只吃名次，两库各自的第一名会并列同分——同分时让有字面命中的库排前面
-        # （排序只影响并列的先后，不改任何一路的名次权重）
-        lists.sort(key=lambda pair: pair[0])
+        # 一路一个权重（相对余弦 × 字面加成）；等权时按词法名次定先后，
+        # 让「字面确实出现」的库在并列时拿 first_seen 优势，结果可复现
+        weighted = sorted(
+            zip(_kb_weights(entries), entries, strict=True),
+            key=lambda pair: (-pair[0], pair[1].best_lexical),
+        )
         merged: list[Hit] = []
-        for key, score in rrf_fuse([ids for _, ids in lists])[: max(1, int(top_k))]:
+        for key, score in rrf_fuse(
+            [entry.ids for _, entry in weighted],
+            weights=[weight for weight, _ in weighted],
+        )[: max(1, int(top_k))]:
             merged.append(keyed[key].model_copy(update={"score": score}))
         return merged
 
@@ -349,6 +369,11 @@ class KBService:
             removed = store.prune_unready_versions(self._data_root, kb_id)
             if removed:
                 logger.info("清理 %s 的半成品版本目录：%s", kb_id, removed)
+            # 老版本目录在这里也清一次：清理策略是后加的，之前攒下的旧版本不重建就永远在
+            old_versions = self._prune_old_versions(manifest)
+            if old_versions:
+                changed = True
+                logger.info("清理 %s 的旧索引版本目录：%s", kb_id, old_versions)
             for doc in manifest.docs:
                 if doc.status == DOC_DELETED:
                     store.remove_tree(store.upload_dir(self._data_root, kb_id, doc.doc_id))
@@ -521,6 +546,7 @@ class KBService:
                 "created_at": time.time(),
             },
         )
+        old_versions: list[int] = []
         async with self._lock(kb_id):
             manifest = self.get_kb(kb_id)
             if manifest is None:  # 构建途中库被删了：没什么可切的了
@@ -538,9 +564,32 @@ class KBService:
             manifest.active_version = version
             manifest.build = None
             manifest.error = None
+            # 旧版本目录在新版本落定、指针切过来之后再删：构建期间它还得能查（验收 C）
+            old_versions = self._prune_old_versions(manifest)
             store.write_manifest(self._data_root, manifest)
         logger.info("知识库 %s 索引版本 %s 就绪（%s 块）", kb_id, version, len(chunks))
+        if old_versions:
+            logger.info("清理 %s 的旧索引版本目录：%s", kb_id, old_versions)
         return True
+
+    def _prune_old_versions(self, manifest: KbManifest) -> list[int]:
+        """删掉太老的索引版本目录，并同步 manifest.versions（活跃版本永不删）。
+
+        保留「活跃版本 + 最新的 KEEP_OLD_VERSIONS 个旧版本」，其余删盘并从
+        manifest.versions 里去掉——留着的话版本列表只会越滚越长。
+        """
+        newest = sorted((item.version for item in manifest.versions), reverse=True)
+        keep = {manifest.active_version, *newest[: KEEP_OLD_VERSIONS + 1]}
+        removed = store.prune_versions_except(self._data_root, manifest.id, keep=keep)
+        if removed:
+            manifest.versions = [item for item in manifest.versions if item.version in keep]
+            if isinstance(self._engine, VectorEngine):
+                # 引擎按目录缓存整份索引（几百 MB 级），目录删了缓存也一并丢
+                for version in removed:
+                    self._engine.invalidate(
+                        store.version_dir(self._data_root, manifest.id, version)
+                    )
+        return removed
 
     def _reuse_base(
         self, kb_id: str, doc_ids: list[str]
@@ -805,6 +854,18 @@ def _restore_docs(manifest: KbManifest, *, note: str) -> None:
 
 _NO_LEXICAL_RANK = 1 << 30  # 没有字面命中的库：全局融合同分时排在有命中的库后面
 
+LEXICAL_BOOST = 1.5  # 有字面命中的库的融合权重加成（查错误码/专有名词全靠它）
+
+
+@dataclass
+class _KbList:
+    """跨库融合的一路：这个库的命中 id 列表 + 定权重用的三个量。"""
+
+    ids: list[str]
+    best_lexical: int  # 最好的词法名次（_NO_LEXICAL_RANK = 一个字面命中都没有）
+    top_cosine: float | None  # 本库命中最高的原始余弦（没有向量命中时为 None）
+    signature: str  # 本库活跃版本的嵌入签名（换过模型的库之间余弦不可比）
+
 
 def _best_lexical_rank(hits: list[Hit]) -> int:
     """一组命中里最好的词法名次（没有字面命中就给个大数，排到最后）。"""
@@ -814,6 +875,47 @@ def _best_lexical_rank(hits: list[Hit]) -> int:
         if isinstance(hit.metadata.get("lexical_rank"), int)
     ]
     return min(ranks) if ranks else _NO_LEXICAL_RANK
+
+
+def _top_cosine(hits: list[Hit]) -> float | None:
+    cosines = [
+        float(hit.metadata["cosine"])
+        for hit in hits
+        if isinstance(hit.metadata.get("cosine"), (int, float))
+    ]
+    return max(cosines) if cosines else None
+
+
+def _active_signature(manifest: Any) -> str:
+    """活跃版本的嵌入签名（老数据/异常时给空串，空串不参与余弦比较）。"""
+    for version in manifest.versions:
+        if version.version == manifest.active_version:
+            return version.embedding_signature or ""
+    return ""
+
+
+def _kb_weights(entries: list[_KbList]) -> list[float]:
+    """跨库融合权重 =（本库最强余弦 / 全库最强余弦）×（有字面命中则 ×LEXICAL_BOOST）。
+
+    余弦只在**同一嵌入空间的同一查询**里比才有意义，所以条件不满足就退回 1.0
+    （= 只按名次融合的老行为，字面加成仍然生效）：
+    - 参与融合的库嵌入签名不一致（有过换嵌入模型重建的库）：比值没有意义；
+    - 某个库没有向量命中（如纯词法兜底）：拿不到余弦。
+    实测（bge-small-zh-v1.5，真实库）：「对题」库余弦顶 0.62~0.73，噪声库
+    0.44~0.49——绝对阈值切不开，但与最强库的比值（0.5~0.7 vs 1.0）稳定可分。
+    """
+    signatures = {entry.signature for entry in entries}
+    coherent = len(signatures) == 1 and "" not in signatures
+    best = max((entry.top_cosine or 0.0 for entry in entries), default=0.0) if coherent else 0.0
+    weights: list[float] = []
+    for entry in entries:
+        weight = 1.0
+        if best > 0 and entry.top_cosine is not None:
+            weight = max(0.0, entry.top_cosine / best)
+        if entry.best_lexical < _NO_LEXICAL_RANK:
+            weight *= LEXICAL_BOOST
+        weights.append(weight)
+    return weights
 
 
 class _Throttle:

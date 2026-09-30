@@ -381,6 +381,12 @@ export interface LearningSessionResponse {
   session_id: string;
 }
 
+/** 对应 POST /learning/paths/{id}/leave（对齐 `mastery_leave`）：只解开会话绑定，
+ *  进度/题目/作答全留；会话本体还在（想接回去走 `mastery_switch`）。 */
+export interface LearningLeaveResponse {
+  left: string;
+}
+
 /** 跳过此题 / 重做路径的响应：路径详情 + 这一步动了多少（skipped 张卡 / reset 个节点）。 */
 export interface LearningPathActionResponse extends LearningPathDetail {
   skipped?: number;

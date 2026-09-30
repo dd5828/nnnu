@@ -8,9 +8,9 @@
  * **没有推进按钮**（门就是游标）：服务端每回合现算 `next_target`，这页只把
  * 「下一目标 + 为什么要做它」摆出来（`l-next` 面板），真学还得去聊天里学。
  *
- * 「开始学习会话 / 去聊天」= 备好这条路径的会话（服务端绑定路径、改标题，**零 LLM**）
- * → `attachSession` 订阅它 + 把能力强切成 mastery_path → 跳聊天页。**不代用户开口**：
- * 回合由用户在输入框里打的第一句触发，所以 attach 后消息区是空的，这是正常的。
+ * 「开始学习会话 / 去聊天」走 `useOpenPathChat`（备会话零 LLM → 订阅 → 切能力 → 跳聊天页，
+ * 与列表卡片的「去聊天」同一个口子）；「脱离会话」是它的反面（对齐 `mastery_leave`）：
+ * 只解绑，进度/题目/作答全留。**不代用户开口**：回合由用户打的第一句触发。
  */
 
 import { useMemo, useState } from "react";
@@ -26,21 +26,21 @@ import {
   RotateCcw,
   SkipForward,
   Trash2,
+  Unlink,
 } from "lucide-react";
 import QuestionCard from "@/components/quiz/QuestionCard";
 import { useI18n } from "@/hooks/useI18n";
-import { useChatStore } from "@/hooks/useChat";
 import {
   useDeletePath,
+  useLeavePath,
   useLearningPath,
+  useOpenPathChat,
   useRedoPath,
   useSkipQuestion,
-  useStartSession,
   useUpdatePath,
 } from "@/hooks/useLearning";
 import { useQuestionList } from "@/hooks/useQuestions";
 import { useNow } from "@/hooks/useNow";
-import { CAPABILITY_MASTERY } from "@/lib/capabilities";
 import {
   gateKey,
   nextActionKey,
@@ -61,11 +61,10 @@ export default function LearningPathDetail() {
   const params = useParams<{ id: string }>();
   const search = useSearchParams();
   const pathId = params?.id ?? null;
-  const attachSession = useChatStore((s) => s.attachSession);
-  const setCapability = useChatStore((s) => s.setCapability);
 
   const { data, isLoading, error } = useLearningPath(pathId);
-  const startSession = useStartSession();
+  const openPathChat = useOpenPathChat();
+  const leavePath = useLeavePath();
   const updatePath = useUpdatePath();
   const removePath = useDeletePath();
   const skipQuestion = useSkipQuestion();
@@ -109,14 +108,23 @@ export default function LearningPathDetail() {
     }
     setNotice(null);
     try {
-      // 只备会话（零 LLM）：绑定路径、标题设成路径名。**不代打模型**——
+      // 只备会话（零 LLM）：绑定路径、标题设成路径名，**不代打模型**——
       // 第一句由用户在聊天里自己说（对齐上游 launch-intent 的用法）。
-      const response = await startSession.mutateAsync({ pathId, language: lang });
-      attachSession(response.session_id); // 订阅这个会话，回合起在 WS 上
-      // 能力必须切过去：store 里的值跟着每条消息下发，不切的话用户进去打的第一句
-      // 会按旧能力（多半是 chat）跑，盘点进来的路径等于白进
-      setCapability(CAPABILITY_MASTERY);
-      router.push("/");
+      await openPathChat.open(pathId, lang);
+    } catch (err) {
+      setNotice(String(err));
+    }
+  };
+
+  /** 脱离会话（对齐 `mastery_leave`）：只解绑，路径与进度原样留着。 */
+  const leave = async () => {
+    if (!pathId) {
+      return;
+    }
+    setNotice(null);
+    try {
+      await leavePath.mutateAsync(pathId);
+      setFlash(t("learning.leftNotice"));
     } catch (err) {
       setNotice(String(err));
     }
@@ -326,14 +334,32 @@ export default function LearningPathDetail() {
             </span>
           </span>
           <div className="ml-auto flex items-center gap-2">
+            {/* 有会话绑定才给「脱离」：没绑可脱时按钮不出现（它只出现在有意义的时候） */}
+            {path.session_id && (
+              <button
+                type="button"
+                data-testid="l-path-leave"
+                onClick={() => void leave()}
+                disabled={leavePath.isPending}
+                title={t("learning.leaveSessionHint")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-muted transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
+              >
+                {leavePath.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Unlink className="h-3.5 w-3.5" />
+                )}
+                {t("learning.leaveSession")}
+              </button>
+            )}
             <button
               type="button"
               data-testid="l-start-session"
               onClick={() => void start()}
-              disabled={startSession.isPending}
+              disabled={openPathChat.isPending}
               className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-40"
             >
-              {startSession.isPending ? (
+              {openPathChat.isPending ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
                 <Play className="h-3.5 w-3.5" />
@@ -396,7 +422,7 @@ export default function LearningPathDetail() {
             type="button"
             data-testid="l-next-go"
             onClick={() => void start()}
-            disabled={startSession.isPending}
+            disabled={openPathChat.isPending}
             className={`${
               nextTarget?.action === "answer_pending" ? "" : "ml-auto"
             } inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-40`}

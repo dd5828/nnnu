@@ -14,6 +14,10 @@
 状态机流转（confirming → researching → reported/partial）、子问题失败只降级成 warning、
 非法档位零 LLM 打回、改稿走重分解、`mode=answer` 换提示词。
 
+大纲 ≥3 条时成稿还多一条路：`test_long_outline_report_is_written_in_stages` 用 3 个子问题
+（脚本 13 步）验「引言 → 逐节 → 结论」多段成稿——节标题编号由代码给、各节只喂自己那条
+摘要、逐段重排引用、节写崩了退回原始摘要。
+
 例外的两个：并发用例（`test_subtopics_go_concurrent_but_land_in_outline_order`）换成按
 内容分派的 `_RoutedLLM` + 慢检索——并发之后调用序不等于大纲序，按序弹的脚本套不上了。
 """
@@ -50,6 +54,17 @@ SUB_JSON = json.dumps(
 )
 SUB1_TEXT = "检索链路摘要：混合检索是主流 [CIT-1-1]，重排普遍多加一步 [CIT-1-2]。"
 SUB2_TEXT = "工程取舍摘要：成本与延迟是主要矛盾 [CIT-2-1]，向量库选型差异不大 [CIT-2-2]。"
+SUB_JSON3 = json.dumps(
+    {
+        "sub_topics": [
+            {"title": "检索链路", "overview": "召回与重排的现状"},
+            {"title": "工程取舍", "overview": "成本、延迟与选型"},
+            {"title": "评测方法", "overview": "怎么量指标"},
+        ]
+    },
+    ensure_ascii=False,
+)
+SUB3_TEXT = "评测方法摘要：无参考指标已成事实标准 [CIT-3-1]，人工评估只做抽查 [CIT-3-2]。"
 # 报告里故意留一个凭空编号的记号：必须被剥掉并计一次 warning
 REPORT_TEXT = (
     "综合结论：混合检索加重排是 2025 年的主流 [CIT-1-1][CIT-1-2]，"
@@ -63,6 +78,20 @@ REPORT_RENUMBERED = (
 )
 SINGLE_TOPIC_TEXT = "我觉得这个主题不用拆，直接查吧。"
 
+# ---- 多段成稿（大纲 ≥3 条）：引言 / 各节 / 结论各起一次调用 ----
+# 号跨段连排：A 在引言首次引用 → [1]；B 在第一节首次引用 → [2]；第二节的原始摘要兜底再引
+# B 时复用 [2]、引 C 得 [3]；结论里故意留一个凭空编号的记号（必须被剥掉并计 warning）
+INTRO_TEXT = "一句话结论：混合检索加重排是主流 [CIT-1-1]。"
+SECTION1_TEXT = "这一节看检索链路：混合检索是基线 [CIT-1-2]。"
+SECTION3_TEXT = "这一节的评测：无参考指标占主流 [CIT-3-2]。"
+CONCLUSION_TEXT = "综合结论：先把检索召回量化 [CIT-1-2]，再谈生成质量 [CIT-9-9]。"
+INTRO_RENUMBERED = INTRO_TEXT.replace("[CIT-1-1]", "[1]")
+SECTION1_RENUMBERED = SECTION1_TEXT.replace("[CIT-1-2]", "[2]")
+SECTION3_RENUMBERED = SECTION3_TEXT.replace("[CIT-3-2]", "[3]")
+CONCLUSION_RENUMBERED = "综合结论：先把检索召回量化 [2]，再谈生成质量 。"
+# 第 2 节模型一个字没写 → 正文退回它那条原始摘要（记号照样重排）
+SECTION2_FALLBACK = "工程取舍摘要：成本与延迟是主要矛盾 [2]，向量库选型差异不大 [3]。"
+
 # 来源的形状照抄 web_search 的 detail["sources"]（kb=web 是它写死的）
 A = {"doc_id": "https://example.com/a", "kb": "web", "title": "来源 A", "snippet": "A 的摘要"}
 B = {"doc_id": "https://example.com/b", "kb": "web", "title": "来源 B", "snippet": "B 的摘要"}
@@ -75,6 +104,9 @@ DECOMPOSE_MARK = "【分解阶段】"
 RESEARCH_MARK = "【检索阶段】"
 REPORT_MARK = "【报告阶段】"
 ANSWER_MARK = "【作答阶段】"
+INTRO_MARK = "【报告阶段·开篇】"
+SECTION_MARK = "【报告阶段·分节】"
+CONCLUSION_MARK = "【报告阶段·结论】"
 OUTLINE_HEADING = "## 研究大纲"
 REVISED_HEADING = "## 研究大纲（已按你的意见调整）"
 REFERENCES_HEADING = "## 参考资料"
@@ -229,6 +261,38 @@ def _research_steps() -> list[ScriptedStep]:
         ScriptedStep(chunks=[SUB2_TEXT], usage=USAGE),
         ScriptedStep(chunks=[REPORT_TEXT], usage=USAGE),
     ]
+
+
+def _staged_research_steps() -> list[ScriptedStep]:
+    """多段成稿的第二回合：3 个子问题各「检索一轮 + 收尾摘要」+ 成稿 5 段，共 11 步。
+
+    第 2 节的成稿步故意给空正文：验证「节写崩了退回原始摘要」这条兜底。
+    """
+    steps: list[ScriptedStep] = []
+    for index, (query, text) in enumerate(
+        [
+            ("RAG 混合检索 2025", SUB1_TEXT),
+            ("RAG 成本 延迟 权衡", SUB2_TEXT),
+            ("RAG 评测基准", SUB3_TEXT),
+        ],
+        1,
+    ):
+        steps.append(
+            ScriptedStep(
+                tool_calls=[_call("web_search", f"s{index}", query=query)],
+                finish_reason="tool_calls",
+                usage=USAGE,
+            )
+        )
+        steps.append(ScriptedStep(chunks=[text], usage=USAGE))
+    steps += [
+        ScriptedStep(chunks=[INTRO_TEXT], usage=USAGE),
+        ScriptedStep(chunks=[SECTION1_TEXT], usage=USAGE),
+        ScriptedStep(chunks=[""], usage=USAGE),  # 第 2 节：模型一个字没写
+        ScriptedStep(chunks=[SECTION3_TEXT], usage=USAGE),
+        ScriptedStep(chunks=[CONCLUSION_TEXT], usage=USAGE),
+    ]
+    return steps
 
 
 def _script(*, turn2: list[ScriptedStep] | None = None) -> ScriptedLLM:
@@ -634,6 +698,96 @@ async def test_answer_mode_swaps_report_prompt(ws_client, fake_search):
     report_call = scripted.calls[-1]
     assert ANSWER_MARK in report_call.messages[0]["content"]
     assert REPORT_MARK not in report_call.messages[0]["content"]
+
+
+async def test_long_outline_report_is_written_in_stages(ws_client, fake_search):
+    """大纲够长的报告分多段写：引言 → 逐节 → 结论，各一次调用、写一段发一段。
+
+    节标题与编号由代码按大纲给（`## k. 标题`，模型只写正文）；各节只拿自己那条摘要。
+    批注看两件事：正文顺序就是发出的顺序（引言在最前、结论在最后），
+    还有引用号跨段连排（[1][2][3] 依次在引言/第一节/第二节兜底里首次出现）。
+    """
+    scripted = ScriptedLLM(
+        [
+            ScriptedStep(chunks=[REFINED], usage=USAGE),
+            ScriptedStep(chunks=[SUB_JSON3], usage=USAGE),
+            *_staged_research_steps(),
+        ]
+    )
+    install_scripted(lambda: scripted)
+    with ws_client.websocket_connect("/api/v1/ws") as ws:
+        _turn(ws, message=TOPIC, config={"depth": "standard", "mode": "report"})
+        session_id = "sess-research"
+        _wait_turn_settled(ws_client, session_id)
+        second = _turn(ws, message="确认", session_id=session_id)
+
+    assert second[-1]["type"] == "done"
+    assert not _of(second, "error")
+    report = second[-1]["payload"]["response"]
+
+    # 分段进度：每节开写之前报一声（节标题用大纲的，编号也是）
+    progress = [
+        e["payload"]["message"]
+        for e in _of(second, "status")
+        if "正在撰写" in e["payload"]["message"]
+    ]
+    assert progress == [
+        "正在撰写（1/3）：检索链路",
+        "正在撰写（2/3）：工程取舍",
+        "正在撰写（3/3）：评测方法",
+    ]
+
+    # 正文顺序 = 引言 → 各节（编号由代码给，模型没写任何节标题）→ 结论
+    # （在研究过程段里 "### 1. 检索链路" 也含 "## 1. …"，所以只在报告段内比位置）
+    report_body = report.split("## 研究报告")[1]
+    assert report_body.index(INTRO_RENUMBERED) < report_body.index("## 1. 检索链路")
+    assert (
+        report_body.index("## 1. 检索链路")
+        < report_body.index("## 2. 工程取舍")
+        < report_body.index("## 3. 评测方法")
+    )
+    assert report_body.index("## 3. 评测方法") < report_body.index(CONCLUSION_RENUMBERED)
+    assert SECTION1_RENUMBERED in report and SECTION3_RENUMBERED in report
+    # 第 2 节的成稿调用吐了空正文：退回该子问题的原始摘要（记号照样重排）
+    assert SECTION2_FALLBACK in report
+
+    # 引用号跨段连排，凭空编号照样剥掉并计一次 warning
+    assert "[CIT-" not in report
+    dropped = [e for e in _of(second, "warning") if "引用对不上" in e["payload"]["message"]]
+    assert len(dropped) == 1 and "1 处" in dropped[0]["payload"]["message"]
+    references = report.split(REFERENCES_HEADING)[1]
+    assert "1. [来源 A](https://example.com/a)" in references
+    assert "2. [来源 B](https://example.com/b)" in references
+    assert "3. [来源 C](https://example.com/c)" in references
+
+    # 每次 calling 用哪组提示词、拿到哪些素材：引言与结论见全部摘要，各节只见自己那条
+    turn2 = scripted.calls[2:]
+    intro_call, section_calls, conclusion_call = turn2[6], turn2[7:10], turn2[10]
+    assert INTRO_MARK in intro_call.messages[0]["content"]
+    intro_input = _user_text(intro_call)
+    assert all(text in intro_input for text in (SUB1_TEXT, SUB2_TEXT, SUB3_TEXT))
+    for call in section_calls:
+        assert SECTION_MARK in call.messages[0]["content"]
+        assert _tool_names(call) == set()
+    assert SUB1_TEXT not in _user_text(section_calls[1])
+    assert SUB3_TEXT in _user_text(section_calls[2]) and SUB1_TEXT not in _user_text(
+        section_calls[2]
+    )
+    # 分节的引用记号提示带上了本节的子问题号（占位符真渲染了，不是原样漏出去）
+    assert "[CIT-2-1]，第一个数都是 2" in section_calls[1].messages[0]["content"]
+    assert CONCLUSION_MARK in conclusion_call.messages[0]["content"]
+    assert all(text in _user_text(conclusion_call) for text in (SUB1_TEXT, SUB2_TEXT, SUB3_TEXT))
+
+    # 13 步全用尽：两段式回合该调几次就是几次（2 + 6 + 5）
+    assert scripted.exhausted and len(scripted.calls) == 13
+    assert fake_search and len(fake_search) == 3
+    assert _streamed(second) == report
+    assert _of(second, "content_done")[-1]["payload"]["full_text"] == report
+
+    _wait_turn_settled(ws_client, session_id)
+    rows = _rows(session_id)
+    assert rows[0]["status"] == "reported"
+    assert json.loads(rows[0]["failed_subtopics"]) == []
 
 
 async def test_stale_researching_run_does_not_swallow_new_question(ws_client, fake_search):

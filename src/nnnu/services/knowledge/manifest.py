@@ -174,6 +174,30 @@ def prune_unready_versions(
     return removed
 
 
+def prune_versions_except(data_root: Path, kb_id: str, *, keep: set[int]) -> list[int]:
+    """删掉 `keep` 之外的**就绪**版本目录（活跃版本与要留的旧版本由调用方算好）。
+
+    半成品（没有 ready meta）归 prune_unready_versions 管，这里不碰——两件事分开，
+    启动恢复的日志才分得清「清残骸」和「清旧版本」。返回删掉的版本号。
+    """
+    directory = kb_dir(data_root, kb_id) / INDEX_DIR
+    if not directory.is_dir():
+        return []
+    removed: list[int] = []
+    for item in directory.iterdir():
+        if not item.is_dir() or not item.name.startswith("version-"):
+            continue
+        try:
+            version = int(item.name.split("-", 1)[1])
+        except ValueError:
+            continue
+        if version in keep or not is_version_ready(item):
+            continue
+        remove_tree(item)
+        removed.append(version)
+    return removed
+
+
 def remove_version(data_root: Path, kb_id: str, version: int) -> None:
     remove_tree(version_dir(data_root, kb_id, version))
 

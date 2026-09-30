@@ -256,6 +256,42 @@ async def test_start_session_binds_path_without_running_a_turn(hub):
     assert app.state.runtime._executions == {}
 
 
+async def test_leave_unbinds_session_but_keeps_progress(hub):
+    """脱离（对齐 `mastery_leave`）：只解开会话绑定——进度/节点/作答一个字不动。
+
+    会话本体也留着（聊天记录还在侧栏里），只是路径不再指向它；再点「去聊天」
+    会重绑一个新会话（老会话留在历史里，想接回去走 `mastery_switch`）。
+    """
+    client, app = hub
+    path = await _path(hub)
+    bound = (
+        await client.post(f"/api/v1/learning/paths/{path['id']}/session", json={"language": "zh"})
+    ).json()
+    learning = app.state.learning
+    nodes = await learning.list_nodes(path["id"])
+    await learning.record_qualitative(nodes[0].id, passed=True)  # 先攒一点进度
+
+    response = await client.post(f"/api/v1/learning/paths/{path['id']}/leave")
+    assert response.status_code == 200
+    assert response.json() == {"left": path["id"]}
+    assert (await learning.get_path_model(path["id"])).session_id is None
+    assert await learning.get_path_by_session(bound["session_id"]) is None
+    # 会话本体还在：脱离不等于删聊天
+    assert await app.state.runtime._sessions.get_session(bound["session_id"]) is not None
+    # 进度留着：第一个节点还是过门状态
+    detail = (await client.get(f"/api/v1/learning/paths/{path['id']}")).json()
+    assert detail["path"]["session_id"] is None
+    assert detail["stats"]["mastered"] == 1
+
+    # 没绑定时再脱离：幂等，不算错误
+    assert (await client.post(f"/api/v1/learning/paths/{path['id']}/leave")).status_code == 200
+    # 脱离后「去聊天」重绑一个新会话
+    rebound = (
+        await client.post(f"/api/v1/learning/paths/{path['id']}/session", json={"language": "zh"})
+    ).json()
+    assert rebound["session_id"] != bound["session_id"]
+
+
 async def test_questions_filter_by_node(hub):
     client, app = hub
     path = await _path(hub)
@@ -392,9 +428,10 @@ async def test_reviews_aggregate_across_paths(hub):
     assert all(item["node_id"] and item["overdue"] is False for item in reviews)
 
 
-async def test_skip_and_redo_404_on_ghost_path(hub):
+async def test_board_actions_404_on_ghost_path(hub):
     client, _app = hub
     assert (
         await client.post("/api/v1/learning/paths/lpath-ghost/skip-question")
     ).status_code == 404
     assert (await client.post("/api/v1/learning/paths/lpath-ghost/redo")).status_code == 404
+    assert (await client.post("/api/v1/learning/paths/lpath-ghost/leave")).status_code == 404

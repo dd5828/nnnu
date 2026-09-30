@@ -177,14 +177,30 @@ test("⑨ 知识库引用可点：从引用面板跳进阅读器并定位页码"
   await expect(reader.locator("iframe")).toHaveAttribute("src", /#page=1$/);
 });
 
+// ⑩ 要传的 md 内容内联在测试里，不放 fixtures/：仓库「全部 md 不入库」，
+// 放文件的话本地有、CI 全新检出没有（1d1eddd 的 CI 首跑就是这么挂的）
+const SAMPLE_MD = `# 傅里叶变换速查
+
+傅里叶变换把时域信号分解为频域分量，常用于信号滤波与频谱分析。
+
+## 要点
+
+- 时域与频域互为镜像
+- 快速算法（FFT）让计算可行
+- 频谱分析是滤波与压缩的前置步骤
+`;
+
 test("⑩ 知识库 Markdown 预览：正文渲染成 DOM，不再是解析文本", async ({ page }) => {
-  const md = path.resolve(__dirname, "fixtures", "sample.md");
   await page.goto("/knowledge");
   await page.getByTestId("kb-card").filter({ hasText: "信号库" }).locator("a").click();
   await page.waitForURL(/\/knowledge\/kb-/, { timeout: 15000 });
 
   // 加一份 md 文档，等它进入就绪
-  await page.getByTestId("kb-add-files").setInputFiles(md);
+  await page.getByTestId("kb-add-files").setInputFiles({
+    name: "sample.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from(SAMPLE_MD, "utf-8"),
+  });
   const row = page.getByTestId("doc-row").filter({ hasText: "sample.md" });
   await expect(row).toBeVisible({ timeout: 15000 });
   await expect(row.getByTestId("doc-status")).toHaveAttribute("data-status", "done", {
@@ -362,6 +378,12 @@ test("⑭ 学习路径：聊天建路径 → 看板下一目标 → 聊天里刷
     });
   };
 
+  // ---- 空态入口：看板自己给「新建」（只开学习会话，零 LLM；路径仍从聊天里长出来）----
+  await page.goto("/learning");
+  await expect(page.getByTestId("l-empty")).toBeVisible({ timeout: 15000 });
+  await page.getByTestId("l-empty-new").click();
+  await page.waitForURL(/\/$/, { timeout: 15000 });
+
   // ---- 建路径：能力强切「学习路径」说一句。路径只从聊天里长出来（没有 POST /learning/paths），
   // 模型先 paths 看库里有没有对得上的，没有才 build 建树 ----
   await page.goto("/");
@@ -477,6 +499,21 @@ test("⑭ 学习路径：聊天建路径 → 看板下一目标 → 聊天里刷
   await expect(ring).toHaveAttribute("data-cleared", "true");
   await expect(next).toHaveAttribute("data-action", "probe");
   await expect(page.getByTestId("l-next-title")).toContainText("矩阵与行列式");
+
+  // ---- 脱离 + 卡片切回：脱离只解开会话绑定（进度留着、按钮消失），
+  // 列表卡片的「去聊天」再一键切回（两次都是零 LLM，脚本步骤一个不动）----
+  await page.getByTestId("l-path-leave").click();
+  await expect(page.getByTestId("l-flash")).toContainText("已脱离");
+  await expect(page.getByTestId("l-path-leave")).toHaveCount(0);
+  await expect(page.getByTestId("l-progress")).toHaveAttribute("data-value", "50"); // 进度全在
+  await page.goto("/learning");
+  await page
+    .getByTestId("l-card")
+    .filter({ hasText: "线性代数基础" })
+    .getByTestId("l-card-go")
+    .click();
+  await page.waitForURL(/\/$/, { timeout: 15000 });
+  await expect(box).toHaveAttribute("placeholder", /继续/); // 切进了（新绑的）学习会话
 });
 
 test("⑮ 深度研究：两段式回合（大纲确认 → 检索成稿），报告可导出可存笔记本", async ({ page }) => {
@@ -607,4 +644,36 @@ test("⑯ 调研历史：跑过的那次在列表里，点进去看大纲、报�
   await expect(page.getByTestId("capability-selector")).toContainText("深度研究", {
     timeout: 15000,
   });
+});
+
+test("⑱ 深度研究：大纲长的报告分多段写，节标题带代码给的编号", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "新对话" }).click();
+  const box = page.locator("textarea").first();
+  await expect(box).toBeVisible();
+
+  await page.getByTestId("capability-selector").click();
+  await page.locator('[data-testid="capability-option"][data-value="deep_research"]').click();
+  // 标准档（默认）；脚本回 3 个子问题 ⇒ 成稿走「引言 → 逐节 → 结论」的多段路
+  await box.fill("调研 2025 年向量数据库的选型");
+  await box.press("Enter");
+
+  await expect(page.getByRole("heading", { name: "研究大纲" })).toBeVisible({ timeout: 20000 });
+  await expect(page.getByText("Milvus、Qdrant、pgvector 等代表产品的定位")).toBeVisible();
+  await page.getByTestId("research-confirm").click();
+
+  // 引言先到，随后逐节：第 1 节露头时第 3 节还没影——写一段发一段，不是憋到最后一次性发。
+  // 节标题是 `##`（研究过程里那种 `### k. 标题` 是 3 级，用 level: 2 区分）
+  await expect(page.getByText("选型没有唯一答案")).toBeVisible({ timeout: 30000 });
+  const section1 = page.getByRole("heading", { level: 2, name: "1. 主流产品对比" });
+  const section3 = page.getByRole("heading", { level: 2, name: "3. 迁移与运维" });
+  await expect(section1).toBeVisible({ timeout: 30000 });
+  await expect(section3).toHaveCount(0);
+  await expect(section3).toBeVisible({ timeout: 30000 });
+
+  // 节标题编号由代码按大纲给（夹具里各节正文一个字标题都没写），正文各就各位
+  await expect(page.getByRole("heading", { level: 2, name: "研究报告" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "2. 性能与成本" })).toBeVisible();
+  await expect(page.getByText("先做索引重建演练，再谈切换")).toBeVisible();
+  await expect(page.getByText("再在候选里比召回质量")).toBeVisible(); // 结论收尾
 });

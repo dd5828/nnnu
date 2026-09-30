@@ -9,6 +9,7 @@
 
 对齐上游时补的三个看板操作端点：`skip-question`（作废未决卡）、`redo`（清进度留树）、
 `GET /learning/reviews`（跨路径的到期复习聚合，这是唯一一个跨路径的读端点）。
+`leave` 是 `mastery_leave` 工具的 REST 面（脱离路径 = 只解开会话绑定，进度全留）。
 
 `POST .../session` **只确保会话**：把路径的聊天建好（或复用原来的）、绑上路径、
 标题设成路径名，返回 `{path_id, session_id}` 就完了——**一个回合都不起**。
@@ -254,3 +255,16 @@ async def start_session(path_id: str, body: SessionBody, http_request: Request):
         await runtime._sessions.rename_session(session.id, detail.path.title)
 
     return {"path_id": path_id, "session_id": session.id}
+
+
+@router.post("/api/v1/learning/paths/{path_id}/leave")
+async def leave_path(path_id: str, http_request: Request):
+    """脱离路径（对齐 `mastery_leave` 工具）：只解开会话绑定，**进度/节点/题目/作答全留**。
+
+    绑定是路径与会话之间唯一的东西：解开以后 `get_path_by_session` 不再认领这条路径
+    （聊天里不会再被当成「正在学的路径」）；想回来点「去聊天」重绑一个会话即可。
+    没有绑定时再脱离是幂等的，不算错误。
+    """
+    if await _service(http_request).unbind_session(path_id) is None:
+        return _not_found(f"学习路径 {path_id} 不存在")
+    return {"left": path_id}

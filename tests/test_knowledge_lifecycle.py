@@ -1,12 +1,14 @@
 """KB 生命周期单测（§7.9）：状态机、版本切换、取消、崩溃恢复。
 
 验收 C（重建期间旧索引照样能查、切换无感）与验收 D（单删一份解析失败的文档，
-其余文档与整库状态都不受影响）就在这里立证据。嵌入一律用离线替身
+其余文档与整库状态都不受影响）就在这里立证据；旧版本目录的保留/清理策略
+（活跃 + KEEP_OLD_VERSIONS）也在这一批里盯着。嵌入一律用离线替身
 （TopicEmbedder：主题词命中即高分），不打任何真实端点、不下载模型。
 """
 
 import asyncio
 import json
+import shutil
 from collections import Counter
 from pathlib import Path
 
@@ -19,7 +21,7 @@ from nnnu.services.embedding import service as embedding_service
 from nnnu.services.embedding.service import EmbeddingService
 from nnnu.services.knowledge import manifest as store
 from nnnu.services.knowledge import service as service_module
-from nnnu.services.knowledge.service import KBError, KBService
+from nnnu.services.knowledge.service import LEXICAL_BOOST, KBError, KBService
 from nnnu.services.knowledge.types import (
     DOC_DELETED,
     DOC_DONE,
@@ -27,6 +29,7 @@ from nnnu.services.knowledge.types import (
     KB_ERROR,
     KB_READY,
     KbBuild,
+    KbVersion,
 )
 from nnnu.services.parsing.service import ParsedDocument
 
@@ -329,6 +332,58 @@ async def test_reindex_retry_only_failed_docs(tmp_path, tmp_home, monkeypatch):
     assert hits and hits[0].doc_id == bad.doc_id
 
 
+# ================= 旧版本目录清理 =================
+
+
+async def test_builds_prune_versions_beyond_keep_policy(tmp_path, tmp_home):
+    """每构建一次落一个版本目录（每版几十 MB）：活跃 + KEEP_OLD_VERSIONS 之外的删掉。"""
+    service = _service(tmp_home / "data", TopicEmbedder())
+    kb = await _create(service)
+    for index in range(1, 5):
+        text = SIGNAL_TEXT if index % 2 else BIO_TEXT
+        await _add(service, kb.id, f"{index}.pdf", _pdf(tmp_path / f"{index}.pdf", 1, text))
+
+    root = service._data_root
+    manifest = service.get_kb(kb.id)
+    assert manifest.active_version == 4
+    assert not store.version_dir(root, kb.id, 1).exists()  # 最早的版本删盘
+    assert not store.version_dir(root, kb.id, 2).exists()
+    assert store.version_dir(root, kb.id, 3).is_dir()  # 活跃 + 一个旧版本留着
+    assert store.version_dir(root, kb.id, 4).is_dir()
+    assert [item.version for item in manifest.versions] == [3, 4]  # 版本记录同步精简
+    hits = await service.search(kb.id, "傅里叶变换 频谱")  # 活跃版本照常能查
+    assert hits
+
+
+async def test_recover_stale_prunes_pre_existing_old_versions(tmp_path, tmp_home):
+    """清理策略是后加的：以前攒下的旧版本目录，启动恢复时就地收干净（不用等重建）。"""
+    service = _service(tmp_home / "data", TopicEmbedder())
+    kb = await _create(service)
+    doc = await _add(service, kb.id, "信号.pdf", _pdf(tmp_path / "a.pdf", 1, SIGNAL_TEXT))
+
+    root = service._data_root
+    manifest = service.get_kb(kb.id)
+    v1_dir = store.version_dir(root, kb.id, 1)
+    # 模拟旧策略的残留：v1 之外再摆两个 ready 版本目录，指针切到最新的
+    for version in (2, 3):
+        shutil.copytree(v1_dir, store.version_dir(root, kb.id, version))
+        manifest.versions.append(KbVersion(version=version))
+    manifest.active_version = 3
+    store.write_manifest(root, manifest)
+    service._engine.load(v1_dir)  # 引擎缓存里也有一份 v1
+
+    await service.recover_stale()
+
+    manifest = service.get_kb(kb.id)
+    assert not v1_dir.exists()  # 只留活跃版本 + 一个旧版本
+    assert store.version_dir(root, kb.id, 2).is_dir()
+    assert store.version_dir(root, kb.id, 3).is_dir()
+    assert [item.version for item in manifest.versions] == [2, 3]
+    assert v1_dir not in service._engine._cache  # 删掉的目录不留在引擎缓存里
+    hits = await service.search(kb.id, "傅里叶变换 频谱")
+    assert hits and hits[0].doc_id == doc.doc_id
+
+
 # ================= 取消 =================
 
 
@@ -466,14 +521,17 @@ async def test_search_all_ready_merges_across_kbs(tmp_path, tmp_home):
 
     hits = await service.search_all_ready("傅里叶变换 频谱", top_k=5)
     assert hits
-    # 每个库各出一个块时跨库 RRF 是同分（都拿 1/(k+1)），谁在前取决于库 id 的
-    # 排序——所以这里只断言「两库都在、命中归属没错」，不断言名次
     assert {hit.kb_id for hit in hits} == {first.id, second.id}
     by_kb = {hit.kb_id: hit for hit in hits}
     assert by_kb[first.id].metadata["filename"] == "信号.pdf"
     assert by_kb[second.id].metadata["filename"] == "生物.pdf"
     assert [hit.score for hit in hits] == sorted((hit.score for hit in hits), reverse=True)
-    assert all(0 < hit.score <= 1 / 61 for hit in hits)  # 分是 RRF 融合分，不是余弦
+    # 跨库排序（本批新增）：按「同查询内的相对余弦 × 字面加成」定权重，不再靠碰运气——
+    # 信号库余弦 1.0、有字面命中（1.0×1.5）；生物库余弦 0、无字面命中（0.0）
+    assert hits[0].kb_id == first.id
+    assert by_kb[first.id].score == pytest.approx(LEXICAL_BOOST / 61)
+    assert by_kb[second.id].score == 0.0  # 与查询无关的库：有结果但排最后（分是 RRF 融合分）
+    assert by_kb[first.id].metadata["cosine"] == pytest.approx(1.0)
 
     both = await service.search_all_ready("傅里叶变换 光合作用", top_k=10)
     assert {hit.kb_id for hit in both} == {first.id, second.id}
