@@ -13,11 +13,17 @@
 （分解段与成稿段是空集——「恰好一次调用」靠这个保证）、`[CIT-…]` 重编号与参考资料、
 状态机流转（confirming → researching → reported/partial）、子问题失败只降级成 warning、
 非法档位零 LLM 打回、改稿走重分解、`mode=answer` 换提示词。
+
+例外的两个：并发用例（`test_subtopics_go_concurrent_but_land_in_outline_order`）换成按
+内容分派的 `_RoutedLLM` + 慢检索——并发之后调用序不等于大纲序，按序弹的脚本套不上了。
 """
 
+import asyncio
 import json
+import re
 import sqlite3
 import time
+from typing import AsyncIterator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -26,7 +32,7 @@ from nnnu.api.main import create_app
 from nnnu.capabilities.research.capability import STAGE_TOOLS, _SourceMarker
 from nnnu.core.tool_protocol import ToolContext, ToolResult
 from nnnu.services.llm.factory import install_scripted, uninstall_scripted
-from nnnu.services.llm.protocol import LLMToolCall
+from nnnu.services.llm.protocol import LLMChunk, LLMRequest, LLMToolCall
 from nnnu.services.llm.scripted import ScriptedLLM, ScriptedStep
 from nnnu.services.research.models import DEPTH_SPECS
 from nnnu.services.sessions.schema import db_path
@@ -75,6 +81,61 @@ REFERENCES_HEADING = "## 参考资料"
 
 USAGE = {"prompt_tokens": 30, "completion_tokens": 12}
 
+# 并发用例的节奏（秒）：检索睡够长，让两次检索的时间窗重叠（这就是并发证据）；
+# 两条子循环的首轮延迟拉开，让第二个子问题先查完——用来验证「交付顺序看大纲，不看谁先查完」。
+SEARCH_SLEEP = 0.30
+LLM_DELAYS = {"检索链路": [0.15, 0.01], "工程取舍": [0.01, 0.01]}
+SUBTITLE_RE = re.compile(r"本子问题（\d+/\d+）：\*\*(.+?)\*\*")
+
+
+class _RoutedLLM(ScriptedLLM):
+    """按「这段在跟谁打交道」分派回答的替身（并发用例专用；不弹步骤）。
+
+    `ScriptedLLM` 按调用序弹步骤——两个子问题并发之后调用序不再等于大纲序，按序弹就串了。
+    这个替身看系统提示认阶段、看任务里的子问题标题认是哪一个，与调用顺序无关；
+    认不出来直接抛错（沿用「防测试假绿」：宁可炸，也不要静默空回复）。
+    """
+
+    def __init__(self) -> None:
+        super().__init__([])
+        self.titles: list[str] = []  # 研究段按完成调用序记的子问题
+        self._seen: dict[str, int] = {}
+
+    async def stream(self, request: LLMRequest) -> AsyncIterator[LLMChunk]:
+        self.calls.append(request)
+        system = str(request.messages[0].get("content") or "")
+        if CLARIFY_MARK in system:
+            yield LLMChunk(text=REFINED)
+        elif DECOMPOSE_MARK in system:
+            yield LLMChunk(text=SUB_JSON)
+        elif REPORT_MARK in system or ANSWER_MARK in system:
+            yield LLMChunk(text=REPORT_TEXT)
+        elif RESEARCH_MARK in system:
+            match = SUBTITLE_RE.search(_user_text(request))
+            assert match is not None, "路由替身认不出这是哪个子问题（任务模板改了？）"
+            title = match.group(1)
+            self.titles.append(title)
+            seen = self._seen.get(title, 0)
+            self._seen[title] = seen + 1
+            delays = LLM_DELAYS[title]
+            await asyncio.sleep(delays[min(seen, len(delays) - 1)])  # 真挂起：两条循环才会交错
+            if seen == 0:
+                yield LLMChunk(
+                    tool_call_delta={
+                        "index": 0,
+                        "id": f"call-{seen}-{title}",
+                        "name": "web_search",
+                        "arguments_piece": json.dumps({"query": title}, ensure_ascii=False),
+                    }
+                )
+                yield LLMChunk(finish_reason="tool_calls")
+                return
+            yield LLMChunk(text=SUB1_TEXT if title == "检索链路" else SUB2_TEXT)
+        else:
+            raise RuntimeError(f"路由替身不认识这段系统提示：{system[:80]}")
+        yield LLMChunk(usage=USAGE)
+        yield LLMChunk(finish_reason="stop")
+
 
 @pytest.fixture
 def ws_client(tmp_home, repo_prompts):
@@ -117,6 +178,38 @@ def fake_search(ws_client, monkeypatch):
 
 def _call(name: str, call_id: str, **args) -> LLMToolCall:
     return LLMToolCall(id=call_id, name=name, arguments=json.dumps(args, ensure_ascii=False))
+
+
+@pytest.fixture
+def slow_search(ws_client, monkeypatch):
+    """比 fake_search 慢的检索：睡一会儿，同时记录「同时在飞的条数」和结束顺序。
+
+    这两个数是并发改造的直接证据：串行实现下最大同时在飞恒为 1。
+    """
+    from nnnu.runtime.registry.tool_registry import get_tool_registry
+
+    tool = get_tool_registry().get("web_search")
+    assert tool is not None, "web_search 未注册：装配或挂载开关变了"
+    state: dict = {"in_flight": 0, "max_in_flight": 0, "finished": []}
+
+    async def _run(ctx: ToolContext) -> ToolResult:
+        query = str(ctx.args.get("query") or "")
+        state["in_flight"] += 1
+        state["max_in_flight"] = max(state["max_in_flight"], state["in_flight"])
+        try:
+            await asyncio.sleep(SEARCH_SLEEP)  # 真挂起：并发的两条循环才会同时压在检索里
+            sources = SEARCH_RESULTS[0] if "检索链路" in query else SEARCH_RESULTS[1]
+            return ToolResult(
+                ok=True,
+                output=f"检索到 {len(sources)} 条结果",
+                detail={"sources": [dict(item) for item in sources]},
+            )
+        finally:
+            state["in_flight"] -= 1
+            state["finished"].append(query)
+
+    monkeypatch.setattr(tool, "run", _run)
+    return state
 
 
 def _research_steps() -> list[ScriptedStep]:
@@ -383,6 +476,52 @@ async def test_two_turn_golden_path(ws_client, fake_search):
     assert rows[0]["status"] == "reported"
     assert json.loads(rows[0]["failed_subtopics"]) == []
     assert rows[0]["answer_message_id"] == users[-1]["id"]
+
+
+async def test_subtopics_go_concurrent_but_land_in_outline_order(ws_client, slow_search):
+    """子问题并发跑、按大纲顺序交付。
+
+    不能用 ScriptedLLM：它按调用序弹步骤，并发之后调用序不再等于大纲序（见 _RoutedLLM）。
+    并发证据是「检索同时在飞的条数」——串行实现下它恒为 1，这条断言必挂。
+    再验一次交付顺序：第二个子问题先查完，正文里它仍排在第 2 节、进度也没倒着走。
+    """
+    routed = _RoutedLLM()
+    install_scripted(lambda: routed)
+    with ws_client.websocket_connect("/api/v1/ws") as ws:
+        _turn(ws, message=TOPIC)
+        session_id = "sess-research"
+        _wait_turn_settled(ws_client, session_id)
+        second = _turn(ws, message="确认", session_id=session_id)
+
+    assert second[-1]["type"] == "done"
+    report = second[-1]["payload"]["response"]
+
+    # 两条子循环同时在飞，先查完的是第二个子问题
+    assert slow_search["max_in_flight"] == 2
+    assert slow_search["finished"] == ["工程取舍", "检索链路"]
+
+    # 交付顺序仍按大纲：1 在前、2 在后；进度条也没有倒着走
+    assert report.index("### 1. 检索链路") < report.index("### 2. 工程取舍")
+    progress = [
+        e["payload"]["message"]
+        for e in _of(second, "status")
+        if "正在检索" in e["payload"]["message"]
+    ]
+    assert "1/2" in progress[0] and "2/2" in progress[1]
+    assert report.count("- 检索到 2 条证据") == 2
+
+    # 记号与来源的配对没被并发搅乱：CIT-1-1 还是来源 A、CIT-2-1 还是来源 B（跨子问题复用号）
+    assert REPORT_RENUMBERED in report
+    references = report.split(REFERENCES_HEADING)[1]
+    assert "1. [来源 A](https://example.com/a)" in references
+    assert "2. [来源 B](https://example.com/b)" in references
+    assert "https://example.com/c" not in report
+    assert len([line for line in references.splitlines() if line.strip()]) == 2
+
+    _wait_turn_settled(ws_client, session_id)
+    rows = _rows(session_id)
+    assert rows[0]["status"] == "reported"
+    assert json.loads(rows[0]["failed_subtopics"]) == []
 
 
 async def test_subtopic_failure_only_warns(ws_client, fake_search):

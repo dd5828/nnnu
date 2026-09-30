@@ -9,6 +9,7 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    ".next-e2e/**", // E2E 的独立构建目录（见 next.config.ts）
     "out/**",
     "build/**",
     "next-env.d.ts",

@@ -28,6 +28,8 @@ export default defineConfig({
       timeout: 120_000,
       env: {
         NNNU_API_BASE_URL: "http://127.0.0.1:8002",
+        // 另开一份构建目录：与 dev.py 的 next dev（占着 .next）并存时不撞 dev 锁
+        NNNU_DIST_DIR: ".next-e2e",
       },
     },
   ],

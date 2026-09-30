@@ -18,6 +18,11 @@
 对终局事件每 bus 只认一次，一个子问题检索失败就把整个回合的信封吃掉，报告就没处发了。
 降级之后「N 个子问题里 M 个没跑完」变成：warning + `partial` 状态 + 报告里一句话说明。
 
+**子问题并发**：互不牵连的循环就真的并发跑（`MAX_PARALLEL_SUBTOPICS` 个在飞），deep 档
+6 个子问题不再串着等。任务按大纲顺序创建、按同一顺序收口，正文块（小标题 + 证据行）
+看到的仍是 1、2、3…；进度 status 在各自真正起跑（拿到并发槽）时才发。代价是并发期间
+子循环的思考流会互相穿插归不了位，子问题段因此连 thinking 一起静默（`silent_thinking`）。
+
 收尾：`content_done(合并全文)` + `cost_summary` + `done(response=合并全文)`。
 **done 不带 citations**：来源已经作为「参考资料」写进报告正文了，再喂一份给通用的
 「引用来源」面板就是同一批来源显示两遍（会话导出也会跟着重复一遍）。别的能力靠面板
@@ -26,9 +31,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any, Callable
 
 from nnnu.capabilities._shared import (
@@ -86,6 +93,10 @@ STAGE_TOOLS: dict[str, tuple[str, ...]] = {
     "reporting": (),
 }
 
+# 子问题同时在飞的个数。取 3 是折中：deep 档 6 个子问题正好两批跑完，又不会把上游
+# 检索接口（Bing / arXiv）一轮打满触发限流；单用户自托管场景并发再高也换不来更多带宽。
+MAX_PARALLEL_SUBTOPICS = 3
+
 # JSON 代码块围栏（模型很爱加）：先剥围栏再找花括号对象
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 _JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
@@ -100,12 +111,22 @@ class _QuietBus:
 
     - **吞正文**：分解段吐的是 JSON、澄清段吐的是给下游看的提炼、子问题段吐的是证据摘要，
       三样都不该进聊天正文（正文由本能力自己渲染）；
-    - **error 降级**：见模块 docstring——子问题失败不能吃掉整个回合的信封。
+    - **error 降级**：见模块 docstring——子问题失败不能吃掉整个回合的信封；
+    - **吞思考**（`silent_thinking`）：只在并发的子问题段开——多条思考流逐 chunk 交错，
+      拼出来的思考卡是碎的，不如不发。
     """
 
-    def __init__(self, bus: StreamBus, *, silent: bool = True, soften_errors: bool = False) -> None:
+    def __init__(
+        self,
+        bus: StreamBus,
+        *,
+        silent: bool = True,
+        silent_thinking: bool = False,
+        soften_errors: bool = False,
+    ) -> None:
         self._bus = bus
         self._silent = silent
+        self._silent_thinking = silent_thinking
         self._soften_errors = soften_errors
 
     def __getattr__(self, name: str) -> Any:
@@ -121,10 +142,30 @@ class _QuietBus:
             return None
         return await self._bus.emit_content_done(full_text=full_text)
 
+    async def emit_thinking_delta(self, *, text: str) -> StreamEvent | None:
+        if self._silent_thinking:
+            return None
+        return await self._bus.emit_thinking_delta(text=text)
+
+    async def emit_thinking_done(self, *, text: str) -> StreamEvent | None:
+        if self._silent_thinking:
+            return None
+        return await self._bus.emit_thinking_done(text=text)
+
     async def emit_error(self, *, message: str, recoverable: bool = False) -> StreamEvent:
         if not self._soften_errors:
             return await self._bus.emit_error(message=message, recoverable=recoverable)
         return await self._bus.emit_warning(message=message)
+
+    async def emit_stopped(self) -> StreamEvent | None:
+        """子循环不掌回合格：stopped 由 TurnRuntime 兜底（`turn_runtime.py` 取消分支）。
+
+        并发子问题下一个兄弟炸了要连带取消其余的，若被取消的循环各自 emit_stopped，
+        `StreamBus` 的终局防双发会把信封提前封成 stopped——真正要报的异常反而发不出去。
+        """
+        if self._soften_errors:
+            return None
+        return await self._bus.emit_stopped()
 
 
 class _SourceMarker:
@@ -143,6 +184,8 @@ class _SourceMarker:
         self.index = index
         self._render_hint = render_hint  # marks → 提示整段（走提示词 i18n）
         self.sources: list[dict[str, Any]] = []
+        # 并发版由子任务把循环结果挂回来（免得再往外传一个 (marker, outcome) 元组）
+        self.outcome: LoopOutcome | None = None
 
     def annotate(self, output: str, sources: list[dict[str, Any]]) -> str:
         if not sources:
@@ -404,7 +447,7 @@ class DeepResearchCapability(BaseCapability):
             await bus.emit_content_delta(text=revised_outline)
             pieces.append(f"{revised_outline}\n\n")
 
-        # ③ 逐个子问题检索（串行：run_agent_loop 内同轮工具本来就是顺序执行的）
+        # ③ 子问题并发检索：每个子问题一条独立循环，最多 MAX_PARALLEL_SUBTOPICS 条在飞
         await self._status(prompts, bus, lang, "researching")
         heading = f"## {prompts.render('deep_research', lang, 'stages.researching.heading')}\n\n"
         await bus.emit_content_delta(text=heading)
@@ -413,74 +456,102 @@ class DeepResearchCapability(BaseCapability):
         book = CitationBook()
         findings: list[str] = []
         failed: list[str] = []
-        for index, subtopic in enumerate(subtopics, 1):
-            await bus.emit_status(
-                stage="researching",
-                message=prompts.render(
-                    "deep_research",
-                    lang,
-                    "stages.researching.progress_status",
-                    index=index,
-                    total=len(subtopics),
-                    title=subtopic.title,
-                ),
-            )
-            block = prompts.render(
-                "deep_research",
-                lang,
-                "stages.researching.subtopic_heading",
-                index=index,
-                title=subtopic.title,
-            )
-            await bus.emit_content_delta(text=f"{block}\n\n")
-            pieces.append(f"{block}\n\n")
+        total = len(subtopics)
+        slots = asyncio.Semaphore(MAX_PARALLEL_SUBTOPICS)
 
+        async def _run_subtopic(index: int, subtopic: SubTopic) -> _SourceMarker:
+            """一个子问题的检索循环。返回值是 marker（来源按它的计数收，见 _SourceMarker）。
+
+            并发期间思考流会互相穿插（thinking 是逐 chunk 拼的），这段连 thinking 一起静默；
+            正文块也不在这里发——渲染和进度由主循环按大纲顺序做。
+            异常照旧上抛：LLMError 由 soften_errors 在循环内降级，编程错误/脚本耗尽就该炸。
+            """
             marker = _SourceMarker(
                 index,
                 lambda marks: prompts.render(
                     "deep_research", lang, "stages.researching.marker_hint", marks=marks
                 ),
             )
-            outcome = await self._loop(
-                ctx,
-                bus,
-                client=client,
-                mc=mc,
-                mounted=mounted,
-                messages=self._messages(
-                    prompts,
-                    lang,
-                    preamble,
-                    "researching",
-                    base_history,
-                    question,
-                    topic=topic,
-                    subtopics=spec.subtopics,
-                    index=index,
-                    total=len(subtopics),
-                    title=subtopic.title,
-                    overview=subtopic.overview,
-                    k=index,
-                ),
-                max_rounds=spec.tool_rounds,
-                max_tokens=self._stage("researching").max_tokens,
-                allowlist=STAGE_TOOLS["researching"],
-                soften_errors=True,  # 一个子问题失败不许吃掉整个回合的信封
-                on_tool_result=marker.annotate,
-            )
-            # 用 marker 收的来源而不是 outcome.citations：记号是按 marker 的计数贴的，
-            # 两边必须是同一份、同一顺序，后面 `[CIT-k-nn]` 才解得回对应的来源
-            book.add_subtopic(index, marker.sources)
-            if outcome.completed and outcome.final_text.strip():
-                findings.append(
-                    f"### 子问题 {index}：{subtopic.title}\n\n{outcome.final_text.strip()}"
+            async with slots:  # 排队等槽；等到的顺序即起跑顺序，进度条不会倒着走
+                await bus.emit_status(
+                    stage="researching",
+                    message=prompts.render(
+                        "deep_research",
+                        lang,
+                        "stages.researching.progress_status",
+                        index=index,
+                        total=total,
+                        title=subtopic.title,
+                    ),
                 )
-                line = self._evidence_line(prompts, lang, outcome)
-            else:
-                failed.append(subtopic.title)
-                line = prompts.render("deep_research", lang, "stages.researching.failure_line")
-            await bus.emit_content_delta(text=f"{line}\n\n")
-            pieces.append(f"{line}\n\n")
+                outcome = await self._loop(
+                    ctx,
+                    bus,
+                    client=client,
+                    mc=mc,
+                    mounted=mounted,
+                    messages=self._messages(
+                        prompts,
+                        lang,
+                        preamble,
+                        "researching",
+                        base_history,
+                        question,
+                        topic=topic,
+                        subtopics=spec.subtopics,
+                        index=index,
+                        total=total,
+                        title=subtopic.title,
+                        overview=subtopic.overview,
+                        k=index,
+                    ),
+                    max_rounds=spec.tool_rounds,
+                    max_tokens=self._stage("researching").max_tokens,
+                    allowlist=STAGE_TOOLS["researching"],
+                    soften_errors=True,  # 一个子问题失败不许吃掉整个回合的信封
+                    silent_thinking=True,  # 并发交错：思考流没法按子问题归位
+                    on_tool_result=marker.annotate,
+                )
+            marker.outcome = outcome
+            return marker
+
+        tasks = [
+            asyncio.create_task(_run_subtopic(index, subtopic))
+            for index, subtopic in enumerate(subtopics, 1)
+        ]
+        try:
+            for index, (task, subtopic) in enumerate(zip(tasks, subtopics, strict=True), 1):
+                marker = await task  # 按大纲顺序收口：谁先查完都等前面先交付
+                outcome = marker.outcome
+                # 用 marker 收的来源而不是 outcome.citations：记号是按 marker 的计数贴的，
+                # 两边必须是同一份、同一顺序，后面 `[CIT-k-nn]` 才解得回对应的来源
+                book.add_subtopic(index, marker.sources)
+                block = prompts.render(
+                    "deep_research",
+                    lang,
+                    "stages.researching.subtopic_heading",
+                    index=index,
+                    title=subtopic.title,
+                )
+                await bus.emit_content_delta(text=f"{block}\n\n")
+                pieces.append(f"{block}\n\n")
+                if outcome is not None and outcome.completed and outcome.final_text.strip():
+                    findings.append(
+                        f"### 子问题 {index}：{subtopic.title}\n\n{outcome.final_text.strip()}"
+                    )
+                    line = self._evidence_line(prompts, lang, outcome)
+                else:
+                    failed.append(subtopic.title)
+                    line = prompts.render("deep_research", lang, "stages.researching.failure_line")
+                await bus.emit_content_delta(text=f"{line}\n\n")
+                pieces.append(f"{line}\n\n")
+        finally:
+            # 中途异常或用户 stop：兄弟任务一起收掉，别让它们继续花钱、继续发事件
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            with suppress(asyncio.CancelledError):
+                await asyncio.gather(*tasks, return_exceptions=True)  # 也顺带领走它们的异常
 
         # ④ 单次成稿（+ 引用重排 + 参考资料）
         await self._status(prompts, bus, lang, "reporting")
@@ -558,6 +629,7 @@ class DeepResearchCapability(BaseCapability):
         allowlist: tuple[str, ...],
         soften_errors: bool = False,
         silent: bool = True,
+        silent_thinking: bool = False,
         on_tool_result: Callable[[str, list[dict[str, Any]]], str] | None = None,
     ) -> LoopOutcome:
         """跑一段循环：**每次调用都新建 LoopDeps**（预算会被就地扣减，不能跨段复用）。
@@ -585,7 +657,9 @@ class DeepResearchCapability(BaseCapability):
         )
         return await run_agent_loop(
             ctx,
-            _QuietBus(bus, silent=silent, soften_errors=soften_errors),  # type: ignore[arg-type]
+            _QuietBus(  # type: ignore[arg-type]
+                bus, silent=silent, silent_thinking=silent_thinking, soften_errors=soften_errors
+            ),
             deps,
             messages,
         )
