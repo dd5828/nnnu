@@ -1,7 +1,8 @@
 """设置 spec：字段级声明式定义。
 
 P0 最小集三区（appearance/network/system）；P2 加 models（§7.19 模型卡片）；
-P4 补 models 区的 embedding 三件套与 kb 区（切块/批量/解析引擎）。
+P4 补 models 区的 embedding 三件套与 kb 区（切块/批量/解析引擎）；P8 加 memory 区
+（三层记忆的阈值/预算/体量，§7.10）。
 每字段带类型、默认值、生效方式（instant|restart|reindex）与 i18n 键——表单自动
 渲染直接消费本表。secret 类型不进设置 JSON（§5 配置铁律：密钥只进
 user-secrets 目录），明文只在草稿提交时经服务层转运一次。
@@ -290,6 +291,87 @@ SPECS: dict[str, AreaSpec] = {
                 effect="reindex",
                 choices=("", "pymupdf", "markitdown"),
                 description_key="settings.kb.parseEngineDesc",
+            ),
+        ),
+    ),
+    # §7.10 三层记忆：阈值自动整合 + 每模式 LLM 预算（0=关）+ chunk 体量 + 采集开关
+    "memory": AreaSpec(
+        "memory",
+        (
+            SettingField(
+                "auto_enabled",
+                "bool",
+                True,
+                "settings.memory.autoEnabled",
+                description_key="settings.memory.autoEnabledDesc",
+            ),
+            SettingField(
+                "auto_threshold_turns",
+                "int",
+                20,
+                "settings.memory.autoThresholdTurns",
+                description_key="settings.memory.autoThresholdTurnsDesc",
+                min_value=1,
+                max_value=500,
+            ),
+            SettingField(
+                "inject_enabled",
+                "bool",
+                True,
+                "settings.memory.injectEnabled",
+                description_key="settings.memory.injectEnabledDesc",
+            ),
+            SettingField(
+                "budget_update",
+                "int",
+                3,
+                "settings.memory.budgetUpdate",
+                description_key="settings.memory.budgetUpdateDesc",
+                min_value=0,
+                max_value=20,
+            ),
+            SettingField(
+                "budget_audit",
+                "int",
+                2,
+                "settings.memory.budgetAudit",
+                description_key="settings.memory.budgetAuditDesc",
+                min_value=0,
+                max_value=20,
+            ),
+            SettingField(
+                "budget_dedup",
+                "int",
+                2,
+                "settings.memory.budgetDedup",
+                description_key="settings.memory.budgetDedupDesc",
+                min_value=0,
+                max_value=20,
+            ),
+            SettingField(
+                "budget_extract",
+                "int",
+                2,
+                "settings.memory.budgetExtract",
+                description_key="settings.memory.budgetExtractDesc",
+                min_value=0,
+                max_value=20,
+            ),
+            SettingField(
+                "update_chunk_chars",
+                "int",
+                3000,
+                "settings.memory.updateChunkChars",
+                description_key="settings.memory.updateChunkCharsDesc",
+                min_value=500,
+                max_value=8000,
+            ),
+            SettingField(
+                "trace_enabled",
+                "bool",
+                True,
+                "settings.memory.traceEnabled",
+                description_key="settings.memory.traceEnabledDesc",
             ),
         ),
     ),

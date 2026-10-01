@@ -22,6 +22,8 @@ KNOWN_PREFIXES = (
     "lint",  # 答题交互行（learning_interactions）
     "rrun",  # 一次调研的草稿本（research_runs）
     "rnd",  # 一次渲染的产物目录（visualize / math_animator）
+    "mem",  # 记忆 L2/L3 条目（stable entry id，§7.10）
+    "mrun",  # 一次记忆整合（consolidator run，§7.10）
 )
 
 

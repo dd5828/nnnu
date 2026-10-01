@@ -5,7 +5,8 @@
 2. 计算 ToolMountFlags → 从 ToolRegistry 取工具集（能力内部消费）；
 3. CapabilityRegistry 取能力 → capability.run(ctx, bus)；
 4. 统一信封兜底（§6.1）：bus.terminal_emitted 未置 → cost_summary + done；
-5. 记忆 L1 轨迹：L1Sink 接口（P8 实现），本阶段 no-op；
+5. 记忆 L1 轨迹：L1Sink 接口（P8 实现：begin_turn 在能力开跑前、record_turn 收尾），
+   sink 抛异常只记日志——埋点不许拖累回合；
 6. 返回 TurnResult（response/cost_summary 供传输层持久化）。
 
 要求：编排器本身不含任何能力逻辑。
@@ -51,7 +52,11 @@ class TurnBusyError(Exception):
 
 
 class L1Sink(Protocol):
-    """记忆 L1 轨迹写入（P8 实现；§6.5 步骤 5 预留）。"""
+    """记忆 L1 轨迹写入（P8：services/memory/service.py）。"""
+
+    async def begin_turn(
+        self, turn_id: str, session_id: str | None, surface: str, user_message: str
+    ) -> None: ...
 
     async def record_turn(
         self, turn_id: str, session_id: str | None, events: list[StreamEvent]
@@ -85,6 +90,13 @@ class ChatOrchestrator:
             ctx.session.id,
             bus.turn_id,
         )
+        if self._l1_sink is not None:
+            try:  # 埋点失败绝不拖累回合（sink 内也自带一道兜底）
+                await self._l1_sink.begin_turn(
+                    bus.turn_id, ctx.session.id, ctx.capability, ctx.message.content
+                )
+            except Exception:
+                logger.exception("L1 begin_turn 失败（turn=%s）", bus.turn_id)
         try:
             await capability.run(ctx, bus)
         except Exception:
@@ -101,7 +113,10 @@ class ChatOrchestrator:
             await bus.emit_done(response="", status="completed")
 
         if self._l1_sink is not None:
-            await self._l1_sink.record_turn(bus.turn_id, ctx.session.id, bus.history)
+            try:
+                await self._l1_sink.record_turn(bus.turn_id, ctx.session.id, bus.history)
+            except Exception:
+                logger.exception("L1 record_turn 失败（turn=%s）", bus.turn_id)
 
         return TurnResult(
             turn_id=bus.turn_id,

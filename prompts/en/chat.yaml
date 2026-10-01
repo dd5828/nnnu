@@ -43,6 +43,8 @@ tool_descriptions:
   reason: "Run a dedicated deep-reasoning pass (separate reasoning block): step-by-step derivation with a clear conclusion. Use it for proofs, logic puzzles, or complex analysis."
   imagegen: "Generate an image from a description (saved to workspace/generated/). Use it when the user says 'draw/picture/generate an image'."
   videogen: "Video generation (not supported yet; returns a clear message. Prefer imagegen or other ways to satisfy the user)."
+  read_memory: "Read long-term memory: the L3 profile (who the user is, preferences, scope) plus L2 fact entries for the current surface. Read it first when the answer depends on what you already know about the user or should be personalized; an empty memory returns \"no memories yet\" rather than an error."
+  write_memory: "Save a long-term fact the user stated explicitly (write text as one complete sentence, under 400 Chinese characters). Use it for durable facts like \"remember that...\", \"from now on...\", \"I'm working on...\"; do not store one-off task details or transient state. Absolute wording (always/never) is rejected — use conditional phrasing."
 # Cost/limit hints shown on tool cards (§7.2): the settings tool catalog picks them by language
 tool_cost_hints:
   web_search: "Web search (billed/latency per provider)"
@@ -64,3 +66,5 @@ tool_cost_hints:
   reason: "One extra deep-reasoning call (pricier)"
   imagegen: "Image generation (billed by the image model; expensive)"
   videogen: "Video generation (not supported yet; coming in a later stage)"
+  read_memory: "Reads local memory (read-only; no extra calls)"
+  write_memory: "Writes local memory (no extra calls; later consolidation may burn tokens)"

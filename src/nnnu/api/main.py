@@ -19,6 +19,7 @@ from nnnu.api.routers import (
     health,
     knowledge,
     learning,
+    memory,
     notebooks,
     plugins,
     questions,
@@ -92,8 +93,18 @@ def create_app() -> FastAPI:
         await db.connect()
         session_manager = SessionManager(db)
         cost_service = CostService(db)
+        # 记忆（§7.10）：编排器埋点（L1Sink）+ 整合入口；先跑启动恢复再装机
+        # （上次进程死在整合中途的 run 记 interrupted）
+        from nnnu.services.memory.service import MemoryService, set_memory_service
+
+        memory_service = MemoryService(runtime_home.get_data_root())
+        memory_service.recover_interrupted()
+        set_memory_service(memory_service)
+        _app.state.memory = memory_service
         orchestrator = ChatOrchestrator(
-            capabilities=get_capability_registry(), tools=get_tool_registry()
+            capabilities=get_capability_registry(),
+            tools=get_tool_registry(),
+            l1_sink=memory_service,
         )
         _app.state.db = db
         _app.state.attachments = AttachmentsService(db, runtime_home.get_data_root())
@@ -164,6 +175,8 @@ def create_app() -> FastAPI:
         _app.state.renders = render_store
         set_render_service(build_render_service(render_store))
         yield
+        await memory_service.shutdown()
+        set_memory_service(None)
         await kb_service.shutdown()
         set_kb_service(None)
         set_embedding_service(None)
@@ -210,6 +223,7 @@ def create_app() -> FastAPI:
     app.include_router(questions.router)
     app.include_router(learning.router)
     app.include_router(research.router)
+    app.include_router(memory.router)
     app.include_router(renders.router)
     app.include_router(plugins.router)
     app.include_router(chat.router)

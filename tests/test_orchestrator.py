@@ -4,7 +4,9 @@ import asyncio
 
 import pytest
 
+from nnnu.core.context import SessionRef, UnifiedContext
 from nnnu.core.events import StreamEventType
+from nnnu.core.stream_bus import StreamBus
 from nnnu.core.tool_protocol import BaseTool, ToolContext, ToolDefinition, ToolMount, ToolResult
 from nnnu.runtime import bootstrap
 from nnnu.runtime.orchestrator import ChatOrchestrator, TurnBusyError
@@ -300,3 +302,71 @@ async def test_ask_user_reply_via_submit(runtime, monkeypatch):
     reply = next(e for e in events if e["type"] == StreamEventType.ASK_USER_REPLY.value)
     assert reply["payload"]["answer"] == "选B"
     assert events[-1]["payload"]["response"] == "收到选B"
+
+
+# ---- L1Sink 接缝（P8 §7.10）：begin_turn 在能力开跑前、record_turn 收尾 ----
+
+
+class _SinkCapability:
+    """什么都不发的假能力：信封兜底会给 cost_summary + done。"""
+
+    async def run(self, ctx, bus) -> None:
+        return None
+
+
+class _SinkRegistry:
+    def get(self, name):
+        return _SinkCapability() if name == "chat" else None
+
+
+class _RecordingSink:
+    def __init__(self, *, explode: bool = False) -> None:
+        self.begins: list[tuple] = []
+        self.records: list[tuple] = []
+        self.explode = explode
+
+    async def begin_turn(self, turn_id, session_id, surface, user_message) -> None:
+        if self.explode:
+            raise RuntimeError("埋点炸了")
+        self.begins.append((turn_id, session_id, surface, user_message))
+
+    async def record_turn(self, turn_id, session_id, events) -> None:
+        if self.explode:
+            raise RuntimeError("埋点炸了")
+        self.records.append((turn_id, session_id, events))
+
+
+def _context(message: str = "你好") -> UnifiedContext:
+    from nnnu.services.sessions.models import Message
+
+    return UnifiedContext(
+        session=SessionRef(id="sess-1"),
+        capability="chat",
+        message=Message(id="msg-1", session_id="sess-1", role="user", content=message),
+    )
+
+
+async def test_l1_sink_gets_begin_and_record():
+    sink = _RecordingSink()
+    orchestrator = ChatOrchestrator(capabilities=_SinkRegistry(), tools=None, l1_sink=sink)
+    bus = StreamBus("turn-sink", session_id="sess-1")
+
+    result = await orchestrator.handle(_context("帮我把傅里叶变换讲清楚"), bus)
+
+    assert result.status == "completed"
+    assert sink.begins == [("turn-sink", "sess-1", "chat", "帮我把傅里叶变换讲清楚")]
+    assert len(sink.records) == 1
+    turn_id, session_id, events = sink.records[0]
+    assert (turn_id, session_id) == ("turn-sink", "sess-1")
+    assert any(e.type == StreamEventType.DONE for e in events)
+
+
+async def test_l1_sink_failure_does_not_break_turn():
+    sink = _RecordingSink(explode=True)
+    orchestrator = ChatOrchestrator(capabilities=_SinkRegistry(), tools=None, l1_sink=sink)
+    bus = StreamBus("turn-sink", session_id="sess-1")
+
+    result = await orchestrator.handle(_context(), bus)
+
+    assert result.status == "completed"  # 埋点炸了回合照跑
+    assert bus.terminal_emitted

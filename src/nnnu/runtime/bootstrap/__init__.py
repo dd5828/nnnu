@@ -91,6 +91,7 @@ def register_builtins() -> None:
     from nnnu.tools.builtin.github_query import GithubQueryTool
     from nnnu.tools.builtin.mastery import MASTERY_TOOLS
     from nnnu.tools.builtin.media_gen_tool import ImageGenTool
+    from nnnu.tools.builtin.memory_tools import ReadMemoryTool, WriteMemoryTool
     from nnnu.tools.builtin.paper_search_tool import PaperSearchTool
     from nnnu.tools.builtin.question_bank_tool import QuestionBankTool
     from nnnu.tools.builtin.rag_tool import RagSearchTool
@@ -125,6 +126,9 @@ def register_builtins() -> None:
     get_tool_registry().register(BrainstormTool())
     get_tool_registry().register(ReasonTool())
     get_tool_registry().register(ImageGenTool())
+    # 记忆两件（§7.10）：读长期记忆、把用户明确说的事实记下来
+    get_tool_registry().register(ReadMemoryTool())
+    get_tool_registry().register(WriteMemoryTool())
     # videogen 不注册：只有友好报错的桩（§7.2 未交付），挂上去等于给模型一个
     # 永远失败的工具，白烧一轮调用。VideoGenTool 类与 media.generate_video 桩
     # 保留，后续阶段接上真实端点时在这里加回 register(VideoGenTool())。
