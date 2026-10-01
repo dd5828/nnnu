@@ -148,6 +148,34 @@ def session_history(ctx: UnifiedContext) -> list[dict]:
     return history
 
 
+MEMORY_INJECT_META_KEY = "memory_inject_note"
+
+
+def memory_injection_note(ctx: UnifiedContext) -> str:
+    """首回合注入：L3 画像摘录（§7.10 补做）。
+
+    只在会话第一个用户回合生效（判定同 session_history：历史里只剩当前消息）；
+    未装配记忆服务 / 用户关掉开关 / 空记忆 / 任何异常 → 返回 ""，绝不阻断回合。
+    结果（含空串）memo 进 ctx.metadata：研究能力同回合会调两次 build_user_message，
+    不 memo 会重复读盘、也防止未来调用方各自判定首回合。
+    """
+    if MEMORY_INJECT_META_KEY in ctx.metadata:
+        return str(ctx.metadata[MEMORY_INJECT_META_KEY])
+    note = ""
+    try:
+        if not session_history(ctx):
+            from nnnu.services.memory.inject import build_injection
+            from nnnu.services.memory.service import get_memory_service
+
+            service = get_memory_service()
+            if service is not None and service.config().inject_enabled:
+                note = build_injection(service.store, ctx.language)
+    except Exception:  # 注入是锦上添花，任何失败都不许拖挂回合
+        logger.warning("记忆注入失败，按无注入处理", exc_info=True)
+    ctx.metadata[MEMORY_INJECT_META_KEY] = note
+    return note
+
+
 async def build_user_message(
     ctx: UnifiedContext, bus: StreamBus, provider_id: str | None, model: str
 ) -> dict:
@@ -190,12 +218,14 @@ async def build_user_message(
         ctx.metadata["attachment_index"] = index_entries
 
     content_text = ctx.message.content
+    # 首回合记忆摘录在最前（背景），附件与引用转录随后（本次请求的载荷）
+    memory_note = memory_injection_note(ctx)
     # 一次性引用：历史会话转录（§7.1；笔记本/题库/书页随 P9/P10 实体扩展）
     ref_texts = [
         format_history_ref(ref, ctx.language)
         for ref in ctx.metadata.get("history_ref_transcripts", [])
     ]
-    injected = [*attachment_texts, *ref_texts]
+    injected = ([memory_note] if memory_note else []) + [*attachment_texts, *ref_texts]
     if injected:
         content_text += "\n\n" + "\n\n".join(injected)
     if image_parts:
