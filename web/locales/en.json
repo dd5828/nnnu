@@ -538,7 +538,10 @@
     "statusResearching": "Researching",
     "statusReported": "Reported",
     "statusPartial": "Partial",
-    "statusAbandoned": "Stopped"
+    "statusAbandoned": "Stopped",
+    "delete": "Delete",
+    "deleteRunning": "Still running — wait for it to finish, or stop it first",
+    "deleteConfirm": "Delete the research run \"{topic}\"? Only this history row goes; the session and its messages stay."
   },
   "health": {
     "backend": "Backend",

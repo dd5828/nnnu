@@ -548,6 +548,9 @@
     "statusResearching": "检索中",
     "statusReported": "已成稿",
     "statusPartial": "部分成稿",
-    "statusAbandoned": "已停"
+    "statusAbandoned": "已停",
+    "delete": "删除",
+    "deleteRunning": "还在跑，先等它跑完或停掉再删",
+    "deleteConfirm": "删掉这次调研《{topic}》？只删这一行历史，会话和消息都留着。"
   }
 }

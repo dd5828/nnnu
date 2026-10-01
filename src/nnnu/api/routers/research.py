@@ -1,10 +1,11 @@
-"""深度研究 REST（§9.1 之外补的两个只读端点，见 STAGE_LOG 偏离清单）。
+"""深度研究 REST（§9.1 之外补的端点，见 STAGE_LOG 偏离清单）。
 
-调研本身全程走 WS（不新增回合类端点），这里只把 `research_runs` 这张草稿本
-读出来给「我的历次调研」页用：
+调研本身全程走 WS（不新增回合类端点），这里管「我的历次调研」页的读取与清理：
 
 - `GET /api/v1/research/runs`：历次调研列表（新的在前，带会话标题与总数）。
 - `GET /api/v1/research/runs/{run_id}`：一次调研的详情——大纲 + 报告正文 + 来源。
+- `DELETE /api/v1/research/runs/{run_id}`：从历史里删掉一行（在飞的两态不允许，
+  先停掉或等跑完——能力层还靠这行收尾）。只删这一行：会话与消息不动。
 
 报告正文不存库（助理消息 id 在能力返回之后才生成，见 schema v10 注释），详情端点在
 这里现查：确认消息之后的第一条 assistant 消息（`ResearchService.report_of`）。
@@ -67,3 +68,16 @@ async def get_research_run(run_id: str, http_request: Request):
         **_summary_dict(RunSummary(run=run, session_title=session.title if session else "")),
         "report": _report_dict(await service.report_of(run)),
     }
+
+
+@router.delete("/api/v1/research/runs/{run_id}")
+async def delete_research_run(run_id: str, http_request: Request):
+    service = _service(http_request)
+    run = await service.get_run(run_id)
+    if run is None:
+        return _error(404, "not_found", f"调研 {run_id} 不存在")
+    # 在飞的不给删：确认/成稿两条腿都还要回这行收尾，删了收尾就落空
+    if run.is_active:
+        return _error(409, "run_active", "这次调研还在跑，先停掉或等它跑完再删", recoverable=True)
+    await service.delete_run(run_id)
+    return {"deleted": run_id}

@@ -1,4 +1,4 @@
-"""调研历史 REST（`/api/v1/research/runs`，§9.1 之外的两个只读端点）。
+"""调研历史 REST（`/api/v1/research/runs`，§9.1 之外补的端点）。
 
 「我的历次调研」页的数据源，全是零 LLM 通路——本文件直接往仓储里塞行、往会话里塞消息，
 只盯读出来的东西对不对：
@@ -7,7 +7,8 @@
 - 详情能找回**报告那条助手消息**（确认消息之后的第一条 assistant，不是会话里最后一条、
   也不是确认之前那条）；
 - 还没成稿（confirming / 没确认过）的调研 report 为 null，端点不炸；
-- 不存在的 id 走 §9.1 统一错误信封。
+- 不存在的 id 走 §9.1 统一错误信封；
+- 删除只删那一行（会话与消息不动），在飞的两态不给删。
 """
 
 import pytest
@@ -156,3 +157,54 @@ async def test_deleted_session_keeps_run_and_report_is_null(hub):
 
     listed = await client.get("/api/v1/research/runs")
     assert [item["id"] for item in listed.json()["runs"]] == [made["run"].id]
+
+
+async def test_delete_terminal_run_only_removes_that_row(hub):
+    """删一条终态历史：列表里只剩另一条，会话与消息原样（调研行是软引用，反着也成立）。"""
+    client, app = hub
+    kept = await _reported_run(hub, topic=TOPICS[0], session_title="留着")
+    gone = await _reported_run(hub, topic=TOPICS[1], session_title="删掉")
+
+    resp = await client.delete(f"/api/v1/research/runs/{gone['run'].id}")
+    assert resp.status_code == 200
+    assert resp.json() == {"deleted": gone["run"].id}
+
+    listed = await client.get("/api/v1/research/runs")
+    assert [item["id"] for item in listed.json()["runs"]] == [kept["run"].id]
+    assert (await client.get(f"/api/v1/research/runs/{gone['run'].id}")).status_code == 404
+
+    # 删行不动会话：报告那条消息还在原会话里躺着
+    assert await app.state.runtime._sessions.get_session(gone["session_id"]) is not None
+    messages = await app.state.runtime._sessions.list_messages(gone["session_id"])
+    assert any(item.content.startswith("# 报告") for item in messages)
+
+
+async def test_delete_unknown_run_is_404_envelope(hub):
+    client, _app = hub
+    resp = await client.delete("/api/v1/research/runs/rrun_不存在")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "not_found"
+
+
+async def test_delete_active_run_is_refused(hub):
+    """在飞的不给删（confirming / researching）：能力层还要靠这行收尾。"""
+    client, app = hub
+    service = get_research_service()
+    session = await app.state.runtime._sessions.ensure_session(
+        None, capability="deep_research", language="zh"
+    )
+    run = await service.create_run(
+        session_id=session.id,
+        topic="还在确认",
+        refined_topic="",
+        mode="report",
+        depth="quick",
+        subtopics=_subtopics(),
+    )
+
+    resp = await client.delete(f"/api/v1/research/runs/{run.id}")
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "run_active"
+    # 行还在（确认中的调研不给删）
+    listed = await client.get("/api/v1/research/runs")
+    assert [item["id"] for item in listed.json()["runs"]] == [run.id]

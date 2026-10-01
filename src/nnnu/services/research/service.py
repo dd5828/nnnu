@@ -311,6 +311,15 @@ class ResearchService:
         """丢弃（stop / 能力异常）：终态不占部分唯一索引，下次提问就是新调研。"""
         await self._set_status(run_id, "abandoned", now=now)
 
+    async def delete_run(self, run_id: str) -> bool:
+        """从历史里删掉一行（「在飞」的两态由路由层先拦下，这里只管删）。
+
+        只删这一行：会话与消息原样留着——调研行是软引用，反过来删会话时这行也不动
+        （见 schema v10 注释）。
+        """
+        cursor = await self._db.execute("DELETE FROM research_runs WHERE id = ?", (run_id,))
+        return cursor.rowcount > 0
+
     # ---- 内部 ----
 
     async def _set_status(self, run_id: str, status: str, *, now: float | None = None) -> None:

@@ -4,6 +4,7 @@
  * 会话跨测试共享（后端同一 NNNU_HOME），每个测试开新页面后先点会话列表进入。
  */
 
+import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 
@@ -892,4 +893,35 @@ test("㉑ 全库检索：列表页跨库搜，命中带库名，点开落进那�
   await expect(reader.locator("iframe")).toHaveAttribute("src", /#page=1$/);
 
   expect(consoleErrors).toEqual([]);
+});
+
+test("㉒ 调研历史：成稿能导出成文件，删掉的行从列表消失", async ({ page }) => {
+  // 零 LLM：只翻 ⑮⑱ 跑完的账——导出与删除都不经模型
+  await page.goto("/research");
+
+  // ⑱ 跑的那次（向量数据库）：详情里演示导出与删除
+  const run = page.getByTestId("research-run").filter({ hasText: "向量数据库" });
+  await expect(run).toBeVisible({ timeout: 15000 });
+  const runId = await run.getAttribute("data-id");
+  expect(runId).toBeTruthy();
+  await run.click();
+  await expect(page.getByTestId("research-detail")).toBeVisible({ timeout: 15000 });
+
+  // ---- 导出：文件名词干与聊天页一致；内容就是报告正文（自含，来源已写进正文）----
+  const download = page.waitForEvent("download");
+  await page.getByTestId("research-export").click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/^研究报告-\d{4}-\d{2}-\d{2}\.md$/);
+  const saved = fs.readFileSync(await file.path(), "utf8");
+  expect(saved).toContain("主流产品对比");
+  expect(saved).toContain("先做索引重建演练，再谈切换");
+
+  // ---- 删除：确认后回列表，只有这一行没了（⑮ 那次的卡还在）----
+  page.on("dialog", (dialog) => void dialog.accept());
+  await page.getByTestId("research-delete").click();
+  await expect(page).toHaveURL(/\/research$/, { timeout: 15000 });
+  await expect(page.locator(`[data-testid="research-run"][data-id="${runId}"]`)).toHaveCount(0);
+  await expect(
+    page.getByTestId("research-run").filter({ hasText: "2025 年公开的 RAG 工程方案" })
+  ).toBeVisible();
 });

@@ -6,16 +6,19 @@
  * 报告正文不存库（助理消息 id 在能力返回之后才生成），详情端点按
  * `answer_message_id` 往后现查第一条助手消息——所以这里拿到的与聊天页看到的是同一条。
  * 来源用聊天页同一个 `CitationsPanel`（网页来源点开是新窗口，验真伪用）。
+ * 成稿可导出（跟聊天页同一条 `downloadMarkdown`，文件名一致）；整行可删（在飞的不给）。
  */
 
+import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, MessageSquare } from "lucide-react";
+import { ArrowLeft, Download, Loader2, MessageSquare, Trash2 } from "lucide-react";
 import Markdown from "@/components/chat/Markdown";
 import CitationsPanel from "@/components/chat/CitationsPanel";
 import { useChatStore } from "@/hooks/useChat";
 import { useI18n } from "@/hooks/useI18n";
-import { useResearchRun } from "@/hooks/useResearch";
+import { isResearchRunActive, useDeleteResearchRun, useResearchRun } from "@/hooks/useResearch";
+import { downloadMarkdown } from "@/lib/download";
 import { errorText } from "@/lib/errors";
 import type { ResearchRunStatus } from "@/types/api";
 
@@ -52,6 +55,8 @@ export default function ResearchRunPage() {
   const { data, isLoading, error } = useResearchRun(runId);
   const attachSession = useChatStore((s) => s.attachSession);
   const setCapability = useChatStore((s) => s.setCapability);
+  const remove = useDeleteResearchRun();
+  const [actionError, setActionError] = useState<string | null>(null);
   const router = useRouter();
 
   const openSession = () => {
@@ -61,6 +66,31 @@ export default function ResearchRunPage() {
     attachSession(data.session_id);
     setCapability(CAPABILITY_RESEARCH); // 不切能力，进去打的第一句会按旧能力跑
     router.push("/");
+  };
+
+  const exportReport = () => {
+    if (!data?.report) {
+      return;
+    }
+    // 词干与聊天页那条导出一致（同一个报告，两个入口导出同名文件）
+    downloadMarkdown(data.report.content_md, t("chat.exportFileStem"));
+  };
+
+  const handleDelete = async () => {
+    if (!runId || !data) {
+      return;
+    }
+    const title = data.refined_topic || data.topic;
+    if (!window.confirm(t("research.deleteConfirm", { topic: title }))) {
+      return;
+    }
+    setActionError(null);
+    try {
+      await remove.mutateAsync(runId);
+      router.push("/research");
+    } catch (err) {
+      setActionError(errorText(err, t("common.requestFailed")));
+    }
   };
 
   const failed = new Set(data?.failed_subtopics ?? []);
@@ -105,17 +135,46 @@ export default function ResearchRunPage() {
                 <span>{t(`chat.researchMode_${data.mode}`)}</span>
                 <span>{dateLabel(data.created_at)}</span>
               </div>
-              {data.session_title && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {data.session_title && (
+                  <button
+                    type="button"
+                    data-testid="research-open-session"
+                    onClick={openSession}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs text-muted transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    {t("research.openSession")}：{data.session_title}
+                  </button>
+                )}
+                {data.report && (
+                  <button
+                    type="button"
+                    data-testid="research-export"
+                    onClick={exportReport}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs text-muted transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    {t("chat.exportMarkdown")}
+                  </button>
+                )}
                 <button
                   type="button"
-                  data-testid="research-open-session"
-                  onClick={openSession}
-                  className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs text-muted transition-colors hover:bg-accent hover:text-foreground"
+                  data-testid="research-delete"
+                  onClick={() => void handleDelete()}
+                  disabled={isResearchRunActive(data.status)}
+                  title={
+                    isResearchRunActive(data.status)
+                      ? t("research.deleteRunning")
+                      : t("research.delete")
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs text-muted transition-colors hover:bg-accent hover:text-danger disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted"
                 >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  {t("research.openSession")}：{data.session_title}
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {t("research.delete")}
                 </button>
-              )}
+              </div>
+              {actionError && <p className="mt-2 text-sm text-danger">{actionError}</p>}
             </div>
 
             <section
