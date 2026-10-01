@@ -18,7 +18,10 @@ dependencies = [
     "psutil>=6.0,<8.0",
     "watchfiles>=0.24",  # dev.py 后端热重启循环（uvicorn[standard] 的传递依赖，显式声明）
     "aiosqlite>=0.20",  # §8.2 单文件 SQLite（会话/成本等持久化）
-    "markitdown>=0.1.7",  # §4 文档解析默认引擎（P2 附件解析提前引入，P4 KB 复用）
+    # §4 文档解析默认引擎（P2 附件解析提前引入，P4 KB 复用）。
+    # extras 是 Office 解析的硬前提（docx→lxml+mammoth、xlsx→openpyxl+pandas、pptx→python-pptx），
+    # 掉了它们 docx/xlsx/pptx 进知识库必解析失败——tests/test_parsing.py 是这条的锁
+    "markitdown[docx,xlsx,pptx]>=0.1.7",
     "PyMuPDF>=1.28",  # §4 PDF 解析与页级引用（P2 附件页码定位）
     "python-multipart>=0.0.12",  # 附件上传 multipart 表单（FastAPI 依赖）
     "numpy>=1.26",  # §7.9 知识库向量索引与余弦检索
