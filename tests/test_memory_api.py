@@ -12,8 +12,10 @@ import nnnu.services.memory.service as memory_service_module
 from nnnu.core.ids import new_id
 from nnnu.core.stream_bus import StreamBus
 from nnnu.services.llm.factory import uninstall_scripted
+from nnnu.services.memory import paths, semantic
 from nnnu.services.memory.models import MemoryEntry, text_digest
 from nnnu.services.memory.state import doc_key
+from nnnu.services.settings.atomic import atomic_write_json
 
 
 @pytest.fixture(autouse=True)
@@ -325,6 +327,70 @@ async def test_graph_validation(hub):
     assert (
         await client.get("/api/v1/memory/graph", params={"entry": "mem-00000000"})
     ).status_code == 404
+
+
+# ---- 语义知识图谱（§7.10 补做）----
+
+
+async def test_graph_semantic_empty_state(hub):
+    client, _app = hub
+    body = (await client.get("/api/v1/memory/graph", params={"mode": "semantic"})).json()
+    assert body == {
+        "mode": "semantic",
+        "updated_at": 0,
+        "stale": False,
+        "nodes": [],
+        "edges": [],
+        "stats": {},
+    }
+
+
+async def test_graph_semantic_payload_and_stale(hub):
+    client, app = hub
+    l2_id, _l3_id, _ = await _seed_chain(app)
+    entries = semantic.all_entries(app.state.memory.store)
+    atomic_write_json(
+        paths.semantic_path(app.state.memory.data_root),
+        {
+            "version": semantic.SEMANTIC_VERSION,
+            "updated_at": 12.5,
+            "lang": "zh",
+            "source": semantic.source_map(entries),
+            "nodes": [
+                {
+                    "id": "信号处理",
+                    "name": "信号处理",
+                    "type": "topic",
+                    "refs": [l2_id],
+                    "count": 1,
+                    "samples": ["在做信号处理方向的学习"],
+                }
+            ],
+            "edges": [],
+            "stats": {"entities": 1, "relations": 0, "llm_calls": 1},
+        },
+    )
+
+    body = (await client.get("/api/v1/memory/graph", params={"mode": "semantic"})).json()
+    assert body["stale"] is False and body["updated_at"] == 12.5
+    assert body["nodes"][0]["type"] == "topic" and body["stats"]["llm_calls"] == 1
+
+    _seed_entry(app, "l2", "chat", text="新条目没重抽", refs=[])  # 源改了但工件没重抽
+    later = (await client.get("/api/v1/memory/graph", params={"mode": "semantic"})).json()
+    assert later["stale"] is True
+
+
+async def test_graph_mode_validation(hub):
+    client, _app = hub
+    bogus = await client.get("/api/v1/memory/graph", params={"mode": "bogus"})
+    assert bogus.status_code == 422 and bogus.json()["error"]["code"] == "invalid_entry"
+    # semantic 不带展开语义：fail-closed 拒绝而不是静默忽略
+    with_entry = await client.get(
+        "/api/v1/memory/graph", params={"mode": "semantic", "entry": "mem-1111aaaa"}
+    )
+    assert with_entry.status_code == 422
+    with_depth = await client.get("/api/v1/memory/graph", params={"mode": "semantic", "depth": 2})
+    assert with_depth.status_code == 422
 
 
 # ---- 整合触发（202 / 409 单飞）----

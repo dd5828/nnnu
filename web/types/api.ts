@@ -452,3 +452,179 @@ export interface ResearchRunReport {
 export interface ResearchRunDetail extends ResearchRun {
   report: ResearchRunReport | null;
 }
+
+// ---- 记忆（§7.10，手工镜像 nnnu/api/routers/memory.py + services/memory）----
+
+export type MemoryLayer = "l1" | "l2" | "l3";
+
+/** 条目来源（写者身份）：consolidator / model（write_memory 工具）/ human（工作台）。 */
+export type MemoryOrigin = "consolidator" | "model" | "human";
+
+/** L2/L3 文档里的一条 bullet（store.parse_entry + graph.entry_view 的展示视图）。 */
+export interface MemoryEntryView {
+  id: string | null; // mem-xxxxxxxx；null = 手写未纳管（audit 补 id 前只读展示）
+  date: string; // YYYY-MM-DD
+  text: string;
+  refs: string[]; // ["L1:chat/2026-09.jsonl#123"] / ["L2:chat#mem-…"]
+  stale: boolean; // audit 判引用失效后标注
+  origin: MemoryOrigin | string;
+  edited: boolean; // 人工编辑保护开关（state.json 权威）
+  layer: "l2" | "l3";
+  key: string;
+  line: number; // 文件内 1-based 行号（仅供展示）
+}
+
+export interface MemoryDocStats {
+  entries: number;
+  stale: number;
+  edited: number;
+  anonymous: number; // 手写未纳管条数
+}
+
+/** 一份 L2/L3 文档：渲染文本 + 条目 + 计数。 */
+export interface MemoryDocView {
+  layer: "l2" | "l3";
+  key: string;
+  text: string;
+  entries: MemoryEntryView[];
+  stats: MemoryDocStats;
+}
+
+export interface MemoryL1Stats {
+  files: string[]; // 月度文件（旧→新）
+  lines: number;
+  bytes: number;
+  events: Record<string, number>; // 事件种类 → 行数
+}
+
+export interface MemoryConfigView {
+  auto_enabled: boolean;
+  auto_threshold_turns: number;
+  inject_enabled: boolean;
+  budget_update: number;
+  budget_audit: number;
+  budget_dedup: number;
+  budget_extract: number;
+  update_chunk_chars: number;
+  trace_enabled: boolean;
+}
+
+/** 一次整合运行（state.json 的 last_run；202 回的 run 同形）。 */
+export interface ConsolidationRun {
+  id: string; // mrun-…
+  trigger: "manual" | "auto" | string;
+  status: "queued" | "running" | "ok" | "error" | "interrupted" | string;
+  started_at: number;
+  finished_at: number | null;
+  stats: Record<string, number>;
+  events: string[];
+  error: string | null;
+}
+
+/** GET /api/v1/memory：三层概览（计数、水位、待整合回合、上次运行、是否在跑）。 */
+export interface MemoryOverview {
+  trace_enabled: boolean;
+  surfaces: string[];
+  l3_docs: string[];
+  l1: Record<string, MemoryL1Stats>;
+  l2: Record<string, MemoryDocStats>;
+  l3: Record<string, MemoryDocStats>;
+  watermarks: Record<string, { file: string; line: number }>;
+  turns_since_consolidation: number;
+  config: MemoryConfigView;
+  last_run: ConsolidationRun | null;
+  consolidating: boolean;
+}
+
+/** L1 轨迹一行（trace.py 的五键：ts/surface/session_id/event/data）。 */
+export interface MemoryL1Row {
+  ts: number;
+  surface: string;
+  session_id: string | null;
+  event: string; // user_message | tool_call | assistant_done | ask_user | cost
+  data: Record<string, unknown>;
+}
+
+export interface MemoryL1Page {
+  surface: string;
+  file: string;
+  files: string[];
+  total: number;
+  offset: number;
+  limit: number;
+  rows: MemoryL1Row[];
+}
+
+export interface MemoryDocsResponse {
+  layer: "l2" | "l3";
+  docs: MemoryDocView[];
+}
+
+/** 图谱节点：L2/L3 条目或 L1 行；broken = 引用目标已失效（不静默消失）。 */
+export interface MemoryGraphNode {
+  id: string;
+  layer: MemoryLayer;
+  key: string;
+  kind: string; // 条目节点恒为 "entry"；L1 节点是事件种类；断链是 "broken"
+  text: string;
+  date: string;
+  ref: string;
+  stale: boolean;
+  edited: boolean;
+  origin: MemoryOrigin | string;
+  broken: boolean;
+}
+
+export interface MemoryGraphEdge {
+  source: string;
+  target: string;
+}
+
+export interface MemoryGraphPayload {
+  root: string | null; // null = 全景
+  depth: number;
+  nodes: MemoryGraphNode[];
+  edges: MemoryGraphEdge[];
+}
+
+/** 语义知识图谱实体（consolidator extract 模式产出；id 即实体名，同名已归并）。 */
+export interface SemanticGraphNode {
+  id: string;
+  name: string;
+  type: string; // person / topic / project / preference / other（未知一律 other）
+  refs: string[]; // 证据条目 id（mem-…）；无有效引用的不落盘
+  count: number; // 引用条数
+  samples: string[]; // 前两条证据正文（截断）
+}
+
+/** 语义知识图谱关系：实体名之间的有向边。 */
+export interface SemanticGraphEdge {
+  source: string; // 实体 name
+  target: string; // 实体 name
+  type: string; // 关系短语（≤12 字）
+  refs: string[];
+  count: number;
+}
+
+export interface SemanticGraphStats {
+  entities?: number;
+  relations?: number;
+  dropped_entities?: number;
+  dropped_relations?: number;
+  llm_calls?: number;
+}
+
+/** GET /api/v1/memory/graph?mode=semantic：派生工件视图（无工件 = 空态）。 */
+export interface SemanticGraphPayload {
+  mode: "semantic";
+  updated_at: number;
+  stale: boolean; // 源条目改过但还没重抽（实时比对，不落盘）
+  nodes: SemanticGraphNode[];
+  edges: SemanticGraphEdge[];
+  stats: SemanticGraphStats;
+}
+
+export interface ConsolidateResponse {
+  started: boolean;
+  run: ConsolidationRun;
+}

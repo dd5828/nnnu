@@ -24,6 +24,7 @@ from nnnu.services.llm.protocol import LLMClient, LLMRequest
 from nnnu.services.memory import paths
 from nnnu.services.memory.consolidator import audit as audit_mode
 from nnnu.services.memory.consolidator import dedup as dedup_mode
+from nnnu.services.memory.consolidator import extract as extract_mode
 from nnnu.services.memory.consolidator import update as update_mode
 from nnnu.services.memory.models import (
     ConsolidationRun,
@@ -36,11 +37,12 @@ from nnnu.services.memory.store import MemoryStore, backup_file
 
 logger = logging.getLogger(__name__)
 
-MODES = ("update", "audit", "dedup")
+MODES = ("update", "audit", "dedup", "extract")
 _BUDGET_FIELDS = {
     "update": "budget_update",
     "audit": "budget_audit",
     "dedup": "budget_dedup",
+    "extract": "budget_extract",
 }
 
 ASK_TEMPERATURE = 0.2
@@ -195,6 +197,9 @@ class Consolidator:
             if "dedup" in active:
                 for layer, key in self._dedup_targets(scope):
                     await dedup_mode.dedup_doc(self, layer, key)
+            if "extract" in active:
+                # 放最后：读到的是本轮 update/audit/dedup 之后的 L2/L3
+                await extract_mode.extract_semantic(self)
             run.status = "ok"
         except Exception as exc:  # LLM/配置/IO 任何一步炸：记 error，已完成的留盘
             run.status = "error"

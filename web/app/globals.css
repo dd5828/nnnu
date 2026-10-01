@@ -18,6 +18,17 @@
   --sidebar-fg: #3b4356;
   --success: #16a34a;
   --danger: #dc2626;
+  /* 记忆图谱三层分类色（dataviz 校验：CVD 分离 ≥8、正常视觉 ≥15、对比 ≥3:1） */
+  --graph-l3: #6d5cf0;
+  --graph-l2: #0f9488;
+  --graph-l1: #b45309;
+  /* 语义图谱实体类型色（同一次校验；粉↔青绿 CVD ΔE 在地板带 6–8，
+     合法条件是图例/实体行标签/连线 tooltip 三级文字编码常驻） */
+  --graph-ent-person: #6d5cf0;
+  --graph-ent-topic: #0f9488;
+  --graph-ent-project: #b45309;
+  --graph-ent-preference: #ec4899;
+  --graph-ent-other: var(--muted);
 }
 
 [data-theme="beige"] {
@@ -33,6 +44,14 @@
   --sidebar-fg: #4a3c28;
   --success: #3f7d3a;
   --danger: #b3402f;
+  --graph-l3: #6d5cf0;
+  --graph-l2: #0f9488;
+  --graph-l1: #b45309;
+  --graph-ent-person: #6d5cf0;
+  --graph-ent-topic: #0f9488;
+  --graph-ent-project: #b45309;
+  --graph-ent-preference: #ec4899;
+  --graph-ent-other: var(--muted);
 }
 
 [data-theme="dark"] {
@@ -49,6 +68,14 @@
   --sidebar-fg: #c6cbd8;
   --success: #4ade80;
   --danger: #f87171;
+  --graph-l3: #7c6cf0;
+  --graph-l2: #0d9488;
+  --graph-l1: #d97706;
+  --graph-ent-person: #7c6cf0;
+  --graph-ent-topic: #0d9488;
+  --graph-ent-project: #d97706;
+  --graph-ent-preference: #ec4899;
+  --graph-ent-other: var(--muted);
 }
 
 [data-theme="glass"] {
@@ -65,6 +92,14 @@
   --sidebar-fg: #d6cff0;
   --success: #5eead4;
   --danger: #fda4af;
+  --graph-l3: #7c6cf0;
+  --graph-l2: #0d9488;
+  --graph-l1: #d97706;
+  --graph-ent-person: #7c6cf0;
+  --graph-ent-topic: #0d9488;
+  --graph-ent-project: #d97706;
+  --graph-ent-preference: #ec4899;
+  --graph-ent-other: var(--muted);
 }
 
 /* Tailwind token 映射（shadcn v4 同款模式）：bg-background 等工具类直接可用 */
@@ -81,6 +116,14 @@
   --color-sidebar-fg: var(--sidebar-fg);
   --color-success: var(--success);
   --color-danger: var(--danger);
+  --color-graph-l3: var(--graph-l3);
+  --color-graph-l2: var(--graph-l2);
+  --color-graph-l1: var(--graph-l1);
+  --color-graph-ent-person: var(--graph-ent-person);
+  --color-graph-ent-topic: var(--graph-ent-topic);
+  --color-graph-ent-project: var(--graph-ent-project);
+  --color-graph-ent-preference: var(--graph-ent-preference);
+  --color-graph-ent-other: var(--graph-ent-other);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

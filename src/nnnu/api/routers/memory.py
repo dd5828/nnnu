@@ -18,7 +18,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from nnnu.services.memory import graph, paths, trace
+from nnnu.services.memory import graph, paths, semantic, trace
 from nnnu.services.memory.consolidator.pipeline import MODES
 from nnnu.services.memory.models import text_digest
 from nnnu.services.memory.service import MemoryService
@@ -178,11 +178,22 @@ async def memory_l3(http_request: Request, doc: str | None = None):
 
 
 @router.get("/api/v1/memory/graph")
-async def memory_graph(http_request: Request, entry: str | None = None, depth: int = 1):
-    """证据链：entry 省略给全景，给了就以其为根按 depth（1|2）展开。"""
+async def memory_graph(
+    http_request: Request, entry: str | None = None, depth: int = 1, mode: str = "evidence"
+):
+    """证据链（默认）：entry 省略给全景，给了就以其为根按 depth（1|2）展开；
+
+    语义知识图谱：mode=semantic（无展开语义，不带 entry/depth，fail-closed 拒绝）。
+    """
     service = _service(http_request)
     if service is None:
         return _disabled()
+    if mode not in ("evidence", "semantic"):
+        return _error(422, "invalid_entry", "mode 只支持 evidence 或 semantic")
+    if mode == "semantic":
+        if entry is not None or depth != 1:
+            return _error(422, "invalid_entry", "semantic 模式不支持 entry/depth")
+        return semantic.graph_view(service.data_root, service.store)
     if depth not in (1, 2):
         return _error(422, "invalid_entry", "depth 只支持 1 或 2")
     if entry is not None and not ENTRY_ID_RE.fullmatch(entry):

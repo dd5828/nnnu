@@ -29,6 +29,11 @@ export default function SettingsPage() {
           title={t("settings.chatTitle")}
           description={t("settings.chatDesc")}
         />
+        <SettingsForm
+          area="memory"
+          title={t("settings.memoryTitle")}
+          description={t("settings.memoryDesc")}
+        />
         <ToolCatalog />
         <SettingsForm area="network" title={t("settings.networkTitle")} />
         <SettingsForm area="system" title={t("settings.systemTitle")} />
