@@ -1,29 +1,91 @@
 "use client";
 
-/** 消息列表（§7.21）：历史消息 + 进行中回合。
+/** 消息列表（§7.21）：历史消息 + 进行中回合 + 右缘会话进度条。
  *
  * 滚动策略（2026-09-28 改）：新回合开始时把**回复的开头**对到视口顶，之后一律不跟——
  * 正文再长也不把视图往底下拽，读的人自己滚。（原先逐帧追底，回复的开头总被顶走。）
  * 两处例外：换会话落到最新一条；`ask_user` 的卡出现时要人点，必须拉到看得见。
+ *
+ * 进度条（2026-10-01 加）：点刻度就滚到那一轮并闪一下。它挂在外壳里、滚动容器的
+ * 兄弟位——不随内容滚、不被裁；外壳只是包一层 flex，尺寸契约跟原来一样。
  */
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChatStore } from "@/hooks/useChat";
+import { FLASH_MS, buildQuestionEntries, jumpTargetTop } from "@/lib/chat-rail";
 import ActiveTurnView from "./ActiveTurnView";
 import AssistantMessage from "./AssistantMessage";
 import EmptyState from "./EmptyState";
+import QuestionRail from "./QuestionRail";
 import UserMessage from "./UserMessage";
 
 /** 回合开头与视口顶之间留的白（px）：不贴着边，看着不局促 */
 const TURN_TOP_GAP = 8;
+
+interface FlashTarget {
+  id: string;
+  /** 递增序号：同一个气泡连点两次也能重放闪烁动画 */
+  seq: number;
+}
 
 export default function MessageList() {
   const messages = useChatStore((s) => s.messages);
   const active = useChatStore((s) => s.active);
   const sessionId = useChatStore((s) => s.sessionId);
   const containerRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const columnRef = useRef<HTMLDivElement>(null);
   const turnRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const flashTimer = useRef<number | null>(null);
+  const [flash, setFlash] = useState<FlashTarget | null>(null);
+
+  // 刻度条目（进度条与 ordinal 锚点都从这来）：一问一格，扁平化后为空的用户消息不占格
+  const entries = useMemo(
+    () => buildQuestionEntries(messages.map(({ id, role, content }) => ({ id, role, content }))),
+    [messages]
+  );
+  const ordinalById = useMemo(() => {
+    const map = new Map<string, number>();
+    entries.forEach((entry) => map.set(entry.id, entry.ordinal));
+    return map;
+  }, [entries]);
+
+  /** 点进度条刻度：滚到那轮头顶 + 闪一下（滚动距离交给浏览器夹，短的会话会贴底停住） */
+  const jumpTo = useCallback((messageId: string) => {
+    const container = containerRef.current;
+    const target = container?.querySelector<HTMLElement>(
+      `[data-message-id="${CSS.escape(messageId)}"]`
+    );
+    if (!container || !target) {
+      return;
+    }
+    const top = jumpTargetTop(
+      target.getBoundingClientRect().top,
+      container.getBoundingClientRect().top,
+      container.scrollTop
+    );
+    const maxTop = container.scrollHeight - container.clientHeight;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    container.scrollTo({
+      top: Math.max(0, Math.min(top, maxTop)),
+      behavior: reduceMotion ? "auto" : "smooth",
+    });
+    setFlash((current) => ({ id: messageId, seq: (current?.seq ?? 0) + 1 }));
+    if (flashTimer.current !== null) {
+      window.clearTimeout(flashTimer.current);
+    }
+    flashTimer.current = window.setTimeout(() => setFlash(null), FLASH_MS);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (flashTimer.current !== null) {
+        window.clearTimeout(flashTimer.current);
+      }
+    },
+    []
+  );
 
   // 换会话（历史装载）：落到最新一条
   useEffect(() => {
@@ -74,22 +136,37 @@ export default function MessageList() {
   }
 
   return (
-    <div ref={containerRef} className="no-scrollbar min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-6">
-        {messages.map((message) =>
-          message.role === "user" ? (
-            <UserMessage key={message.id} content={message.content} />
-          ) : (
-            <AssistantMessage key={message.id} message={message} />
-          )
-        )}
-        {active && (
-          <div ref={turnRef}>
-            <ActiveTurnView turn={active} />
-          </div>
-        )}
-        <div ref={bottomRef} />
+    <div ref={wrapperRef} className="relative flex min-h-0 flex-1 flex-col">
+      <div ref={containerRef} className="no-scrollbar min-h-0 flex-1 overflow-y-auto">
+        <div ref={columnRef} className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-6">
+          {messages.map((message) =>
+            message.role === "user" ? (
+              <UserMessage
+                key={message.id}
+                messageId={message.id}
+                ordinal={ordinalById.get(message.id) ?? null}
+                flashSeq={flash?.id === message.id ? flash.seq : null}
+                content={message.content}
+              />
+            ) : (
+              <AssistantMessage key={message.id} message={message} />
+            )
+          )}
+          {active && (
+            <div ref={turnRef}>
+              <ActiveTurnView turn={active} />
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
       </div>
+      <QuestionRail
+        entries={entries}
+        wrapperRef={wrapperRef}
+        containerRef={containerRef}
+        columnRef={columnRef}
+        onJump={jumpTo}
+      />
     </div>
   );
 }

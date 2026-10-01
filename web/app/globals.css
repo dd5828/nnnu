@@ -194,6 +194,27 @@ body {
   display: none; /* Chromium / Safari */
 }
 
+/* ── 会话进度条：跳转命中时给这轮气泡套一圈扩散环 ──
+   时长跟 lib/chat-rail.ts 的 FLASH_MS 对齐（1300ms 后由 JS 摘掉节点）；
+   seq 换 key 重挂 → 动画重放。用户关掉动效就给静态环，不闪。 */
+@keyframes rail-flash {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 55%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 10px transparent;
+  }
+}
+.rail-flash {
+  animation: rail-flash 1300ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rail-flash {
+    animation: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent);
+  }
+}
+
 /* ── 渲染图的预置 class（§7.7）──
    模型产出的 SVG 只写 class 不写死颜色/字体：背景由宿主管、文字跟着明暗主题走。
    这些类名与 `prompts/{zh,en}/visualize.yaml` 里 rules.svg 的清单一一对应，改一边

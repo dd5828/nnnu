@@ -90,3 +90,21 @@ test("⑰ 窄屏：侧栏与会话列表都是抽屉，汉堡开、点导航/遮
   await page.getByTestId("sessions-overlay").click({ position: { x: 380, y: 800 } });
   await expect(sessions).not.toBeInViewport();
 });
+
+// ㉔ 窄屏：会话进度条整条不渲染——内容列右边没有一点槽位。先断「会话里有多个提问」，
+// 再断「进度条没有」——跟 ㉓（宽屏有）组成对照，才是对槽位门的有效断言。
+test("㉔ 窄屏：同一个会话有多个提问，进度条也不出现（槽位不够）", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("chat-sessions-toggle").click();
+  await page
+    .getByTestId("chat-sessions")
+    .getByText("解释傅里叶变换", { exact: false })
+    .first()
+    .click();
+  await expect(page.locator("textarea").first()).toBeVisible({ timeout: 15000 });
+
+  const bubbles = page.getByTestId("user-message");
+  await expect(bubbles.first()).toBeVisible({ timeout: 15000 });
+  expect(await bubbles.count()).toBeGreaterThanOrEqual(2); // 该显示却没显示，才是门在起作用
+  await expect(page.getByTestId("question-rail")).toHaveCount(0);
+});

@@ -925,3 +925,50 @@ test("㉒ 调研历史：成稿能导出成文件，删掉的行从列表消失"
     page.getByTestId("research-run").filter({ hasText: "2025 年公开的 RAG 工程方案" })
   ).toBeVisible();
 });
+
+// ㉓ 会话进度条（§7.21 补充）：右缘刻度跳历史提问。零 LLM——只翻共享会话的旧账。
+// 窗口要拉到 1440：刻度轨吃的是内容列右侧空出来的槽位，而桌面端左边常驻应用侧栏
+// 208 + 会话列表 256、内容列 768 居中——视口 ≥1320 才有 ≥44px 的槽位。
+// 断言不绑夹具台词（只断结构与非空），脚本 fixtures 改了不带着挂。
+test("㉓ 会话进度条：悬停出预览卡，点刻度跳到那一轮并闪烁高亮", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openSession(page);
+
+  const rail = page.getByTestId("question-rail");
+  await expect(rail).toBeVisible({ timeout: 15000 });
+  const ticks = page.getByTestId("question-tick");
+  const total = await ticks.count();
+  expect(total).toBeGreaterThanOrEqual(2); // 不硬编码问数：脚本加一步就多一格
+  // 不断言初始活动刻度是哪一格（取决于滚动位置），只断「恰好一格」
+  await expect(page.locator('[data-testid="question-tick"][data-active="true"]')).toHaveCount(1);
+
+  // 悬停第二格：预览卡飞在轨的左边（本特性核心几何），序号对得上、标题非空
+  await ticks.nth(1).hover();
+  const preview = page.getByTestId("question-preview");
+  await expect(preview).toBeVisible();
+  await expect(preview.getByTestId("question-preview-ordinal")).toHaveText(`2/${total}`);
+  await expect(preview.getByTestId("question-preview-title")).not.toHaveText("");
+  const cardBox = await preview.boundingBox();
+  const railBox = await rail.boundingBox();
+  if (!cardBox || !railBox) {
+    throw new Error("预览卡/进度条还没量出盒子");
+  }
+  expect(cardBox.x + cardBox.width).toBeLessThanOrEqual(railBox.x + 1);
+
+  // 点第一格：先断闪烁（只管 1300ms，紧跟点击第一个断），再看滚到那轮的头顶
+  const first = page.locator('[data-testid="user-message"][data-ordinal="1"]');
+  await ticks.nth(0).click();
+  await expect(first).toHaveAttribute("data-flash", "true");
+  await expect(first).toBeInViewport();
+  await expect(ticks.nth(0)).toHaveAttribute("aria-current", "true");
+  await expect(first).not.toHaveAttribute("data-flash", "true", { timeout: 5000 }); // 闪完自动摘
+
+  // 点最后一格：滚到末问（下面内容不够顶到留白位就被夹住，是预期），活动刻度仍恰好一格。
+  // 56px 的落点公式由 vitest 锁；这里只断「看得见」——末尾那格是不是当前，取决于
+  // 它后面还剩多少内容，夹具一变就可能翻车，不钉。
+  await ticks.nth(total - 1).click();
+  await expect(
+    page.locator(`[data-testid="user-message"][data-ordinal="${total}"]`)
+  ).toBeInViewport();
+  await expect(page.locator('[data-testid="question-tick"][data-active="true"]')).toHaveCount(1);
+});
