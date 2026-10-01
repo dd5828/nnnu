@@ -11,6 +11,8 @@
 import { useCallback, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "@/lib/api";
+import { errorText } from "@/lib/errors";
+import { useI18n } from "@/hooks/useI18n";
 import type { KbDoc, KbManifest } from "@/types/api";
 
 /** §7.9 要求索引进度实时更新：800ms 一次，肉眼看着像连续。 */
@@ -168,6 +170,7 @@ export interface UploadItem {
  * `target` 是给建库向导用的——那边库刚创建出来，hook 手上的 kbId 还是空的。
  */
 export function useUploadQueue(kbId: string | null) {
+  const { t } = useI18n();
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [busy, setBusy] = useState(false);
   const invalidate = useInvalidateKb();
@@ -197,13 +200,13 @@ export function useUploadQueue(kbId: string | null) {
           patch(index, { ratio: 1, done: true });
         } catch (error) {
           // 一份传失败不拦着后面的：库还在，详情页还能重传
-          patch(index, { done: true, error: String(error) });
+          patch(index, { done: true, error: errorText(error, t("common.requestFailed")) });
         }
       }
       setBusy(false);
       invalidate(kb);
     },
-    [kbId, invalidate]
+    [kbId, invalidate, t]
   );
 
   const clear = useCallback(() => setUploads([]), []);

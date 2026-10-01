@@ -12,6 +12,7 @@ import { useChatStore } from "@/hooks/useChat";
 import { useI18n } from "@/hooks/useI18n";
 import { useAddRecord, useCreateNotebook, useNotebookList } from "@/hooks/useNotebooks";
 import { recordTypeFor } from "@/lib/capabilities";
+import { errorText } from "@/lib/errors";
 
 export default function SaveToNotebook({ content }: { content: string }) {
   const { t } = useI18n();
@@ -53,7 +54,7 @@ export default function SaveToNotebook({ content }: { content: string }) {
       setSaved(true);
       setOpen(false);
     } catch (err) {
-      setError(String(err));
+      setError(errorText(err, t("common.requestFailed")));
     }
   };
 
@@ -64,7 +65,7 @@ export default function SaveToNotebook({ content }: { content: string }) {
       const notebook = await create.mutateAsync({ name: t("notebooks.defaultName") });
       await save(notebook.id);
     } catch (err) {
-      setError(String(err));
+      setError(errorText(err, t("common.requestFailed")));
     }
   };
 

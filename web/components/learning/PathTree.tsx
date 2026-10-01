@@ -12,6 +12,7 @@ import { useState } from "react";
 import { ArrowDown, ArrowUp, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
 import { useI18n } from "@/hooks/useI18n";
 import { useAddNode, useDeleteNode, useMoveNode, useUpdateNode } from "@/hooks/useLearning";
+import { errorText } from "@/lib/errors";
 import {
   clearedOf,
   indentPx,
@@ -82,7 +83,7 @@ export default function PathTree({
       setEditingId(null);
       setError(null);
     } catch (err) {
-      setError(String(err));
+      setError(errorText(err, t("common.requestFailed")));
     }
   };
 
@@ -103,7 +104,7 @@ export default function PathTree({
       setAddDraft(EMPTY_DRAFT);
       setError(null);
     } catch (err) {
-      setError(String(err));
+      setError(errorText(err, t("common.requestFailed")));
     }
   };
 
@@ -112,7 +113,7 @@ export default function PathTree({
       await move.mutateAsync({ id: node.id, direction });
       setError(null);
     } catch (err) {
-      setError(String(err));
+      setError(errorText(err, t("common.requestFailed")));
     }
   };
 
@@ -124,7 +125,7 @@ export default function PathTree({
       await remove.mutateAsync(node.id);
       setError(null);
     } catch (err) {
-      setError(String(err));
+      setError(errorText(err, t("common.requestFailed")));
     }
   };
 

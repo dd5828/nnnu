@@ -2,10 +2,12 @@
 
 /** 会话列表（§7.21）：新建/切换/重命名（双击标题）/删除。 */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useChatStore } from "@/hooks/useChat";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useI18n } from "@/hooks/useI18n";
+import { useIsNarrow } from "@/hooks/useIsNarrow";
 
 export default function SessionList({
   open = false,
@@ -15,6 +17,11 @@ export default function SessionList({
   onClose?: () => void;
 }) {
   const { t } = useI18n();
+  const drawerRef = useRef<HTMLElement>(null);
+  const narrow = useIsNarrow();
+  // 只有「窄屏 + 打开」才是覆盖态抽屉（桌面端这个列表常驻在左侧）
+  const drawerMode = open && narrow;
+  useFocusTrap(drawerRef, drawerMode);
   const sessions = useChatStore((s) => s.sessions);
   const sessionId = useChatStore((s) => s.sessionId);
   const active = useChatStore((s) => s.active);
@@ -58,7 +65,12 @@ export default function SessionList({
         />
       )}
       <aside
+        ref={drawerRef}
+        id="chat-sessions"
         data-testid="chat-sessions"
+        role={drawerMode ? "dialog" : undefined}
+        aria-modal={drawerMode || undefined}
+        aria-label={drawerMode ? t("chat.sessionList") : undefined}
         className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col border-r border-border/70 bg-sidebar-bg transition-transform duration-200 md:static md:z-auto md:translate-x-0 md:bg-sidebar-bg/50 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}

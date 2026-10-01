@@ -6,7 +6,7 @@ import { Menu } from "lucide-react";
 import { useI18n } from "@/hooks/useI18n";
 import HealthDot from "@/components/health/HealthDot";
 
-export default function Header({ onMenu }: { onMenu?: () => void }) {
+export default function Header({ onMenu, navOpen }: { onMenu?: () => void; navOpen?: boolean }) {
   const { t } = useI18n();
   return (
     <header className="flex h-12 items-center justify-between border-b border-border px-6">
@@ -17,6 +17,8 @@ export default function Header({ onMenu }: { onMenu?: () => void }) {
           onClick={onMenu}
           className="-ml-2 shrink-0 rounded-lg p-1.5 text-muted transition-colors hover:bg-accent hover:text-foreground md:hidden"
           aria-label={t("common.menu")}
+          aria-expanded={navOpen}
+          aria-controls="app-sidebar"
           title={t("common.menu")}
         >
           <Menu className="h-4 w-4" />

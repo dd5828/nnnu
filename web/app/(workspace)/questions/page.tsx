@@ -18,6 +18,7 @@ import QuestionCard from "@/components/quiz/QuestionCard";
 import QuestionForm, { emptyFormValues, toInput, validate } from "@/components/quiz/QuestionForm";
 import { useCreateQuestion, useQuestionList } from "@/hooks/useQuestions";
 import { useI18n } from "@/hooks/useI18n";
+import { errorText } from "@/lib/errors";
 import type { QuestionFilter } from "@/types/api";
 
 const FILTERS: { value: QuestionFilter; key: string }[] = [
@@ -85,7 +86,7 @@ function QuestionsBoard() {
       setForm(emptyFormValues());
       setFormOpen(false);
     } catch (err) {
-      setFormError(String(err));
+      setFormError(errorText(err, t("common.requestFailed")));
     }
   };
 
@@ -198,7 +199,7 @@ function QuestionsBoard() {
             <Loader2 className="h-4 w-4 animate-spin text-muted" />
           </div>
         ) : error ? (
-          <p className="text-sm text-danger">{String(error)}</p>
+          <p className="text-sm text-danger">{errorText(error, t("common.requestFailed"))}</p>
         ) : questions.length === 0 ? (
           <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-12 text-center">
             <ListChecks className="h-6 w-6 text-muted" />

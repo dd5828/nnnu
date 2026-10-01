@@ -14,6 +14,7 @@ import VisualizeSettings from "@/components/chat/VisualizeSettings";
 import { useChatStore, type AttachmentRef } from "@/hooks/useChat";
 import { useI18n } from "@/hooks/useI18n";
 import { apiFetch } from "@/lib/api";
+import { errorText } from "@/lib/errors";
 import { CAPABILITY_MASTERY } from "@/lib/capabilities";
 
 const MAX_FILES = 5;
@@ -69,7 +70,7 @@ export default function Composer() {
         ]);
       }
     } catch (error) {
-      setUploadError(t("chat.uploadFailed", { msg: String(error) }));
+      setUploadError(t("chat.uploadFailed", { msg: errorText(error, t("common.requestFailed")) }));
     } finally {
       setUploading(false);
       if (fileInputRef.current) {

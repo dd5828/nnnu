@@ -14,7 +14,9 @@
     "save": "Save",
     "apply": "Apply",
     "discard": "Discard",
-    "saved": "Saved"
+    "saved": "Saved",
+    "navigation": "Navigation",
+    "requestFailed": "Request failed — is the backend running?"
   },
   "chat": {
     "newSession": "New chat",

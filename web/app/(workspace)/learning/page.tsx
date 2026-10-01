@@ -17,6 +17,7 @@ import { useLearningPaths, useOpenPathChat } from "@/hooks/useLearning";
 import { useI18n } from "@/hooks/useI18n";
 import { useNow } from "@/hooks/useNow";
 import { CAPABILITY_MASTERY } from "@/lib/capabilities";
+import { errorText } from "@/lib/errors";
 import { nextActionKey, pathHref, reviewWhen } from "@/lib/learning";
 import type { LearningPathCard } from "@/types/api";
 
@@ -134,7 +135,7 @@ export default function LearningPage() {
       await newSession();
       router.push("/");
     } catch (err) {
-      setNotice(String(err));
+      setNotice(errorText(err, t("common.requestFailed")));
     } finally {
       setCreating(false);
     }
@@ -145,7 +146,7 @@ export default function LearningPage() {
     try {
       await open(id, lang);
     } catch (err) {
-      setNotice(String(err));
+      setNotice(errorText(err, t("common.requestFailed")));
     }
   };
 
@@ -183,7 +184,7 @@ export default function LearningPage() {
             <Loader2 className="h-4 w-4 animate-spin text-muted" />
           </div>
         ) : error ? (
-          <p className="text-sm text-danger">{String(error)}</p>
+          <p className="text-sm text-danger">{errorText(error, t("common.requestFailed"))}</p>
         ) : paths.length === 0 ? (
           <div
             data-testid="l-empty"

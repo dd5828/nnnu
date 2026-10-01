@@ -38,6 +38,8 @@ export default function ChatWorkspace() {
             onClick={() => setSessionsOpen((value) => !value)}
             className="-ml-1.5 shrink-0 rounded-lg p-1.5 text-muted transition-colors hover:bg-accent hover:text-foreground md:hidden"
             aria-label={t("chat.sessionList")}
+            aria-expanded={sessionsOpen}
+            aria-controls="chat-sessions"
             title={t("chat.sessionList")}
           >
             <PanelLeft className="h-4 w-4" />

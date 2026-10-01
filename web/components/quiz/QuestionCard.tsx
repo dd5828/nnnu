@@ -16,6 +16,7 @@ import {
   useUpdateQuestion,
   type QuestionInput,
 } from "@/hooks/useQuestions";
+import { errorText } from "@/lib/errors";
 import type { AttemptResponse, Question } from "@/types/api";
 import Markdown from "@/components/chat/Markdown";
 import QuestionForm, {
@@ -93,7 +94,7 @@ export default function QuestionCard({
       setResult(response.grading);
     } catch (error) {
       setResult(null);
-      setFormError(String(error));
+      setFormError(errorText(error, t("common.requestFailed")));
     }
   };
 
@@ -108,7 +109,7 @@ export default function QuestionCard({
       await update.mutateAsync({ id: question.id, ...(toInput(form) as QuestionInput) });
       setEditing(false);
     } catch (error) {
-      setFormError(String(error));
+      setFormError(errorText(error, t("common.requestFailed")));
     }
   };
 

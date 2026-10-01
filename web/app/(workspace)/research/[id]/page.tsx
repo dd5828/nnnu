@@ -16,6 +16,7 @@ import CitationsPanel from "@/components/chat/CitationsPanel";
 import { useChatStore } from "@/hooks/useChat";
 import { useI18n } from "@/hooks/useI18n";
 import { useResearchRun } from "@/hooks/useResearch";
+import { errorText } from "@/lib/errors";
 import type { ResearchRunStatus } from "@/types/api";
 
 const CAPABILITY_RESEARCH = "deep_research";
@@ -80,7 +81,9 @@ export default function ResearchRunPage() {
             <Loader2 className="h-4 w-4 animate-spin text-muted" />
           </div>
         ) : error || !data ? (
-          <p className="text-sm text-danger">{error ? String(error) : t("research.notFound")}</p>
+          <p className="text-sm text-danger">
+            {error ? errorText(error, t("common.requestFailed")) : t("research.notFound")}
+          </p>
         ) : (
           <>
             <div data-testid="research-detail">

@@ -14,7 +14,9 @@
     "save": "保存",
     "apply": "应用",
     "discard": "放弃",
-    "saved": "已保存"
+    "saved": "已保存",
+    "navigation": "导航",
+    "requestFailed": "请求没发出去，检查后端是否在跑"
   },
   "chat": {
     "newSession": "新对话",

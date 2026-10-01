@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { CheckCircle2, FolderPlus, Loader2, Upload, X } from "lucide-react";
 import { useCreateKb, useKb, useUploadQueue } from "@/hooks/useKnowledge";
 import { useI18n } from "@/hooks/useI18n";
+import { errorText } from "@/lib/errors";
 import { DocStatusChip, formatSize, ProgressBar } from "./status";
 
 export default function CreateWizard({ onClose }: { onClose: () => void }) {
@@ -55,7 +56,7 @@ export default function CreateWizard({ onClose }: { onClose: () => void }) {
       setCreatedId(manifest.id);
       await enqueue(files, manifest.id); // 库刚建出来，hook 手上还没 id，显式传
     } catch (createError) {
-      setError(String(createError));
+      setError(errorText(createError, t("common.requestFailed")));
     } finally {
       setCreating(false);
     }

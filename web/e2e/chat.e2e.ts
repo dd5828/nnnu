@@ -691,10 +691,23 @@ function trackConsoleErrors(page: import("@playwright/test").Page): string[] {
   return errors;
 }
 
+/** 沙箱 iframe 里的 KaTeX 走公网 CDN（HtmlViewer 的既定做法，iframe 够不着打包产物）——
+ *  测试里路由到本地 node_modules：外网一抖 ERR_CONNECTION_RESET，console 断言就跟着红
+ *  （CI 同理，jsdelivr 抽风不该算我们失败）。字体是 CSS 里的相对路径，也会经过这里。 */
+const KATEX_DIST = path.resolve(__dirname, "../node_modules/katex/dist");
+
+async function stubKatexCdn(page: import("@playwright/test").Page): Promise<void> {
+  await page.route("https://cdn.jsdelivr.net/npm/katex@**/dist/**", (route) => {
+    const file = new URL(route.request().url()).pathname.split("/dist/")[1];
+    return route.fulfill({ path: path.join(KATEX_DIST, file) });
+  });
+}
+
 test("⑲ 可视化：SVG/ECharts/Mermaid/HTML 四种图当场渲染，能全屏能下载，console 干净", async ({
   page,
 }) => {
   const consoleErrors = trackConsoleErrors(page);
+  await stubKatexCdn(page);
 
   await page.goto("/");
   await page.getByRole("button", { name: "新对话" }).click();

@@ -11,6 +11,7 @@ import SearchBench from "@/components/knowledge/SearchBench";
 import { useKbList } from "@/hooks/useKnowledge";
 import { useI18n } from "@/hooks/useI18n";
 import { kbDeepLink } from "@/lib/citations";
+import { errorText } from "@/lib/errors";
 import type { KbHit } from "@/types/api";
 
 export default function KnowledgePage() {
@@ -64,7 +65,7 @@ export default function KnowledgePage() {
             <Loader2 className="h-4 w-4 animate-spin text-muted" />
           </div>
         ) : error ? (
-          <p className="text-sm text-danger">{String(error)}</p>
+          <p className="text-sm text-danger">{errorText(error, t("common.requestFailed"))}</p>
         ) : kbs.length === 0 && !wizardOpen ? (
           <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-12 text-center">
             <Database className="h-6 w-6 text-muted" />

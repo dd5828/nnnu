@@ -11,6 +11,7 @@ import Link from "next/link";
 import { Loader2, NotebookPen, Plus, Trash2 } from "lucide-react";
 import { useCreateNotebook, useDeleteNotebook, useNotebookList } from "@/hooks/useNotebooks";
 import { useI18n } from "@/hooks/useI18n";
+import { errorText } from "@/lib/errors";
 
 function dateLabel(seconds: number): string {
   return new Date(seconds * 1000).toLocaleDateString();
@@ -43,7 +44,7 @@ export default function NotebooksPage() {
       setDescription("");
       setFormOpen(false);
     } catch (err) {
-      setFormError(String(err));
+      setFormError(errorText(err, t("common.requestFailed")));
     }
   };
 
@@ -125,7 +126,7 @@ export default function NotebooksPage() {
             <Loader2 className="h-4 w-4 animate-spin text-muted" />
           </div>
         ) : error ? (
-          <p className="text-sm text-danger">{String(error)}</p>
+          <p className="text-sm text-danger">{errorText(error, t("common.requestFailed"))}</p>
         ) : notebooks.length === 0 ? (
           <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-12 text-center">
             <NotebookPen className="h-6 w-6 text-muted" />

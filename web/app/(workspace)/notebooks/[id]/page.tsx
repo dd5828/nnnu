@@ -14,6 +14,7 @@ import { ArrowLeft, Loader2, Plus, Trash2 } from "lucide-react";
 import Markdown from "@/components/chat/Markdown";
 import { useAddRecord, useDeleteRecord, useNotebook } from "@/hooks/useNotebooks";
 import { useI18n } from "@/hooks/useI18n";
+import { errorText } from "@/lib/errors";
 import type { NotebookRecordType } from "@/types/api";
 
 const TYPE_LABEL_KEYS: Record<NotebookRecordType, string> = {
@@ -59,7 +60,7 @@ export default function NotebookDetailPage() {
       setTitle("");
       setBody("");
     } catch (err) {
-      setFormError(String(err));
+      setFormError(errorText(err, t("common.requestFailed")));
     }
   };
 
@@ -86,7 +87,9 @@ export default function NotebookDetailPage() {
             <Loader2 className="h-4 w-4 animate-spin text-muted" />
           </div>
         ) : error || !data ? (
-          <p className="text-sm text-danger">{error ? String(error) : t("notebooks.notFound")}</p>
+          <p className="text-sm text-danger">
+            {error ? errorText(error, t("common.requestFailed")) : t("notebooks.notFound")}
+          </p>
         ) : (
           <>
             <div>

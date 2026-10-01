@@ -11,6 +11,7 @@ import Link from "next/link";
 import { Loader2, Telescope } from "lucide-react";
 import { useI18n } from "@/hooks/useI18n";
 import { useResearchRuns } from "@/hooks/useResearch";
+import { errorText } from "@/lib/errors";
 import type { ResearchRunStatus } from "@/types/api";
 
 const STATUS_KEYS: Record<ResearchRunStatus, string> = {
@@ -61,7 +62,7 @@ export default function ResearchPage() {
             <Loader2 className="h-4 w-4 animate-spin text-muted" />
           </div>
         ) : error ? (
-          <p className="text-sm text-danger">{String(error)}</p>
+          <p className="text-sm text-danger">{errorText(error, t("common.requestFailed"))}</p>
         ) : runs.length === 0 ? (
           <p
             data-testid="research-empty"

@@ -5,6 +5,7 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { CheckCircle2, CircleAlert, Loader2, PlugZap, XCircle } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { errorText } from "@/lib/errors";
 import { useSettingsArea } from "@/hooks/useSettings";
 import { useI18n } from "@/hooks/useI18n";
 import type { SettingsAreaResponse, SettingsFieldMeta } from "@/types/api";
@@ -85,7 +86,7 @@ export default function SettingsForm({ area, title, description }: SettingsFormP
       setStatus({ kind: "ok", message: t("settings.draftSaved") });
       setClearSecrets(new Set());
     } catch (error) {
-      setStatus({ kind: "error", message: String(error) });
+      setStatus({ kind: "error", message: errorText(error, t("common.requestFailed")) });
     }
   };
 
@@ -105,7 +106,8 @@ export default function SettingsForm({ area, title, description }: SettingsFormP
       const fresh = await apiFetch<SettingsAreaResponse>(`/api/v1/settings/${area}`);
       setForm({ ...fresh.values });
     } catch (error) {
-      const message = String(error);
+      // 探测失败的详情藏在 ApiError.message 里，errorText 原样给回，下面的 includes 才认得出
+      const message = errorText(error, t("common.requestFailed"));
       setStatus({ kind: "error", message });
       // 探测失败时把详情带出来（§7.19：失败回滚并提示）
       if (message.includes("probe_failed")) {
@@ -143,7 +145,7 @@ export default function SettingsForm({ area, title, description }: SettingsFormP
       });
       setProbe(result);
     } catch (error) {
-      setProbe({ ok: false, models: [], error: String(error) });
+      setProbe({ ok: false, models: [], error: errorText(error, t("common.requestFailed")) });
     } finally {
       setProbing(false);
     }

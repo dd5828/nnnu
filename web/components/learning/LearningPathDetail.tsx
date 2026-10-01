@@ -41,6 +41,7 @@ import {
 } from "@/hooks/useLearning";
 import { useQuestionList } from "@/hooks/useQuestions";
 import { useNow } from "@/hooks/useNow";
+import { errorText } from "@/lib/errors";
 import {
   gateKey,
   nextActionKey,
@@ -112,7 +113,7 @@ export default function LearningPathDetail() {
       // 第一句由用户在聊天里自己说（对齐上游 launch-intent 的用法）。
       await openPathChat.open(pathId, lang);
     } catch (err) {
-      setNotice(String(err));
+      setNotice(errorText(err, t("common.requestFailed")));
     }
   };
 
@@ -126,7 +127,7 @@ export default function LearningPathDetail() {
       await leavePath.mutateAsync(pathId);
       setFlash(t("learning.leftNotice"));
     } catch (err) {
-      setNotice(String(err));
+      setNotice(errorText(err, t("common.requestFailed")));
     }
   };
 
@@ -143,7 +144,7 @@ export default function LearningPathDetail() {
       setPathEditing(false);
       setNotice(null);
     } catch (err) {
-      setNotice(String(err));
+      setNotice(errorText(err, t("common.requestFailed")));
     }
   };
 
@@ -158,7 +159,7 @@ export default function LearningPathDetail() {
       await removePath.mutateAsync(pathId);
       router.push("/learning");
     } catch (err) {
-      setNotice(String(err));
+      setNotice(errorText(err, t("common.requestFailed")));
     }
   };
 
@@ -172,7 +173,7 @@ export default function LearningPathDetail() {
       const result = await skipQuestion.mutateAsync(pathId);
       setFlash(result.skipped ? t("learning.skippedNotice") : t("learning.nothingPending"));
     } catch (err) {
-      setNotice(String(err));
+      setNotice(errorText(err, t("common.requestFailed")));
     }
   };
 
@@ -188,7 +189,7 @@ export default function LearningPathDetail() {
       const result = await redoPath.mutateAsync(pathId);
       setFlash(t("learning.redoneNotice", { n: String(result.reset ?? 0) }));
     } catch (err) {
-      setNotice(String(err));
+      setNotice(errorText(err, t("common.requestFailed")));
     }
   };
 
@@ -203,7 +204,9 @@ export default function LearningPathDetail() {
   if (error || !data) {
     return (
       <main className="flex flex-1 flex-col items-center justify-center gap-3">
-        <p className="text-sm text-danger">{String(error ?? t("learning.notFound"))}</p>
+        <p className="text-sm text-danger">
+          {error ? errorText(error, t("common.requestFailed")) : t("learning.notFound")}
+        </p>
         <Link href="/learning" className="text-xs text-primary hover:underline">
           {t("learning.backToList")}
         </Link>

@@ -13,6 +13,7 @@
 import { useState } from "react";
 import { Loader2, Search } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { errorText } from "@/lib/errors";
 import { useI18n } from "@/hooks/useI18n";
 import type { KbHit, KbSearchResponse } from "@/types/api";
 
@@ -49,7 +50,7 @@ export default function SearchBench({
       });
       setHits(result.hits);
     } catch (searchError) {
-      setError(String(searchError));
+      setError(errorText(searchError, t("common.requestFailed")));
       setHits(null);
     } finally {
       setBusy(false);
