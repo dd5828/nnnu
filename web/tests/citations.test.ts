@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { citationTarget, externalLabel, isExternalDoc } from "@/lib/citations";
+import { citationTarget, externalLabel, isExternalDoc, kbDeepLink } from "@/lib/citations";
 import type { CitationSource } from "@/types/stream";
 
 function source(overrides: Partial<CitationSource> = {}): CitationSource {
@@ -64,6 +64,19 @@ describe("citationTarget 知识库分支", () => {
   it("标签优先用标题（文件名），没有才退回库 id", () => {
     expect(citationTarget(source({ kb: "kb-abc", title: "教材.pdf" })).label).toBe("教材.pdf");
     expect(citationTarget(source({ kb: "kb-abc" })).label).toBe("kb-abc");
+  });
+});
+
+describe("kbDeepLink（引用与全库检索共用的深链接）", () => {
+  it("带页码与不带页码两种形状", () => {
+    expect(kbDeepLink("kb-abc", "kbdoc-1", 7)).toBe("/knowledge/kb-abc?doc=kbdoc-1&page=7");
+    expect(kbDeepLink("kb-abc", "kbdoc-1", null)).toBe("/knowledge/kb-abc?doc=kbdoc-1");
+    expect(kbDeepLink("kb-abc", "kbdoc-1", undefined)).toBe("/knowledge/kb-abc?doc=kbdoc-1");
+  });
+
+  it("与 citationTarget 走同一条路径（两处口径不许分叉）", () => {
+    const target = citationTarget(source({ kb: "kb-abc", doc_id: "kbdoc-1", page: 7 }));
+    expect(target.kind === "internal" && target.href).toBe(kbDeepLink("kb-abc", "kbdoc-1", 7));
   });
 });
 

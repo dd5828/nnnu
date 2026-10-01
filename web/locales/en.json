@@ -318,6 +318,8 @@
     "rebuildingHint": "Rebuilding v{n}, the old index still answers queries",
     "cancelBuild": "Cancel build",
     "searchTitle": "Search bench",
+    "searchAllTitle": "Search all libraries",
+    "searchAllDesc": "Search across every ready library — hits carry their library name and open right at the document.",
     "searchPlaceholder": "Ask a question or type keywords…",
     "searchRun": "Search",
     "searching": "Searching…",

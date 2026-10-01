@@ -318,6 +318,8 @@
     "rebuildingHint": "正在重建 v{n}，旧索引还能查",
     "cancelBuild": "中断构建",
     "searchTitle": "检索测试台",
+    "searchAllTitle": "全库检索",
+    "searchAllDesc": "跨全部就绪的知识库检索；命中带库名，点开直接跳到那份文档。",
     "searchPlaceholder": "输入问题或关键词…",
     "searchRun": "检索",
     "searching": "检索中…",

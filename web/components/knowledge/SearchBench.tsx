@@ -5,6 +5,9 @@
  *
  * 命中的 score 只在这一次检索内有意义（向量是余弦 0~1，混合是 RRF 融合分
  * 1/(60+rank) 量级），所以显示出来只是为了对比排序，不跨模式比大小。
+ *
+ * 不传 `kbId` 就是**全库检索**（知识中心列表页用）：打 `POST /kbs/search`，
+ * 跨全部就绪库，命中多一列库名——同一份组件两处复用，别各写一份。
  */
 
 import { useState } from "react";
@@ -20,7 +23,7 @@ export default function SearchBench({
   kbId,
   onOpen,
 }: {
-  kbId: string;
+  kbId?: string | null;
   onOpen: (hit: KbHit) => void;
 }) {
   const { t } = useI18n();
@@ -39,7 +42,8 @@ export default function SearchBench({
     setBusy(true);
     setError(null);
     try {
-      const result = await apiFetch<KbSearchResponse>(`/api/v1/kbs/${kbId}/search`, {
+      const endpoint = kbId ? `/api/v1/kbs/${kbId}/search` : "/api/v1/kbs/search";
+      const result = await apiFetch<KbSearchResponse>(endpoint, {
         method: "POST",
         body: JSON.stringify({ query: trimmed, mode, top_k: topK }),
       });
@@ -130,6 +134,14 @@ export default function SearchBench({
                     <span className="inline-block min-w-4 rounded bg-accent px-1 text-center font-medium text-primary">
                       {index + 1}
                     </span>
+                    {!kbId && (
+                      <span
+                        data-testid="hit-kb"
+                        className="rounded bg-accent px-1.5 py-0.5 font-medium"
+                      >
+                        {String(hit.metadata.kb_name ?? hit.kb_id)}
+                      </span>
+                    )}
                     {hit.page !== null && hit.page !== undefined ? (
                       <span
                         data-testid="hit-page"
@@ -148,6 +160,7 @@ export default function SearchBench({
                   <p className="mt-1 line-clamp-4 text-sm">{hit.text}</p>
                   <button
                     type="button"
+                    data-testid="hit-reader"
                     onClick={() => onOpen(hit)}
                     className="mt-1 text-xs text-primary underline"
                   >

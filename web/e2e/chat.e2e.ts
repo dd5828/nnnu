@@ -849,3 +849,34 @@ test("⑳ 数学动画：假渲染器跑通六阶段，首次渲染失败后自�
 
   expect(consoleErrors).toEqual([]);
 });
+
+// ㉑ 知识中心列表页的全库检索（POST /kbs/search）：命中带库名、点开落在原文。
+// 复用 ⑧ 建的「信号库」——串行跑下来它已就绪，这条零 LLM 步骤，不动 fixtures。
+test("㉑ 全库检索：列表页跨库搜，命中带库名，点开落进那份文档的阅读器", async ({ page }) => {
+  const consoleErrors = trackConsoleErrors(page);
+  await page.goto("/knowledge");
+
+  // 有就绪库 → 列表页检索区出现（一库没建时这块不渲染）
+  const bench = page.getByTestId("search-all");
+  await expect(bench).toBeVisible({ timeout: 15000 });
+  await bench.getByTestId("search-query").fill("傅里叶变换");
+  await bench.getByTestId("search-mode").selectOption("hybrid");
+  await bench.getByTestId("search-run").click();
+
+  const hits = bench.getByTestId("search-hit");
+  await expect(hits.first()).toBeVisible({ timeout: 20000 });
+  // 单库测试台没有的库名列：全库模式每条命中自报家门
+  await expect(hits.first().getByTestId("hit-kb")).toHaveText("信号库");
+
+  // 挑带页码的那条（sample.pdf 那页；⑩ 加的 sample.md 没有页码），点开直接进阅读器
+  const paged = hits.filter({ has: page.getByTestId("hit-page") }).first();
+  await expect(paged).toBeVisible();
+  await paged.getByTestId("hit-reader").click();
+  await expect(page).toHaveURL(/\/knowledge\/kb-.*[?&]doc=.*[?&]page=1/, { timeout: 15000 });
+  const reader = page.getByTestId("reader");
+  await expect(reader).toBeVisible({ timeout: 15000 });
+  await expect(reader.getByText("第 1 页")).toBeVisible();
+  await expect(reader.locator("iframe")).toHaveAttribute("src", /#page=1$/);
+
+  expect(consoleErrors).toEqual([]);
+});

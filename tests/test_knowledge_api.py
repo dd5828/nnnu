@@ -26,13 +26,13 @@ def _stub_embedder():
     embedding_service.uninstall_embedding_stub()
 
 
-def _pdf(path: Path, pages: int = 1) -> bytes:
+def _pdf(path: Path, pages: int = 1, text: str = TEXT) -> bytes:
     doc = pymupdf.open()
     for index in range(1, pages + 1):
         page = doc.new_page()
         page.insert_textbox(
             pymupdf.Rect(60, 60, 540, 700),
-            f"第{index}页 {TEXT}" * 6,
+            f"第{index}页 {text}" * 6,
             fontname="china-s",
             fontsize=9,
         )
@@ -211,6 +211,53 @@ async def test_search_validation(client, tmp_path):
     assert (
         await client.post("/api/v1/kbs/kb-ffffffff/search", json={"query": "x"})
     ).status_code == 404
+
+
+async def test_search_all_kbs_merges_hits_across_libraries(client, tmp_path):
+    """全库检索：两个就绪库的命中都回来，每条自报库名；没索引版本的库不参与。"""
+    signals = (await _create(client, "全库·信号"))["id"]
+    maths = (await _create(client, "全库·数学"))["id"]
+    await _create(client, "全库·空库")  # 无文档 → active_version 0，不该参与
+    await _upload(
+        client,
+        signals,
+        "信号.pdf",
+        _pdf(tmp_path / "a.pdf", text=TEXT),
+        "application/pdf",
+    )
+    await _upload(
+        client,
+        maths,
+        "数学.pdf",
+        _pdf(tmp_path / "b.pdf", text="傅里叶变换的积分形式；滤波器设计是频域方法的直接应用。"),
+        "application/pdf",
+    )
+    await _wait_ready(client, signals)
+    await _wait_ready(client, maths)
+
+    result = (
+        await client.post("/api/v1/kbs/search", json={"query": "滤波器设计", "top_k": 10})
+    ).json()
+    assert result["mode"] == "hybrid"
+    assert result["hits"]
+    assert {hit["metadata"]["kb_name"] for hit in result["hits"]} == {"全库·信号", "全库·数学"}
+    for hit in result["hits"]:
+        assert hit["kb_id"] in (signals, maths)  # 空库不出现在结果里
+        assert hit["metadata"]["filename"]  # 每条命中带文件名（前端直接显示）
+
+
+async def test_search_all_kbs_validation_and_empty_library(client):
+    """校验与空态：坏 mode / 空 query 422；没有一个建过索引的库 → 200 + 空列表。"""
+    assert (
+        await client.post("/api/v1/kbs/search", json={"query": "x", "mode": "挖矿"})
+    ).status_code == 422
+    assert (await client.post("/api/v1/kbs/search", json={"query": "   "})).status_code == 422
+
+    # 有库但没有一个建过索引（没文档）→ 空命中，不是报错
+    await _create(client, "全库·空库")
+    empty = await client.post("/api/v1/kbs/search", json={"query": "傅里叶变换"})
+    assert empty.status_code == 200
+    assert empty.json()["hits"] == []
 
 
 async def test_reindex_and_cancel(client, tmp_path):

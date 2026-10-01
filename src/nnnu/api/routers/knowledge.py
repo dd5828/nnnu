@@ -3,7 +3,8 @@
 补充端点（开发方案 §9.1 之外，记在 STAGE_LOG 偏离清单里）：
 - `POST /kbs/{id}/build/cancel`：§7.9 要求构建可中断，没有对应端点就落不了地；
 - `GET /kbs/{id}/docs/{doc_id}/file`：阅读器直接看原件（PDF 用 iframe + #page=N）；
-- `GET /kbs/{id}/docs/{doc_id}/content`：文本类文档的解析结果，前端 <pre> 渲染。
+- `GET /kbs/{id}/docs/{doc_id}/content`：文本类文档的解析结果，前端 <pre> 渲染；
+- `POST /kbs/search`：跨全部就绪库检索（知识中心列表页入口，用 service.search_all_ready）。
 
 `/sources`（GitHub 源 / 外部库绑定）P4 留空壳返回 501，P14 交付。
 检索只用 mode（vector/hybrid）：P4 只有一个引擎，engine 参数到 P14 才有意义。
@@ -160,6 +161,30 @@ async def doc_content(kb_id: str, doc_id: str, http_request: Request):
         "page_count": parsed.get("page_count", 0),
         "text": parsed.get("text", ""),
     }
+
+
+# 静态路径声明在 `{kb_id}` 之前（与 settings/probe、settings/llm-options 同款注意事项：
+# 往后加 POST /kbs/xxx 形状的端点时别再往 `{kb_id}` 路由后面塞）
+@router.post("/api/v1/kbs/search")
+async def search_all_kbs(body: SearchRequest, http_request: Request):
+    """全库检索：跨全部就绪的库，命中带各自库名（知识中心列表页的入口）。
+
+    跨库排序口径见 `KBService.search_all_ready`：同查询内相对余弦加权 +
+    字面命中加成，只吃名次不吃分数（分数尺度跨库不可比）。
+    """
+    if body.mode not in SEARCH_MODES:
+        return _error(422, "invalid_mode", f"mode 只能是 {SEARCH_MODES} 之一")
+    if not body.query.strip():
+        return _error(422, "invalid_request", "query 不能为空")
+    try:
+        hits = await http_request.app.state.kb.search_all_ready(
+            body.query,
+            mode=body.mode,
+            top_k=max(1, min(int(body.top_k), MAX_TOP_K)),
+        )
+    except EmbeddingError as exc:  # 嵌入端不可用：说清楚，别让前端只看 500
+        return _error(503, "embedding_unavailable", str(exc), recoverable=True)
+    return {"mode": body.mode, "query": body.query, "hits": [hit.model_dump() for hit in hits]}
 
 
 @router.post("/api/v1/kbs/{kb_id}/search")

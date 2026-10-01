@@ -26,6 +26,15 @@ export function isExternalDoc(docId: string): boolean {
   return /^https?:\/\//i.test(docId.trim());
 }
 
+/** 知识库阅读器深链接：`/knowledge/<kb>?doc=…&page=N`（引用与全库检索共用）。 */
+export function kbDeepLink(kbId: string, docId: string, page: number | null | undefined): string {
+  const query = new URLSearchParams({ doc: docId });
+  if (page !== null && page !== undefined) {
+    query.set("page", String(page));
+  }
+  return `/knowledge/${kbId}?${query.toString()}`;
+}
+
 /** 外链的名字：标题优先，没有就退到域名（整条 URL 当标签会把面板撑爆）。 */
 export function externalLabel(source: CitationSource): string {
   const title = source.title?.trim();
@@ -43,18 +52,13 @@ export function citationTarget(source: CitationSource): CitationTarget {
   if (isExternalDoc(source.doc_id)) {
     return { kind: "external", href: source.doc_id.trim(), label: externalLabel(source) };
   }
-  const hasPage = source.page !== null && source.page !== undefined;
   const title = source.title?.trim();
   if (!source.kb || source.kb === "attachment") {
     return { kind: "text", label: title || source.doc_id };
   }
-  const query = new URLSearchParams({ doc: source.doc_id });
-  if (hasPage) {
-    query.set("page", String(source.page));
-  }
   return {
     kind: "internal",
-    href: `/knowledge/${source.kb}?${query.toString()}`,
+    href: kbDeepLink(source.kb, source.doc_id, source.page),
     label: title || source.kb,
   };
 }
