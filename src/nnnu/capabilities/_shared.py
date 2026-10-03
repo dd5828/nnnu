@@ -276,7 +276,7 @@ async def complete_with_cost(
 def strip_label_prefix(option: str, position: int) -> str:
     """剥掉模型爱写的选项前缀（"A. 文本" / "A、文本" / "(A) 文本"）。
 
-    出题类能力（deep_question / mastery_path）共用：不剥的话界面上会显示成「A. A. 4」。
+    mastery_path 用：不剥的话界面上会显示成「A. A. 4」。
     """
     labels = "ABCDEFGH"
     text = option.strip()

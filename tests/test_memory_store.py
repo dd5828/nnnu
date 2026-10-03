@@ -66,16 +66,16 @@ def test_entry_roundtrip_stale_and_anonymous():
 def test_l2_refs_packed_in_one_bracket():
     entry = _entry(
         "学习动机以工程落地为主",
-        refs=["L2:chat#mem-11111111", "L2:deep_solve#mem-22222222"],
+        refs=["L2:chat#mem-11111111", "L2:deep_research#mem-22222222"],
         layer="l3",
         key="profile",
         id="mem-33333333",
     )
     line = render_entry(entry)
-    assert "[L2:chat#mem-11111111, deep_solve#mem-22222222]" in line
+    assert "[L2:chat#mem-11111111, deep_research#mem-22222222]" in line
     parsed = parse_entry(line, layer="l3", key="profile")
     assert parsed is not None
-    assert parsed.refs == ["L2:chat#mem-11111111", "L2:deep_solve#mem-22222222"]
+    assert parsed.refs == ["L2:chat#mem-11111111", "L2:deep_research#mem-22222222"]
 
 
 def test_parse_entry_rejects_non_entry_lines():

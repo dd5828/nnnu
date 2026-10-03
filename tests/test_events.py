@@ -90,7 +90,7 @@ def test_ask_user_accepts_bare_string_options():
 
 
 def test_ask_user_new_fields_default_off():
-    """allow_free_text/context 缺省收 False/""：老调用方（chat/deep_solve）不用改。"""
+    """allow_free_text/context 缺省收 False/""：老调用方（chat 等）不用改。"""
     event = StreamEvent.make(StreamEventType.ASK_USER, "turn-1", question="继续?", ask_id="ask-1")
     payload = event.payload_model()
     assert payload.options == []

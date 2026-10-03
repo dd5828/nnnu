@@ -71,9 +71,7 @@ def register_builtins() -> None:
     from nnnu.capabilities.chat.capability import ChatCapability
     from nnnu.capabilities.mastery.capability import MasteryCapability
     from nnnu.capabilities.math_animator.capability import MathAnimatorCapability
-    from nnnu.capabilities.question.capability import QuestionCapability
     from nnnu.capabilities.research.capability import DeepResearchCapability
-    from nnnu.capabilities.solve.capability import SolveCapability
     from nnnu.capabilities.visualize.capability import VisualizeCapability
     from nnnu.runtime.registry.capability_registry import get_capability_registry
     from nnnu.runtime.registry.tool_registry import get_tool_registry
@@ -100,8 +98,6 @@ def register_builtins() -> None:
     from nnnu.tools.builtin.web_search import WebSearchTool
 
     get_capability_registry().register(ChatCapability.manifest, ChatCapability)
-    get_capability_registry().register(SolveCapability.manifest, SolveCapability)
-    get_capability_registry().register(QuestionCapability.manifest, QuestionCapability)
     get_capability_registry().register(MasteryCapability.manifest, MasteryCapability)
     get_capability_registry().register(DeepResearchCapability.manifest, DeepResearchCapability)
     get_capability_registry().register(VisualizeCapability.manifest, VisualizeCapability)

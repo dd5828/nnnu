@@ -297,21 +297,21 @@ async def _wait_turn_settled(ws_client, session_id: str, *, turn_id: str | None 
 
 
 async def test_regenerate_keeps_capability(ws_client, repo_prompts):
-    """§6.4/§6.8：解题会话点「重新生成」还是解题，不会悄悄退回聊天。
+    """§6.4/§6.8：学习路径会话点「重新生成」还是学习路径，不会悄悄退回聊天。
 
-    脚本给 6 步（两回合各三段）：重新生成若走成 chat 只会消耗 1 步，
-    正文里也就没有三段小标题——两条断言都会红。
+    脚本给 2 步（两回合各一次循环调用）：重新生成若走成 chat 也消耗 1 步，
+    但落库的 capability 会被回写成 chat——能力断言会红。
     """
-    texts = [f"第{i}段产出" for i in range(1, 7)]
+    texts = ["第一回合产出", "第二回合产出"]
     scripted = ScriptedLLM([ScriptedStep(chunks=[text]) for text in texts])
     install_scripted(lambda: scripted)
     with ws_client.websocket_connect("/api/v1/ws") as ws:
         ws.send_json(
             {
                 "type": "chat",
-                "session_id": "sess-solve-regen",
-                "message": "求 d/dx[sin(x²)]",
-                "capability": "deep_solve",
+                "session_id": "sess-mastery-regen",
+                "message": "继续学习",
+                "capability": "mastery_path",
                 "language": "zh",
             }
         )
@@ -323,12 +323,25 @@ async def test_regenerate_keeps_capability(ws_client, repo_prompts):
     assert resp.status_code == 200, resp.text
     await _wait_turn_settled(ws_client, session_id, turn_id=resp.json()["turn_id"])
 
-    assert scripted.exhausted  # 两回合各三段，6 步正好用尽
+    assert scripted.exhausted  # 两回合各一次循环调用，2 步正好用尽
     detail = ws_client.get(f"/api/v1/sessions/{session_id}").json()
-    assert detail["capability"] == "deep_solve"
+    assert detail["capability"] == "mastery_path"
     assistant = [m for m in detail["messages"] if m["role"] == "assistant"]
     assert assistant
-    assert all(
-        f"## {heading}" in assistant[-1]["content"]
-        for heading in ("解题规划", "详细推导", "教学级解答")
-    )
+    assert "第二回合产出" in assistant[-1]["content"]
+
+
+async def test_old_session_capability_falls_back_to_chat(ws_client):
+    """已下线能力的历史会话（解题/出题，2026-10-03 删除）：入口回落 chat，不撞未知能力。
+
+    库里存着 capability=deep_solve 的老会话，点「重新生成」走 session_capability——
+    不回落的话编排器会以「未知能力」拒掉这一回合。
+    """
+    created = ws_client.post("/api/v1/sessions", json={"capability": "deep_solve"})
+    assert created.status_code == 200, created.text
+    session_id = created.json()["id"]
+    runtime = ws_client.app.state.runtime
+    assert await runtime.session_capability(session_id) == "chat"
+    # 回落只发生在读取时，不篡改会话里记着的历史值
+    detail = ws_client.get(f"/api/v1/sessions/{session_id}").json()
+    assert detail["capability"] == "deep_solve"

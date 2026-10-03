@@ -21,7 +21,7 @@ function row(event: string, data: Record<string, unknown> = {}): MemoryL1Row {
 
 describe("i18n 键映射", () => {
   it("各层/面/文档/事件/来源/运行状态的键", () => {
-    expect(surfaceLabelKey("deep_solve")).toBe("memory.surface.deep_solve");
+    expect(surfaceLabelKey("deep_research")).toBe("memory.surface.deep_research");
     expect(l3DocLabelKey("profile")).toBe("memory.doc.profile");
     expect(layerLabelKey("l1")).toBe("memory.layer.l1");
     expect(eventLabelKey("tool_call")).toBe("memory.event.tool_call");

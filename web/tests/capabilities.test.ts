@@ -8,15 +8,14 @@ import {
   ANIMATOR_QUALITIES,
   CAPABILITY_MATH_ANIMATOR,
   CAPABILITY_MASTERY,
-  CAPABILITY_QUESTION,
   CAPABILITY_RESEARCH,
-  CAPABILITY_SOLVE,
   CAPABILITY_VISUALIZE,
   RESEARCH_DEPTHS,
   RESEARCH_MODES,
   STAGES_BY_CAPABILITY,
   STAGE_LABEL_KEYS,
   VISUALIZE_RENDER_TYPES,
+  isKnownCapability,
   isResearchOutline,
   recordTypeFor,
 } from "@/lib/capabilities";
@@ -52,20 +51,30 @@ describe("大纲判定", () => {
   it("报告正文与其它能力的正文都不算", () => {
     expect(isResearchOutline("## 研究报告\n\n综合结论：…")).toBe(false);
     expect(isResearchOutline("## Research report\n\n…")).toBe(false);
-    expect(isResearchOutline("## 解题规划\n\n…")).toBe(false);
+    expect(isResearchOutline("## 概念分析\n\n…")).toBe(false);
     expect(isResearchOutline("")).toBe(false);
   });
 });
 
 describe("笔记本记录类型", () => {
   it("各能力各归各的类型，其余算 chat", () => {
-    expect(recordTypeFor(CAPABILITY_SOLVE)).toBe("solve");
-    expect(recordTypeFor(CAPABILITY_QUESTION)).toBe("question");
     expect(recordTypeFor(CAPABILITY_RESEARCH)).toBe("research");
     expect(recordTypeFor(CAPABILITY_VISUALIZE)).toBe("visualize");
     expect(recordTypeFor(CAPABILITY_MATH_ANIMATOR)).toBe("math_animator");
     expect(recordTypeFor(CAPABILITY_MASTERY)).toBe("chat");
     expect(recordTypeFor("chat")).toBe("chat");
+    // 已下线的解题/出题：旧数据仍可有 solve/question 记录，但新会话一律算 chat
+    expect(recordTypeFor("deep_solve")).toBe("chat");
+    expect(recordTypeFor("deep_question")).toBe("chat");
+  });
+});
+
+describe("能力清单", () => {
+  it("已下线能力不算已知，当前能力都算", () => {
+    expect(isKnownCapability("chat")).toBe(true);
+    expect(isKnownCapability(CAPABILITY_MASTERY)).toBe(true);
+    expect(isKnownCapability("deep_solve")).toBe(false);
+    expect(isKnownCapability("deep_question")).toBe(false);
   });
 });
 

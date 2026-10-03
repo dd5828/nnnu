@@ -14,7 +14,7 @@
 
 **本能力零 LLM 调用**（除了循环本身），每回合步数可预测。
 
-两处与 deep_question 不同的地方（照旧）：
+两处与其他分段能力不同的地方（照旧）：
 - 正文**不吞**：讲解逐字流出去（真 bus 直接转），收尾的 `content_done` 用 `_TurnTranscriptBus`
   记下的全文——见该类的说明；
 - 工具集刻意排除 brainstorm / reason / consult_subagent（这三个自己会发 LLM 调用，会吃脚本步数）。

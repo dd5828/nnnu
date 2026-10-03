@@ -52,7 +52,9 @@ async def test_read_memory_reads_l3_and_current_surface_l2(service):
     _seed_entry(service, "l3", "profile", "用户在做信号处理方向的学习", ["L2:chat#mem-1a2b3c4d"])
     _seed_entry(service, "l2", "chat", "用户偏好先看结论再看推导", ["L1:chat/2026-09.jsonl#3"])
     _seed_entry(service, "l2", "chat", "偏好：公式要配图解释", ["L1:chat/2026-09.jsonl#9"])
-    _seed_entry(service, "l2", "deep_solve", "别的分面不该出现", ["L1:deep_solve/2026-09.jsonl#1"])
+    _seed_entry(
+        service, "l2", "deep_research", "别的分面不该出现", ["L1:deep_research/2026-09.jsonl#1"]
+    )
 
     result = await ReadMemoryTool().run(_ctx())
     assert result.ok is True
@@ -66,7 +68,7 @@ async def test_read_memory_reads_l3_and_current_surface_l2(service):
     only_l2 = await ReadMemoryTool().run(_ctx(layer="l2"))
     assert "信号处理" not in only_l2.output and "先看结论" in only_l2.output
     # 显式指分面
-    other = await ReadMemoryTool().run(_ctx(surface="deep_solve"))
+    other = await ReadMemoryTool().run(_ctx(surface="deep_research"))
     assert "别的分面不该出现" in other.output
     # 未注册的回合（没走过 begin_turn）退到默认分面 chat
     assert (await ReadMemoryTool().run(_ctx(turn_id="turn-unseen"))).detail["surface"] == "chat"
@@ -157,9 +159,11 @@ async def test_write_memory_banned_and_limits(service):
     stored = service.store.load("l2", "chat").entries[-1]
     assert len(stored.text) == 400
     # case：显式分面 → 写进那个文件，但引用仍指本回合真实锚点（chat 行）
-    other = await WriteMemoryTool().run(_ctx(text="解方程时偏好先化标准型", surface="deep_solve"))
+    other = await WriteMemoryTool().run(
+        _ctx(text="解方程时偏好先化标准型", surface="deep_research")
+    )
     assert other.ok is True
-    entry = service.store.load("l2", "deep_solve").entries[0]
+    entry = service.store.load("l2", "deep_research").entries[0]
     assert entry.refs[0].startswith("L1:chat/")
     assert (await WriteMemoryTool().run(_ctx(text="x", surface="nope"))).ok is False
 

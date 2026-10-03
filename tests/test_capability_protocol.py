@@ -21,7 +21,7 @@ def test_manifest_empty_stages_means_free_loop():
 
 def test_manifest_with_stages():
     manifest = CapabilityManifest(
-        name="deep_solve",
+        name="demo_pipeline",
         version="1.0.0",
         stages=[
             Stage(key="planning", label_i18n="stage.planning", max_rounds=5),

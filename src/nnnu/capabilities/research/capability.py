@@ -13,7 +13,7 @@
 断线重连都会把前端手里的 config 弄丢，而第二回合离了大纲就不知道该研究什么。
 
 **每阶段一份新的 LoopDeps**：`token_budget` 会被循环就地扣减，跨阶段复用会把后续阶段
-的预算吃完（沿用 deep_solve 的教训）。研究阶段更极端——每个子问题一份，互不牵连。
+的预算吃完（分段流水线的通用教训）。研究阶段更极端——每个子问题一份，互不牵连。
 
 **子问题失败隔离**：子循环的 `emit_error` 在 `SilentBus`（`capabilities/_shared.py`，
 visualize 共用）里降级成 warning。`StreamBus`

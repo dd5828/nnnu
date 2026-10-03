@@ -181,7 +181,7 @@ class TurnRuntimeManager:
         if last_user is None:
             raise TurnRejected(f"会话 {session_id} 无用户消息可重新生成")
         await self._sessions.delete_last_assistant(session_id)
-        # 能力跟着会话走（§6.4）：不带的话解题会话点「重新生成」会退回聊天
+        # 能力跟着会话走（§6.4）：不带的话研究/可视化会话点「重新生成」会退回聊天
         request = TurnRequest(
             session_id=session_id,
             message=last_user.content,
@@ -191,11 +191,22 @@ class TurnRuntimeManager:
         return await self.start_turn(request)
 
     async def session_capability(self, session_id: str | None) -> str:
-        """会话记住的能力名（cron 等非前端入口用它补上 capability，没会话时回退 chat）。"""
+        """会话记住的能力名（cron 等非前端入口用它补上 capability，没会话时回退 chat）。
+
+        已下线能力的历史会话（解题/出题，2026-10-03 删除）一并回落 chat：否则
+        「重新生成」会带着注册表里没有的能力名，被编排器以未知能力拒绝。
+        """
         if not session_id:
             return "chat"
         session = await self._sessions.get_session(session_id)
-        return session.capability if session is not None else "chat"
+        capability = session.capability if session is not None else "chat"
+        from nnnu.runtime.registry.capability_registry import get_capability_registry
+
+        names = {manifest.name for manifest in get_capability_registry().manifests()}
+        if names and capability not in names:
+            logger.info("会话 %s 存的能力 %s 已下线，回落 chat", session_id, capability)
+            return "chat"
+        return capability
 
     # ---- 订阅与重放（§7.20 resume 三源合流） ----
 

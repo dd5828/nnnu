@@ -2,19 +2,14 @@
 
 /** 历史 assistant 消息（§7.1）：思考块 + 正文 + 工具轨迹 + 引用 + 成本 + 存入笔记本 + 重新生成。
  *
- * 出题会话（§7.4）多一个「去题库作答」入口：作答判分在题库页做，聊天里只给路。
+ * 学习路径 / 研究各自多一个入口（去学习看板 / 确认大纲），按当前能力显示。
  */
 
 import Link from "next/link";
-import { Binoculars, Download, GraduationCap, ListChecks, RefreshCw } from "lucide-react";
+import { Binoculars, Download, GraduationCap, RefreshCw } from "lucide-react";
 import { useChatStore, type UiMessage } from "@/hooks/useChat";
 import { useI18n } from "@/hooks/useI18n";
-import {
-  CAPABILITY_MASTERY,
-  CAPABILITY_QUESTION,
-  CAPABILITY_RESEARCH,
-  isResearchOutline,
-} from "@/lib/capabilities";
+import { CAPABILITY_MASTERY, CAPABILITY_RESEARCH, isResearchOutline } from "@/lib/capabilities";
 import { downloadMarkdown } from "@/lib/download";
 import CitationsPanel from "./CitationsPanel";
 import CostBadge from "./CostBadge";
@@ -54,16 +49,6 @@ export default function AssistantMessage({ message }: { message: UiMessage }) {
       <div className="flex items-center gap-2">
         {message.cost && <CostBadge tokens={message.cost.tokens} cost={message.cost.cost} />}
         {message.content && <SaveToNotebook content={message.content} />}
-        {message.content && capability === CAPABILITY_QUESTION && (
-          <Link
-            href="/questions"
-            data-testid="go-to-questions"
-            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] text-primary transition-colors hover:bg-primary/10"
-          >
-            <ListChecks className="h-3 w-3" />
-            {t("chat.goToQuestions")}
-          </Link>
-        )}
         {message.content && capability === CAPABILITY_MASTERY && (
           <Link
             href="/learning"

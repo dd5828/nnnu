@@ -85,7 +85,7 @@ async def test_overview_empty_state(hub):
     resp = await client.get("/api/v1/memory")
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body["surfaces"]) == 7 and body["surfaces"][0] == "chat"
+    assert len(body["surfaces"]) == 5 and body["surfaces"][0] == "chat"
     assert body["l3_docs"] == ["profile", "recent", "scope", "preferences"]
     assert body["l1"]["chat"] == {"files": [], "lines": 0, "bytes": 0, "events": {}}
     assert body["l2"]["chat"]["entries"] == 0

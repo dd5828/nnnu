@@ -30,26 +30,12 @@ async def test_plugins_lists_chat_and_ask_user(client):
     assert "parameters" in ask_user["definition"]
     capability_names = [item["name"] for item in data["capabilities"]]
     assert "chat" in capability_names
-    assert "deep_solve" in capability_names
+    # 解题/出题能力已下线（2026-10-03）：清单里不该再出现
+    assert "deep_solve" not in capability_names
+    assert "deep_question" not in capability_names
     chat = next(item for item in data["capabilities"] if item["name"] == "chat")
     assert chat["stages"] == []
     assert chat["default_model_role"] == "chat"
-    # 三阶段流水线的声明（§7.3）：步骤条与阶段提示词都按这个顺序走
-    solve = next(item for item in data["capabilities"] if item["name"] == "deep_solve")
-    assert [stage["key"] for stage in solve["stages"]] == ["planning", "reasoning", "writing"]
-    assert all(stage["label_i18n"] and stage["max_rounds"] > 0 for stage in solve["stages"])
-    assert solve["config_schema"]["mode"]["enum"] == ["full", "hint"]
-    # 出题能力（§7.4）：两段 IDEATION → GENERATION，配置项就是出题规格那四项
-    question = next(item for item in data["capabilities"] if item["name"] == "deep_question")
-    assert [stage["key"] for stage in question["stages"]] == ["ideation", "generation"]
-    assert all(stage["label_i18n"] and stage["max_rounds"] > 0 for stage in question["stages"])
-    assert set(question["config_schema"]) == {
-        "num_questions",
-        "types",
-        "difficulty",
-        "knowledge_point",
-    }
-    assert question["config_schema"]["types"]["items"]["enum"] == ["single", "multi", "short"]
     # 学习路径能力（§7.5）：对外只有一个阶段，配置项是路径与补题数量
     mastery = next(item for item in data["capabilities"] if item["name"] == "mastery_path")
     assert [stage["key"] for stage in mastery["stages"]] == ["responding"]

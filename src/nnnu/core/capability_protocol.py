@@ -26,7 +26,7 @@ class Stage(BaseModel):
 
 
 class CapabilityManifest(BaseModel):
-    name: str  # "chat" | "deep_solve" | ...
+    name: str  # "chat" | "deep_research" | ...
     version: str
     stages: list[Stage] = Field(default_factory=list)  # 空 = 单阶段自由循环（chat）
     config_schema: dict[str, Any] = Field(default_factory=dict)  # 该能力的可配置参数

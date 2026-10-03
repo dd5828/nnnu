@@ -9,6 +9,7 @@ import {
   CAPABILITY_MATH_ANIMATOR,
   CAPABILITY_RESEARCH,
   CAPABILITY_VISUALIZE,
+  isKnownCapability,
   type AnimatorQuality,
   type ResearchDepth,
   type ResearchMode,
@@ -116,7 +117,7 @@ interface ChatState {
   kbIds: string[];
   /** 会话级模型选择（§6.10 粘性，'provider:model'）：null = 跟随设置默认 */
   modelRef: string | null;
-  /** 会话级能力选择（§6.4 粘性）：'chat' | 'deep_solve'，随每条消息下发并落库 */
+  /** 会话级能力选择（§6.4 粘性）：见 lib/capabilities 的能力清单，随每条消息下发并落库 */
   capability: string;
   /** 深度研究档位与产出模式（§7.6）：只在 capability=deep_research 时用得上，
    *  同样随每条消息的 config 下发（服务端按它拆子问题、选成稿提示词） */
@@ -236,7 +237,14 @@ async function refreshMessages(
       messages: toUiMessages(detail.messages ?? []),
       ...(hydrateKb ? { kbIds: detail.kb_ids ?? [] } : {}),
       ...(hydrateModel ? { modelRef: detail.model ?? null } : {}),
-      ...(hydrateCapability ? { capability: detail.capability ?? "chat" } : {}),
+      // 已下线能力的历史会话（解题/出题）回落 chat：本地选择器与后端注册表都没有这个名字
+      ...(hydrateCapability
+        ? {
+            capability: isKnownCapability(detail.capability ?? "")
+              ? (detail.capability as string)
+              : "chat",
+          }
+        : {}),
     }));
   } catch {
     // 会话已被删除等：保留本地视图
@@ -555,7 +563,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       // 能力同款（§6.4 粘性）：后端按请求里的值跑本回合并写回会话
       capability: get().capability,
       // 回合参数（§7.6）：档位/模式**只在研究能力下发**——config.mode 是各能力共用的键名，
-      // 解题能力读的是 full/hint，随手把研究模式塞进去会被它判成非法参数（E2E ⑫ 抓到过）。
+      // 只发给认得它的能力，免得别的能力拿到不认识的键被判成非法参数。
       // 确认按钮那次再叠一个 research_action（extraConfig 由调用方给）
       config: {
         ...(get().capability === CAPABILITY_RESEARCH

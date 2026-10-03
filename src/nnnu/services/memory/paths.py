@@ -14,10 +14,10 @@ L1 只在「回合」上落——非回合面（notebook REST / 判分 / KB 构�
 
 from pathlib import Path
 
+# 2026-10-03 起与注册的能力一一对齐（解题/出题能力已下线，对应的旧 L1/L2
+# 文件保留在磁盘上，但不再出现在记忆页与整合目标里）。
 SURFACES: tuple[str, ...] = (
     "chat",
-    "deep_solve",
-    "deep_question",
     "mastery_path",
     "deep_research",
     "visualize",

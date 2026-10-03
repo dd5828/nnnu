@@ -13,9 +13,7 @@ import {
   Check,
   Clapperboard,
   GraduationCap,
-  ListChecks,
   MessagesSquare,
-  Sigma,
 } from "lucide-react";
 import { useChatStore } from "@/hooks/useChat";
 import { useI18n } from "@/hooks/useI18n";
@@ -25,16 +23,12 @@ import {
   CAPABILITY_LABEL_KEYS,
   CAPABILITY_MASTERY,
   CAPABILITY_MATH_ANIMATOR,
-  CAPABILITY_QUESTION,
   CAPABILITY_RESEARCH,
-  CAPABILITY_SOLVE,
   CAPABILITY_VISUALIZE,
 } from "@/lib/capabilities";
 
 const OPTIONS = [
   { value: CAPABILITY_CHAT, icon: MessagesSquare },
-  { value: CAPABILITY_SOLVE, icon: Sigma },
-  { value: CAPABILITY_QUESTION, icon: ListChecks },
   { value: CAPABILITY_MASTERY, icon: GraduationCap },
   { value: CAPABILITY_RESEARCH, icon: Binoculars },
   { value: CAPABILITY_VISUALIZE, icon: ChartColumn },
