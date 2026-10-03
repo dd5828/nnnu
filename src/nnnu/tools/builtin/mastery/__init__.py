@@ -19,6 +19,11 @@
 **没有 `probe` 工具**：上游也没有；摸底只是 `mastery_status` 给出的下一目标里的一个
 动作取值（`next.action`），具体还是走 `mastery_quiz`。
 
+**挂载范围（2026-10-03 修）**：八件都是 `context_gated`，编排器只在 `mastery_path`
+能力的回合把它们放进 `flags.context`（见 `runtime/orchestrator.py`）。曾经它们是普通
+可开关工具、默认挂进每个能力——普通聊天里模型会拿 `mastery_status` 当"开局第一步"，
+用户随口问个概念就被推销"要不要建学习路径"。
+
 §16.5：本包自研，上游 `deeptutor/capabilities/mastery` 只作对照阅读，不复制实现。
 """
 
@@ -47,8 +52,12 @@ MASTERY_TOOLS = (
     MasteryLeaveTool,
 )
 
+#: 八件的注册名（编排器按能力门控挂载用，别在别处再抄一份清单）
+MASTERY_TOOL_NAMES: tuple[str, ...] = tuple(tool.definition.name for tool in MASTERY_TOOLS)
+
 __all__ = [
     "MASTERY_TOOLS",
+    "MASTERY_TOOL_NAMES",
     "MasteryAssessTool",
     "MasteryBuildTool",
     "MasteryGradeTool",

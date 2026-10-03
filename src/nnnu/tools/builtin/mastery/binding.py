@@ -33,7 +33,7 @@ class MasteryPathsTool(BaseTool):
             "properties": {},
             "required": [],
         },
-        mount=ToolMount.USER_TOGGLEABLE,
+        mount=ToolMount.CONTEXT_GATED,
         cost_hint=_COST_HINT,
     )
 
@@ -97,7 +97,7 @@ class MasterySwitchTool(BaseTool):
             },
             "required": ["path_id"],
         },
-        mount=ToolMount.USER_TOGGLEABLE,
+        mount=ToolMount.CONTEXT_GATED,
         cost_hint=_COST_HINT,
     )
 
@@ -134,7 +134,7 @@ class MasteryLeaveTool(BaseTool):
             "properties": {},
             "required": [],
         },
-        mount=ToolMount.USER_TOGGLEABLE,
+        mount=ToolMount.CONTEXT_GATED,
         cost_hint=_COST_HINT,
     )
 

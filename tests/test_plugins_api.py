@@ -48,7 +48,8 @@ async def test_plugins_lists_chat_and_ask_user(client):
     assert "mastery" not in tool_names  # 旧的九动作单工具已退役
     for name in MASTERY_TOOL_NAMES:
         tool = next(item for item in data["tools"] if item["definition"]["name"] == name)
-        assert tool["definition"]["mount"] == "user_toggleable"
+        # 能力门控（2026-10-03）：只在 mastery_path 能力的回合挂，见 test_tool_switches
+        assert tool["definition"]["mount"] == "context_gated"
         assert tool["definition"]["cost_hint"]  # chat.yaml: tool_cost_hints.<name>
 
 

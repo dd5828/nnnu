@@ -66,7 +66,7 @@ class MasteryQuizTool(BaseTool):
             },
             "required": ["question", "expected_answer"],
         },
-        mount=ToolMount.USER_TOGGLEABLE,
+        mount=ToolMount.CONTEXT_GATED,
         cost_hint="tools.cost.mastery_quiz",
     )
 

@@ -55,7 +55,7 @@ class MasteryBuildTool(BaseTool):
             },
             "required": ["topic", "nodes"],
         },
-        mount=ToolMount.USER_TOGGLEABLE,
+        mount=ToolMount.CONTEXT_GATED,
         cost_hint="tools.cost.mastery_build",
     )
 

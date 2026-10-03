@@ -156,6 +156,13 @@ def build_unified_context(
         context_flags.add("attachment_search")
     if request.kb_ids:
         context_flags.add("rag")
+    # §7.5 学习路径八件只在 mastery_path 能力里挂：普通聊天挂上它们，模型会拿
+    # mastery_status 当"开局第一步"，随口问个概念就推销"要不要建学习路径"
+    # （2026-10-03 的 bug）。能力门就是一个上下文条件。
+    if request.capability == "mastery_path":
+        from nnnu.tools.builtin.mastery import MASTERY_TOOL_NAMES
+
+        context_flags.update(MASTERY_TOOL_NAMES)
     # §7.2 工具开关：设置 chat 区与请求级配置合并（请求覆盖更具体，仅做并集/补集）
     from nnnu.services.settings.service import get_settings_service
 

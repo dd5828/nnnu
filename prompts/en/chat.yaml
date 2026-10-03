@@ -25,7 +25,7 @@ tool_descriptions:
   list_workspace: "List files and subdirectories inside the workspace directory."
   read_workspace_file: "Read a UTF-8 text file inside the workspace."
   write_workspace_file: "Write a text file into the workspace (overwrites an existing file of the same name)."
-  web_search: "Search the web and return results with source links. Must be used first for recent events, news, or facts that need verification. Short queries (2-5 words, like a person would type) work best; a long keyword chain only returns unrelated pages."
+  web_search: "Search the web and return results with source links. Must be used first for recent events, news, or facts that need verification. Write the query as the 2-3 core words of \"subject + what you want to know\" (e.g. \"Nanning weather\"): leave out time/question words (today, now, how is) — for weather- or market-type lookups they easily send the engine off course; if the results don't match, cut more words and retry (adding words makes it worse), and if that fails use web_fetch on an authoritative page."
   paper_search: "Search papers on arXiv (title/keyword/author) and return title, authors, year, abstract and link. Short queries of 2-4 words work best; a long keyword chain gets split into unrelated results."
   web_fetch: "Fetch a web page and convert it to Markdown text. Use it to read the content of a specific page (private/internal addresses are rejected)."
   github: "Query GitHub repositories (README/file tree/specific file content). Use it to learn the real structure of an open-source project the user mentions."

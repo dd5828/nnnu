@@ -21,7 +21,7 @@ class MasteryStatusTool(BaseTool):
             "properties": {},
             "required": [],
         },
-        mount=ToolMount.USER_TOGGLEABLE,
+        mount=ToolMount.CONTEXT_GATED,
         cost_hint="tools.cost.mastery_status",
     )
 

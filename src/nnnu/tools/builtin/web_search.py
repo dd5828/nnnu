@@ -17,7 +17,13 @@ class WebSearchTool(BaseTool):
         parameters={
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "检索词（2~5 个词）"},
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "检索词：主体+要查什么的两三个核心词（如「南宁天气」）；"
+                        "别带今天/现在/怎么样这类修饰词，会搜跑偏"
+                    ),
+                },
                 "max_results": {"type": "integer", "minimum": 1, "maximum": 10, "default": 5},
             },
             "required": ["query"],
