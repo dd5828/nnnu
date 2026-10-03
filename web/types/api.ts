@@ -212,14 +212,26 @@ export type QuestionType = "single" | "multi" | "short";
 /** 题库筛选：全部 / 错题（wrong_count > 0）/ 未作答（还没作答过）。 */
 export type QuestionFilter = "all" | "wrong" | "unanswered";
 
+/** LLM 分类出的错因（固定枚举键；展示文案 questions.cause_*）。 */
+export type ErrorCause =
+  | "concept_unclear"
+  | "misread"
+  | "calculation"
+  | "method_missing"
+  | "memory_weak";
+
 export interface Question {
   id: string;
   stem: string;
   options: string[]; // 裸文本，选项标签 A/B/C/D 按位置推
   answer: string; // 客观题是标签（多选升序拼接如 "AC"）；简答是参考答案
   explanation: string | null;
-  source: string | null;
+  source: string | null; // manual | tool | mastery | variant（旧数据还有 deep_question）
   tags: string[];
+  note: string; // 用户笔记（Markdown；与 explanation 是两回事）
+  note_updated_at: number | null;
+  error_causes: ErrorCause[]; // LLM 分类的错因，可手改
+  parent_id: string | null; // 变式题的出处题（软引用）
   mastery: number; // 0–1，界面按百分比显示
   wrong_count: number;
   last_attempt_at: number | null;
@@ -259,6 +271,70 @@ export interface AttemptResponse {
     feedback: string;
     source: string; // deterministic | llm
   };
+}
+
+// ---- 题库增强（P9：笔记 / AI 分类 / 举一反三） ----
+
+/** 对应 GET /api/v1/questions/{id}/similar：题库内的相似题（零 LLM 排序）。 */
+export interface SimilarItem {
+  question: Question;
+  score: number; // Jaccard 相似度 0–1（提示用，不是判重）
+}
+
+export interface SimilarResponse {
+  question_id: string;
+  low_confidence: boolean; // 题面太短：分数仅供参考
+  items: SimilarItem[];
+}
+
+/** 对应 POST /api/v1/questions/{id}/classify：分类建议（题目本体已写回 question）。 */
+export interface ClassifySuggestion {
+  knowledge_point: string;
+  tags: string[];
+  error_causes: ErrorCause[];
+  reason: string;
+}
+
+export interface ClassifyResponse {
+  question: Question;
+  suggestion: ClassifySuggestion;
+}
+
+/** 变式题草稿（预览态，无 id；采纳走 POST /questions/batch 才入库）。 */
+export interface VariantDraft {
+  stem: string;
+  options: string[];
+  answer: string;
+  explanation: string;
+  type: QuestionType;
+  difficulty: string;
+  knowledge_point: string;
+  tags: string[];
+  duplicate_score: number; // 与库内最像的题的相似度（同模板换数字天然很高，只作提示）
+}
+
+/** 知识库素材脚注（origin=kb 时有）。 */
+export interface VariantSource {
+  kb_id: string;
+  doc_id: string;
+  kb_name: string;
+  filename: string;
+  page: number | null;
+  score: number;
+  snippet: string;
+}
+
+export interface VariantsResponse {
+  question_id: string;
+  origin: "kb" | "ai"; // 实际用了哪条路
+  degraded: boolean; // 想用知识库但没素材，降级为纯 AI
+  sources: VariantSource[];
+  variants: VariantDraft[];
+}
+
+/** 对应 POST /api/v1/questions/batch：批量入库（预览采纳入口）。 */
+export interface BatchAdoptResponse {
+  questions: Question[];
 }
 
 // ---- 学习路径（§7.5 / §8.2，对应 nnnu/services/learning/models.py） ----

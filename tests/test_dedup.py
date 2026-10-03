@@ -4,13 +4,18 @@
 互相误杀）；太短的题面（token 数不足）一律不判重，宁可漏杀不可误杀。
 """
 
+import pytest
+
 from nnnu.services.question_bank.dedup import (
     DEFAULT_THRESHOLD,
     MIN_TOKENS,
     comparison_text,
     find_duplicate,
     is_duplicate,
+    low_confidence,
+    ranked_similar,
     similarity,
+    token_count,
 )
 
 STEM = "已知函数 $f(x)=x^2+2x$，求它在 $x=1$ 处的导数值。"
@@ -71,3 +76,40 @@ def test_threshold_is_configurable():
     assert 0.8 <= similarity(a, b) < 0.999
     assert is_duplicate(a, b, threshold=0.8) is True
     assert is_duplicate(a, b, threshold=0.999) is False
+
+
+def test_same_template_variant_similarity_is_above_dup_threshold():
+    # 「同模板只换数字」的变式题：长题干里改一个数，相似度实测 0.9565（钉住防漂移）。
+    # 这就是采纳路径**绝不**接 is_duplicate 的原因：变式题会被自家查重（0.8）误杀；
+    # 相似度只用来给前端出「可能重题」的提示。
+    a = comparison_text(
+        "已知函数 $f(x)=x^2+2x+1$，求它在 $x=1$ 处的导数与切线方程，并说明理由。",
+        ["$4$", "$3$", "$2$", "$1$"],
+    )
+    b = comparison_text(
+        "已知函数 $f(x)=x^2+2x+1$，求它在 $x=2$ 处的导数与切线方程，并说明理由。",
+        ["$6$", "$5$", "$4$", "$3$"],
+    )
+    assert similarity(a, b) == pytest.approx(0.9565, abs=0.005)
+    assert is_duplicate(a, b) is True
+
+
+def test_ranked_similar_orders_filters_and_limits():
+    target = comparison_text("函数 $f(x)=x^2$ 在 $x=2$ 处的导数是多少？", ["2", "4", "8", "16"])
+    near = comparison_text("函数 $f(x)=x^2$ 在 $x=3$ 处的导数是多少？", ["3", "6", "9", "12"])
+    far = comparison_text("简述光合作用中光反应发生的场所。", [])
+    near_score = pytest.approx(0.7308, abs=0.001)
+    assert ranked_similar(target, [far, near], min_score=0.15) == [(1, near_score)]
+    # 同分按传入顺序（库里新旧顺序）；limit 截断
+    assert ranked_similar(target, [near, near], limit=1) == [(0, near_score)]
+    # 空目标文本 / 全部低于 min_score 都是空表
+    assert ranked_similar("", [near]) == []
+    assert ranked_similar(target, [far]) == []
+
+
+def test_low_confidence_shares_the_short_text_guard():
+    assert token_count("1+1=?") == 1
+    assert low_confidence("1+1=?") is True
+    long_text = comparison_text(STEM, OPTIONS)
+    assert token_count(long_text) >= MIN_TOKENS
+    assert low_confidence(long_text) is False

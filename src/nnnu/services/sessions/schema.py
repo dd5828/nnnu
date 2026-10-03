@@ -25,7 +25,10 @@ from pathlib import Path
 # v10：P6 深度研究——research_runs 一次调研的草稿本（§8.2 无此表，记偏离）。
 #     研究是**两段式回合**：第一回合只跑到「子问题大纲 + 等确认」，第二回合才检索与成稿，
 #     中间隔着一次用户答复——大纲必须落库，否则第二回合不知道要研究什么。
-SCHEMA_VERSION = "10"
+# v11：P9 题库增强——questions 补四列：用户笔记（note/note_updated_at）、
+#     LLM 分类错因（error_causes，JSON 数组）、变式题来源（parent_id 软引用）。
+#     配图不在本版（将来走 note/stem 里的 markdown 图片，无需再加列）。
+SCHEMA_VERSION = "11"
 
 MIGRATIONS: dict[str, list[str]] = {
     "2": [
@@ -255,6 +258,21 @@ MIGRATIONS: dict[str, list[str]] = {
         "CREATE INDEX IF NOT EXISTS idx_research_runs_session "
         "ON research_runs(session_id, created_at)",
     ],
+    # 注意：同 v9，本级的 ADD COLUMN 不是幂等语句（SQLite 没有 IF EXISTS 语法），
+    # 崩在「DDL 已应用、版本文件还没写」之间要把 data/system/schema_version.txt 退回 v10 重跑。
+    "11": [
+        # 用户笔记（Markdown，可反复编辑；与 explanation 是两回事——那是答案解析）。
+        # 旧行 note 为 NULL，读取端按空串处理；note_updated_at 只在笔记真正变更时刷新
+        # （见 service.update_question），「改过别的字段」不该让笔记时间跳。
+        "ALTER TABLE questions ADD COLUMN note TEXT",
+        "ALTER TABLE questions ADD COLUMN note_updated_at REAL",
+        # LLM 分类的错因：JSON 数组文本（照 research_runs.subtopics 的惯例存法），
+        # 枚举键见 services/question_bank/models.ERROR_CAUSES；老行默认空数组
+        "ALTER TABLE questions ADD COLUMN error_causes TEXT NOT NULL DEFAULT '[]'",
+        # 变式题指向出处题（软引用，不挂外键：源题删了变式题还在，只是断了来源）
+        "ALTER TABLE questions ADD COLUMN parent_id TEXT",
+        "CREATE INDEX IF NOT EXISTS idx_questions_parent ON questions(parent_id)",
+    ],
 }
 
 # 每级迁移应落地的产物——启动自检清单（见 _verify）。
@@ -276,6 +294,12 @@ EXPECTED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
     "3": (("sessions", "persona_description"),),
     "8": (("questions", "node_id"),),
     "9": (("learning_nodes", "assess_passed"), ("learning_nodes", "assessed_at")),
+    "11": (
+        ("questions", "note"),
+        ("questions", "note_updated_at"),
+        ("questions", "error_causes"),
+        ("questions", "parent_id"),
+    ),
 }
 
 

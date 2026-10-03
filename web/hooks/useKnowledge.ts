@@ -109,7 +109,7 @@ export function useCancelBuild(kbId: string) {
 
 /**
  * 上传单个文档：走 `/api/upload/*` 专用转发口（proxy 的 rewrite 在 ~10MB 处
- * 会断请求体，KB 允许 50MB，见 web/proxy.ts），用 XHR 是为了拿到上传字节进度。
+ * 会断请求体，KB 允许 200MB，见 web/proxy.ts），用 XHR 是为了拿到上传字节进度。
  *
  * 返回后端的 KbDoc（初始是 parsing，之后靠轮询刷新）。
  */

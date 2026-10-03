@@ -166,15 +166,17 @@ async def test_add_doc_builds_version_and_searches(tmp_path, tmp_home):
     assert kinds == ["kb_create", "kb_doc_add"]
 
 
-async def test_add_doc_rejects_bad_input(tmp_path, tmp_home):
+async def test_add_doc_rejects_bad_input(tmp_path, tmp_home, monkeypatch):
     service = _service(tmp_home / "data", TopicEmbedder())
     kb = await _create(service)
     with pytest.raises(KBError):
         await service.add_doc(kb.id, "图.png", b"x", "image/png")
     with pytest.raises(KBError):
         await service.add_doc(kb.id, "空.txt", b"", "text/plain")
+    # 别真造一个 200MB 的 bytes 去撞上限（内存/耗时不合算）：把常量改小，测的是「超限会拒」这条逻辑
+    monkeypatch.setattr(service_module, "MAX_KB_UPLOAD_BYTES", 8)
     with pytest.raises(KBError):
-        await service.add_doc(kb.id, "大.txt", b"x" * (50 * 1024 * 1024 + 1), "text/plain")
+        await service.add_doc(kb.id, "大.txt", b"x" * 9, "text/plain")
     with pytest.raises(KBError):
         await service.add_doc("kb-nothere", "x.txt", b"hello", "text/plain")
 

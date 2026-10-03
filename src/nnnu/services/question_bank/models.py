@@ -10,6 +10,17 @@ from nnnu.core.ids import new_id
 # 题型：单选 / 多选 / 简答（§7.4）
 QuestionType = Literal["single", "multi", "short"]
 
+# 错因（LLM 分类的固定枚举，键名入库；展示文案在前端 locale questions.cause_*）。
+# 多选，最多 service.MAX_ERROR_CAUSES 个——「概念不清 + 计算失误」这种组合是常态。
+ErrorCause = Literal["concept_unclear", "misread", "calculation", "method_missing", "memory_weak"]
+ERROR_CAUSES: tuple[str, ...] = (
+    "concept_unclear",
+    "misread",
+    "calculation",
+    "method_missing",
+    "memory_weak",
+)
+
 # 掌握度只看最近几次作答（与 service.RECENCY_WEIGHTS 配套）
 RECENT_ATTEMPTS = 5
 
@@ -20,8 +31,17 @@ class Question(BaseModel):
     options: list[str] = Field(default_factory=list)  # 裸文本，标签 A/B/C/D 由位置推导
     answer: str  # 客观题存标签（多选升序拼接，如 "AC"）；简答存参考答案文本
     explanation: str | None = None
-    source: str | None = None  # 题目来源：deep_question | manual
+    source: str | None = (
+        None  # 题目来源：manual | tool | mastery | variant（旧数据还有 deep_question）
+    )
     tags: list[str] = Field(default_factory=list)
+    # 用户笔记（Markdown；v11 加）——与 explanation（答案解析）是两回事
+    note: str = ""
+    note_updated_at: float | None = None
+    # LLM 分类的错因（v11 加）：ERROR_CAUSES 的子集，可手改
+    error_causes: list[str] = Field(default_factory=list)
+    # 变式题的出处题（v11 加；软引用，删了源题不断变式题）
+    parent_id: str | None = None
     # 题级掌握度 0–1（§7.15 未给公式，自定：见 service._mastery_from）。
     # §7.5 的节点级掌握度是 0–100——批三做 mastery_path 时在此换算，勿混用。
     mastery: float = 0.0

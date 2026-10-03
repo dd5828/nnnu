@@ -1,6 +1,6 @@
 /**
  * 知识库文档上传的专用转发口（P4）：proxy 的 rewrite 会在 ~10MB 处把 multipart
- * 请求体弄断（实测 6MB 过、12MB 起 500 socket hang up），而 KB 允许单文件 50MB。
+ * 请求体弄断（实测 6MB 过、12MB 起 500 socket hang up），而 KB 允许单文件 200MB。
  * 所以上传不走 `/api/*` 的通用反代，改由这个 route handler 把请求体原样流式转给后端。
  *
  * 路径刻意放在 `/api/upload/*`（matcher 里排除，见 web/proxy.ts）：

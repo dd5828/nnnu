@@ -61,7 +61,9 @@ from nnnu.services.rag.rrf import rrf_fuse
 
 logger = logging.getLogger(__name__)
 
-MAX_KB_UPLOAD_BYTES = 50 * 1024 * 1024  # 50MB（§7.9 KB 上传上限，比附件宽松）
+MAX_KB_UPLOAD_BYTES = (
+    200 * 1024 * 1024
+)  # 200MB（§7.9 KB 上传上限，比附件宽松；2026-10-03 由 50MB 上调）
 # 重建力度：全部重切（换 chunk 参数只能这样）／只重试失败文档（普通的「重建索引」）
 REBUILD_ALL = "all"
 REBUILD_RETRY = "retry"

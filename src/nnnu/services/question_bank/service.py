@@ -11,13 +11,15 @@ import json
 import time
 from typing import Any, Iterable, Literal, Sequence
 
-from nnnu.services.question_bank.dedup import comparison_text
+from nnnu.services.question_bank.dedup import comparison_text, ranked_similar
 from nnnu.services.question_bank.models import (
+    ERROR_CAUSES,
     RECENT_ATTEMPTS,
     Question,
     QuestionAttempt,
     QuestionType,
 )
+from nnnu.services.rag.bm25 import tokenize
 from nnnu.services.sessions.db import Database
 
 MAX_STEM_CHARS = 2000
@@ -28,9 +30,14 @@ MAX_ANSWER_CHARS = 500
 MAX_KNOWLEDGE_POINT_CHARS = 80
 MAX_TAG_CHARS = 30
 MAX_TAGS = 10
+MAX_NOTE_CHARS = 4000  # 与解析同档
+MAX_ERROR_CAUSES = 3  # 「概念不清 + 计算失误」这类组合给了余量，再多就不叫分类了
 MAX_QUESTIONS_PER_BATCH = 20
 MAX_PAGE = 200
 DEFAULT_PAGE = 50
+# 相似题列表的默认过滤线与条数上限（词法相似度噪声大，0.15 以下基本只是共用了常用词）
+DEFAULT_SIMILAR_MIN_SCORE = 0.15
+MAX_SIMILAR = 10
 
 QUESTION_TYPES: tuple[str, ...] = ("single", "multi", "short")
 DIFFICULTIES: tuple[str, ...] = ("easy", "medium", "hard", "mixed")
@@ -44,8 +51,9 @@ RECENCY_WEIGHTS = (0.5, 0.7, 0.85, 0.95, 1.0)
 _INSERT_QUESTION = (
     "INSERT INTO questions "
     "(id, stem, options, answer, explanation, source, tags, mastery, wrong_count, "
-    " last_attempt_at, created_at, type, knowledge_point, difficulty, session_id, node_id) "
-    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    " last_attempt_at, created_at, type, knowledge_point, difficulty, session_id, node_id, "
+    " note, note_updated_at, error_causes, parent_id) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 
 _INSERT_ATTEMPT = (
@@ -98,6 +106,30 @@ def _clean_tags(tags: Iterable[str] | None) -> list[str]:
     return cleaned
 
 
+def clean_note(note: str | None) -> str:
+    """笔记归一：去首尾空白、保留内部换行（Markdown 靠它分段）；超长抛错。"""
+    text = (note or "").strip()
+    if len(text) > MAX_NOTE_CHARS:
+        raise QuestionBankError(f"笔记最多 {MAX_NOTE_CHARS} 个字符")
+    return text
+
+
+def _clean_error_causes(causes: Iterable[str] | None) -> list[str]:
+    """错因白名单校验：未知键抛错（LLM 输出先过 assist.normalize_error_cause 再进来）、
+    去重保序、上限 MAX_ERROR_CAUSES。"""
+    cleaned: list[str] = []
+    for cause in causes or ():
+        text = str(cause).strip()
+        if not text or text in cleaned:
+            continue
+        if text not in ERROR_CAUSES:
+            raise QuestionBankError(f"未知错因 {text!r}，允许：{'、'.join(ERROR_CAUSES)}")
+        cleaned.append(text)
+    if len(cleaned) > MAX_ERROR_CAUSES:
+        raise QuestionBankError(f"错因最多 {MAX_ERROR_CAUSES} 个")
+    return cleaned
+
+
 def clean_fields(
     *,
     stem: str,
@@ -108,6 +140,7 @@ def clean_fields(
     knowledge_point: str = "",
     difficulty: str = "medium",
     tags: Iterable[str] | None = None,
+    error_causes: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     """结构校验 + 归一，返回可直接落库的字段（不改库，出题能力也复用它）。"""
     stem_text = (stem or "").strip()
@@ -160,6 +193,7 @@ def clean_fields(
         "knowledge_point": point,
         "difficulty": difficulty,
         "tags": _clean_tags(tags),
+        "error_causes": _clean_error_causes(error_causes),
     }
 
 
@@ -180,12 +214,15 @@ class QuestionBankService:
         filter: ListFilter = "all",
         knowledge_point: str | None = None,
         tag: str | None = None,
+        error_cause: str | None = None,
         search: str | None = None,
         node_id: str | None = None,
         limit: int = DEFAULT_PAGE,
         offset: int = 0,
     ) -> list[Question]:
-        where, params = self._where(filter, knowledge_point, tag, search, node_id)
+        where, params = self._where(
+            filter, knowledge_point, tag, search, node_id, error_cause=error_cause
+        )
         rows = await self._db.fetch_all(
             f"SELECT * FROM questions{where} ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?",
             (*params, max(1, min(limit, MAX_PAGE)), max(0, offset)),
@@ -243,10 +280,18 @@ class QuestionBankService:
             knowledge_point=fields.get("knowledge_point", current.knowledge_point),
             difficulty=fields.get("difficulty", current.difficulty),
             tags=fields.get("tags", current.tags),
+            error_causes=fields.get("error_causes", current.error_causes),
         )
+        note = clean_note(fields["note"]) if "note" in fields else current.note
+        if note == current.note:
+            note_updated_at = current.note_updated_at
+        else:
+            # 笔记真正变了才动时间戳；清空则连时间一起清掉（没有笔记就没有"笔记时间"）
+            note_updated_at = time.time() if note else None
         await self._db.execute(
             "UPDATE questions SET stem = ?, options = ?, answer = ?, explanation = ?, "
-            "knowledge_point = ?, difficulty = ?, tags = ?, type = ? WHERE id = ?",
+            "knowledge_point = ?, difficulty = ?, tags = ?, type = ?, "
+            "note = ?, note_updated_at = ?, error_causes = ? WHERE id = ?",
             (
                 cleaned["stem"],
                 json.dumps(cleaned["options"], ensure_ascii=False),
@@ -256,6 +301,9 @@ class QuestionBankService:
                 cleaned["difficulty"],
                 json.dumps(cleaned["tags"], ensure_ascii=False),
                 str(fields.get("type") or current.type),  # clean_fields 已校验过题型
+                note,
+                note_updated_at,
+                json.dumps(cleaned["error_causes"], ensure_ascii=False),
                 question_id,
             ),
         )
@@ -277,6 +325,89 @@ class QuestionBankService:
         else:
             rows = await self._db.fetch_all("SELECT stem, options FROM questions")
         return [comparison_text(str(row["stem"]), _load_str_list(row["options"])) for row in rows]
+
+    async def similar_questions(
+        self,
+        question_id: str,
+        *,
+        limit: int = 5,
+        min_score: float = DEFAULT_SIMILAR_MIN_SCORE,
+    ) -> list[tuple[Question, float]] | None:
+        """与某题词法相似的其他题（分数降序）；题不存在返回 None。
+
+        这是「像不像」的排序（dedup.ranked_similar），不是判重——同模板换数字的
+        变式题会排最前，这正是举一反三要的。v1 全表扫，题库量级无压力；
+        升级路径是题目嵌入索引（照知识库那套）。
+        """
+        target = await self.get_question(question_id)
+        if target is None:
+            return None
+        rows = await self._db.fetch_all(
+            "SELECT * FROM questions WHERE id != ? ORDER BY created_at DESC, rowid DESC",
+            (question_id,),
+        )
+        candidates = [self._row_to_question(row) for row in rows]
+        ranked = ranked_similar(
+            comparison_text(target.stem, target.options),
+            [comparison_text(item.stem, item.options) for item in candidates],
+            min_score=min_score,
+            limit=max(1, min(limit, MAX_SIMILAR)),
+        )
+        return [(candidates[index], score) for index, score in ranked]
+
+    async def duplicate_scores(self, texts: Sequence[str]) -> list[float]:
+        """一批文本各自与题库现有题的最大 Jaccard（预览「可能重题」用，**不**做判重）。
+
+        与 existing_texts 同一口径（题面 + 选项）；先给全库分一次词，避免每条草稿
+        重复扫全库。同模板换数字的变式题分数天然很高（0.85+），这里只作提示，
+        是否真重由用户看着办（采纳路径不接 0.8 阈值，见 dedup 模块注释）。
+        """
+        rows = await self._db.fetch_all("SELECT stem, options FROM questions")
+        bank: list[set[str]] = []
+        for row in rows:
+            tokens = set(
+                tokenize(comparison_text(str(row["stem"]), _load_str_list(row["options"])))
+            )
+            if tokens:
+                bank.append(tokens)
+        scores: list[float] = []
+        for text in texts:
+            tokens = set(tokenize(text or ""))
+            if not tokens or not bank:
+                scores.append(0.0)
+                continue
+            best = max(len(tokens & other) / len(tokens | other) for other in bank)
+            scores.append(round(best, 4))
+        return scores
+
+    async def apply_classification(
+        self,
+        question_id: str,
+        *,
+        knowledge_point: str = "",
+        tags: Iterable[str] | None = None,
+        error_causes: Iterable[str] | None = None,
+    ) -> Question | None:
+        """把 LLM 分类写回题目（题不存在返回 None）。
+
+        合并口径（与用户手改不打架）：知识点非空才覆盖（空=LLM 没看出知识点，
+        不该把用户填的清掉）；标签取并集；错因非空才整体覆盖（重跑分类要看到
+        新结论，而不是并成越来越多）。
+        """
+        current = await self.get_question(question_id)
+        if current is None:
+            return None
+        merged_tags = list(current.tags)
+        for tag in tags or ():
+            text = str(tag).strip()
+            if text and text not in merged_tags:
+                merged_tags.append(text)
+        return await self.update_question(
+            question_id,
+            knowledge_point=(knowledge_point or "").strip() or current.knowledge_point,
+            tags=merged_tags[:MAX_TAGS],
+            error_causes=list(error_causes) if error_causes else current.error_causes,
+        )
 
     # ---- 作答 ----
 
@@ -351,6 +482,7 @@ class QuestionBankService:
         tag: str | None,
         search: str | None,
         node_id: str | None = None,
+        error_cause: str | None = None,
     ) -> tuple[str, list[Any]]:
         clauses: list[str] = []
         params: list[Any] = []
@@ -368,6 +500,10 @@ class QuestionBankService:
             # tags 是 JSON 数组文本，题库量级下子串匹配足够（要做索引再说）
             clauses.append("tags LIKE ?")
             params.append(f'%"{tag}"%')
+        if error_cause:
+            # 同上：error_causes 也是 JSON 数组文本（键名不会互相包含，子串匹配安全）
+            clauses.append("error_causes LIKE ?")
+            params.append(f'%"{error_cause}"%')
         if search:
             clauses.append("(stem LIKE ? ESCAPE '\\' OR explanation LIKE ? ESCAPE '\\')")
             params.extend([_like_pattern(search), _like_pattern(search)])
@@ -384,6 +520,9 @@ class QuestionBankService:
         knowledge_point: str = "",
         difficulty: str = "medium",
         tags: Iterable[str] | None = None,
+        error_causes: Iterable[str] | None = None,
+        note: str | None = "",
+        parent_id: str | None = None,
         source: str | None = None,
         session_id: str | None = None,
         node_id: str | None = None,
@@ -401,10 +540,14 @@ class QuestionBankService:
             knowledge_point=knowledge_point,
             difficulty=difficulty,
             tags=tags,
+            error_causes=error_causes,
         )
         return Question.new(
             **cleaned,
             type=type,  # type: ignore[arg-type]  # clean_fields 已按白名单校验
+            note=clean_note(note),
+            # 软引用不校验存在性（源题可能已被删）；只做去空白
+            parent_id=(str(parent_id).strip() or None) if parent_id else None,
             source=source,
             session_id=session_id,
             node_id=node_id,
@@ -433,6 +576,10 @@ class QuestionBankService:
             question.difficulty,
             question.session_id,
             question.node_id,
+            question.note,
+            question.note_updated_at,
+            json.dumps(question.error_causes, ensure_ascii=False),
+            question.parent_id,
         )
 
     @staticmethod
@@ -459,6 +606,10 @@ class QuestionBankService:
             explanation=row["explanation"],
             source=row["source"],
             tags=_load_str_list(row["tags"]),
+            note=str(row["note"] or ""),
+            note_updated_at=row["note_updated_at"],
+            error_causes=_load_str_list(row["error_causes"]),
+            parent_id=row["parent_id"],
             mastery=float(row["mastery"] or 0.0),
             wrong_count=int(row["wrong_count"] or 0),
             last_attempt_at=row["last_attempt_at"],

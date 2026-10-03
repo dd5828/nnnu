@@ -349,6 +349,58 @@ def test_migrate_v9_to_v10_keeps_rows(tmp_home):
     assert indexes["idx_research_runs_active"] == (1, 1)  # 唯一 + 部分（只拦在飞行）
 
 
+def test_migrate_v10_to_v11_keeps_rows(tmp_home):
+    # 模拟 P6 状态：v10 库里有道老题（还没有笔记/错因/来源列）。升到 v11 后题还在、
+    # 四列就位：老行按默认值读（note NULL、error_causes 空数组文本、parent_id NULL），
+    # 新行能用新列写进去，来源索引是普通索引（变式题不唯一）。
+    data = tmp_home / "data"
+    (data / "system").mkdir(parents=True)
+    _version_file(tmp_home).write_text("10\n", encoding="utf-8")
+    path = db_path(data)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    try:
+        for level in ("2", "3", "4", "5", "6", "7", "8", "9", "10"):
+            for statement in MIGRATIONS[level]:
+                conn.execute(statement)
+        conn.execute(
+            "INSERT INTO questions (id, stem, options, answer, tags, type, knowledge_point, "
+            "difficulty, created_at) "
+            "VALUES ('q-v10', '老题面', '[]', '老答案', '[]', 'short', '老知识点', 'medium', 1.0)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert migrate(data) == SCHEMA_VERSION
+    assert {"note", "note_updated_at", "error_causes", "parent_id"} <= _columns(
+        tmp_home, "questions"
+    )
+    conn = sqlite3.connect(path)
+    try:
+        old_row = conn.execute(
+            "SELECT stem, note, note_updated_at, error_causes, parent_id FROM questions "
+            "WHERE id = 'q-v10'"
+        ).fetchone()
+        conn.execute(
+            "INSERT INTO questions (id, stem, options, answer, tags, type, knowledge_point, "
+            "difficulty, created_at, note, note_updated_at, error_causes, parent_id) "
+            "VALUES ('q-v11', '新题面', '[]', '新答案', '[]', 'short', '新知识点', 'medium', 2.0, "
+            "'笔记正文', 3.0, '[\"calculation\"]', 'q-v10')"
+        )
+        new_row = conn.execute(
+            "SELECT note, note_updated_at, error_causes, parent_id FROM questions "
+            "WHERE id = 'q-v11'"
+        ).fetchone()
+        conn.commit()
+    finally:
+        conn.close()
+    assert old_row == ("老题面", None, None, "[]", None)
+    assert new_row == ("笔记正文", 3.0, '["calculation"]', "q-v10")
+    # 来源索引是普通索引（非唯一、非部分：道道变式题都挂同一道源题是常态）
+    assert _indexes(tmp_home, "questions")["idx_questions_parent"] == (0, 0)
+
+
 def test_migrate_v9_idempotent(tmp_home):
     migrate(tmp_home / "data")
     assert migrate(tmp_home / "data") == SCHEMA_VERSION

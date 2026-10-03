@@ -11,7 +11,7 @@ const API_BASE = process.env.NNNU_API_BASE_URL ?? "http://127.0.0.1:8001";
  * 注意：本文件运行在 Node.js runtime（非 Edge），勿用 Edge 专属 API。
  * 例外：/api/upload/* 从 matcher 里排除（它由 web/app/api/upload/ 下的 route handler
  * 自己流式转发）——rewrite 的请求体在 ~10MB 处会断（实测 6MB 过、12MB 起 socket hang up），
- * 而知识库单文件上限 50MB。
+ * 而知识库单文件上限 200MB。
  */
 export function proxy(request: NextRequest) {
   if (isBackendPath(request.nextUrl.pathname)) {

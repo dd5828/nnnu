@@ -10,7 +10,14 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useI18n } from "@/hooks/useI18n";
 import type { QuestionInput } from "@/hooks/useQuestions";
-import type { Question, QuestionType } from "@/types/api";
+import {
+  ERROR_CAUSES,
+  MAX_ERROR_CAUSES,
+  errorCauseKey,
+  parseTagsInput,
+  tagsToInput,
+} from "@/lib/questions";
+import type { ErrorCause, Question, QuestionType } from "@/types/api";
 
 export const QUESTION_TYPES: QuestionType[] = ["single", "multi", "short"];
 export const DIFFICULTIES = ["easy", "medium", "hard"];
@@ -23,6 +30,9 @@ export interface QuestionFormValues {
   explanation: string;
   knowledgePoint: string;
   difficulty: string;
+  /** 逗号分隔的标签文本（提交时 parseTagsInput 切分去重）。 */
+  tags: string;
+  errorCauses: ErrorCause[];
 }
 
 export function emptyFormValues(): QuestionFormValues {
@@ -34,6 +44,8 @@ export function emptyFormValues(): QuestionFormValues {
     explanation: "",
     knowledgePoint: "",
     difficulty: "medium",
+    tags: "",
+    errorCauses: [],
   };
 }
 
@@ -46,6 +58,8 @@ export function formValuesOf(question: Question): QuestionFormValues {
     explanation: question.explanation ?? "",
     knowledgePoint: question.knowledge_point,
     difficulty: question.difficulty,
+    tags: tagsToInput(question.tags),
+    errorCauses: [...question.error_causes],
   };
 }
 
@@ -69,6 +83,8 @@ export function toInput(values: QuestionFormValues): QuestionInput {
     explanation: values.explanation.trim() || null,
     knowledge_point: values.knowledgePoint.trim(),
     difficulty: values.difficulty,
+    tags: parseTagsInput(values.tags),
+    error_causes: values.errorCauses,
   };
 }
 
@@ -163,6 +179,39 @@ export default function QuestionForm({
           placeholder={t("questions.knowledgePointPlaceholder")}
           className={`${inputClass} flex-1`}
         />
+      </div>
+      <input
+        data-testid={`${testidPrefix}-tags`}
+        value={values.tags}
+        onChange={(event) => patch({ tags: event.target.value })}
+        placeholder={t("questions.tagsPlaceholder")}
+        className={inputClass}
+      />
+      <div className="flex flex-wrap items-center gap-1.5" data-testid={`${testidPrefix}-causes`}>
+        <span className="text-[11px] text-muted">{t("questions.causesLabel")}</span>
+        {ERROR_CAUSES.map((cause) => {
+          const on = values.errorCauses.includes(cause);
+          return (
+            <button
+              key={cause}
+              type="button"
+              data-testid={`${testidPrefix}-cause-${cause}`}
+              data-on={on}
+              onClick={() => {
+                if (on) {
+                  patch({ errorCauses: values.errorCauses.filter((item) => item !== cause) });
+                } else if (values.errorCauses.length < MAX_ERROR_CAUSES) {
+                  patch({ errorCauses: [...values.errorCauses, cause] });
+                }
+              }}
+              className={`rounded-full px-2 py-0.5 text-[11px] transition-colors ${
+                on ? "bg-danger/15 text-danger" : "bg-accent/50 text-muted hover:bg-accent"
+              }`}
+            >
+              {t(errorCauseKey(cause))}
+            </button>
+          );
+        })}
       </div>
       {values.type !== "short" && (
         <textarea

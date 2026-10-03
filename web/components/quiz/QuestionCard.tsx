@@ -8,15 +8,17 @@
  */
 
 import { useState } from "react";
-import { Check, Loader2, Pencil, Sparkles, Trash2, X } from "lucide-react";
+import { Check, Loader2, Pencil, Sparkles, Trash2, Wand2, X } from "lucide-react";
 import { useI18n } from "@/hooks/useI18n";
 import {
+  useClassifyQuestion,
   useDeleteQuestion,
   useSubmitAttempt,
   useUpdateQuestion,
   type QuestionInput,
 } from "@/hooks/useQuestions";
 import { errorText } from "@/lib/errors";
+import { errorCauseKey } from "@/lib/questions";
 import type { AttemptResponse, Question } from "@/types/api";
 import Markdown from "@/components/chat/Markdown";
 import QuestionForm, {
@@ -25,6 +27,7 @@ import QuestionForm, {
   validate,
   type QuestionFormValues,
 } from "./QuestionForm";
+import QuestionVariantsPanel from "./QuestionVariantsPanel";
 
 /** 选项标签：位置推 A/B/C/D（与后端存法一致，多选用得到）。 */
 export function optionLabel(index: number): string {
@@ -62,9 +65,15 @@ export default function QuestionCard({
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<QuestionFormValues>(() => formValuesOf(question));
   const [formError, setFormError] = useState<string | null>(null);
+  const [editingNote, setEditingNote] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [noteError, setNoteError] = useState<string | null>(null);
+  const [classifyReason, setClassifyReason] = useState<string | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
   const submit = useSubmitAttempt();
   const update = useUpdateQuestion();
   const remove = useDeleteQuestion();
+  const classify = useClassifyQuestion();
 
   const answer = question.type === "short" ? text.trim() : choice;
   const canSubmit = answer.length > 0 && !submit.isPending;
@@ -116,6 +125,27 @@ export default function QuestionCard({
   const handleDelete = () => {
     if (window.confirm(t("questions.deleteConfirm"))) {
       remove.mutate(question.id);
+    }
+  };
+
+  const saveNote = async () => {
+    setNoteError(null);
+    try {
+      await update.mutateAsync({ id: question.id, note: noteDraft });
+      setEditingNote(false);
+    } catch (error) {
+      setNoteError(errorText(error, t("common.requestFailed")));
+    }
+  };
+
+  const runClassify = async () => {
+    setFormError(null);
+    setClassifyReason(null);
+    try {
+      const response = await classify.mutateAsync({ id: question.id, language });
+      setClassifyReason(response.suggestion.reason || null);
+    } catch (error) {
+      setFormError(errorText(error, t("common.requestFailed")));
     }
   };
 
@@ -192,6 +222,21 @@ export default function QuestionCard({
           </span>
         )}
         {question.knowledge_point && <span>{question.knowledge_point}</span>}
+        {question.tags.map((tag) => (
+          <span key={tag} data-testid="q-tag" className="rounded bg-accent/60 px-1.5 py-0.5">
+            {tag}
+          </span>
+        ))}
+        {question.error_causes.map((cause) => (
+          <span
+            key={cause}
+            data-testid="q-cause"
+            data-cause={cause}
+            className="rounded bg-danger/10 px-1.5 py-0.5 text-danger"
+          >
+            {t(errorCauseKey(cause))}
+          </span>
+        ))}
         {question.wrong_count > 0 && (
           <span className="text-danger">
             {t("questions.wrongCount", { n: String(question.wrong_count) })}
@@ -210,6 +255,82 @@ export default function QuestionCard({
           <span>{Math.round(question.mastery * 100)}%</span>
         </span>
       </div>
+
+      <div data-testid="q-note-area" className="mt-2 rounded-lg bg-accent/30 px-2.5 py-2">
+        {editingNote ? (
+          <div className="space-y-1.5">
+            <textarea
+              data-testid="q-note-input"
+              value={noteDraft}
+              onChange={(event) => setNoteDraft(event.target.value)}
+              placeholder={t("questions.notePlaceholder")}
+              rows={3}
+              className="w-full rounded-lg border border-border bg-transparent px-2.5 py-1.5 text-xs outline-none focus:border-primary/50"
+            />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                data-testid="q-note-save"
+                disabled={update.isPending}
+                onClick={() => void saveNote()}
+                className="rounded-lg bg-primary px-2.5 py-1 text-[11px] text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-50"
+              >
+                {t("common.save")}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingNote(false);
+                  setNoteError(null);
+                }}
+                className="rounded-lg px-2.5 py-1 text-[11px] text-muted transition-colors hover:bg-accent hover:text-foreground"
+              >
+                {t("common.close")}
+              </button>
+              {noteError && <span className="text-[11px] text-danger">{noteError}</span>}
+            </div>
+          </div>
+        ) : question.note ? (
+          <div className="flex items-start gap-2">
+            <div className="markdown-body min-w-0 flex-1 text-xs">
+              <Markdown text={question.note} />
+            </div>
+            <button
+              type="button"
+              data-testid="q-note-edit"
+              onClick={() => {
+                setNoteDraft(question.note);
+                setNoteError(null);
+                setEditingNote(true);
+              }}
+              title={t("questions.noteEdit")}
+              className="shrink-0 rounded-lg p-1 text-muted transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            data-testid="q-note-edit"
+            onClick={() => {
+              setNoteDraft("");
+              setNoteError(null);
+              setEditingNote(true);
+            }}
+            className="text-[11px] text-muted transition-colors hover:text-foreground"
+          >
+            + {t("questions.noteAdd")}
+          </button>
+        )}
+      </div>
+
+      {classifyReason && (
+        <p data-testid="q-classify-reason" className="mt-1.5 text-[11px] text-muted">
+          <Sparkles className="inline h-3 w-3" />{" "}
+          {t("questions.classifyReason", { reason: classifyReason })}
+        </p>
+      )}
 
       <div className="mt-3 space-y-1.5" data-testid="q-answer">
         {question.type === "short" ? (
@@ -271,6 +392,35 @@ export default function QuestionCard({
           {submit.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           {t("questions.submit")}
         </button>
+        <button
+          type="button"
+          data-testid="q-classify"
+          disabled={classify.isPending}
+          onClick={() => void runClassify()}
+          title={t("questions.classifyHint")}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-muted transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+        >
+          {classify.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Sparkles className="h-3.5 w-3.5" />
+          )}
+          {t("questions.classify")}
+        </button>
+        <button
+          type="button"
+          data-testid="q-variants-toggle"
+          data-open={panelOpen}
+          onClick={() => setPanelOpen((open) => !open)}
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+            panelOpen
+              ? "border-primary/50 bg-primary/5 text-primary"
+              : "border-border text-muted hover:bg-accent hover:text-foreground"
+          }`}
+        >
+          <Wand2 className="h-3.5 w-3.5" />
+          {t("questions.variants")}
+        </button>
         {result && (
           <span
             data-testid="q-result"
@@ -312,6 +462,8 @@ export default function QuestionCard({
         </div>
       )}
       {!result && formError && <p className="mt-2 text-xs text-danger">{formError}</p>}
+
+      {panelOpen && <QuestionVariantsPanel question={question} language={language} />}
     </li>
   );
 }

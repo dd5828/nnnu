@@ -11,11 +11,23 @@
 import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
-import type { AttemptResponse, Question, QuestionFilter, QuestionListResponse } from "@/types/api";
+import type {
+  AttemptResponse,
+  BatchAdoptResponse,
+  ClassifyResponse,
+  ErrorCause,
+  Question,
+  QuestionFilter,
+  QuestionListResponse,
+  SimilarResponse,
+  VariantsResponse,
+} from "@/types/api";
 
 export interface QuestionFilters {
   filter: QuestionFilter;
   knowledgePoint?: string;
+  /** 按错因筛（枚举键；筛选条下拉用）。 */
+  errorCause?: string;
   search?: string;
   /** 只看学习路径某个节点的题（学习看板的薄弱点深链 ?node= 走这里）。 */
   nodeId?: string;
@@ -27,6 +39,9 @@ function queryString(filters: QuestionFilters): string {
   const params = new URLSearchParams({ filter: filters.filter });
   if (filters.knowledgePoint) {
     params.set("knowledge_point", filters.knowledgePoint);
+  }
+  if (filters.errorCause) {
+    params.set("error_cause", filters.errorCause);
   }
   if (filters.search) {
     params.set("search", filters.search);
@@ -43,6 +58,7 @@ export function useQuestionList(filters: QuestionFilters) {
       "questions",
       filters.filter,
       filters.knowledgePoint ?? "",
+      filters.errorCause ?? "",
       filters.search ?? "",
       filters.nodeId ?? "",
     ],
@@ -60,6 +76,9 @@ export interface QuestionInput {
   explanation?: string | null;
   knowledge_point?: string;
   difficulty?: string;
+  tags?: string[];
+  error_causes?: ErrorCause[];
+  note?: string;
 }
 
 function useInvalidateQuestions() {
@@ -78,10 +97,11 @@ export function useCreateQuestion() {
   });
 }
 
+/** 局部更新：只发改动字段（笔记单独保存也走这里，body 可以只有 note）。 */
 export function useUpdateQuestion() {
   const invalidate = useInvalidateQuestions();
   return useMutation({
-    mutationFn: ({ id, ...body }: QuestionInput & { id: string }) =>
+    mutationFn: ({ id, ...body }: Partial<QuestionInput> & { id: string }) =>
       apiFetch<Question>(`/api/v1/questions/${id}`, {
         method: "PATCH",
         body: JSON.stringify(body),
@@ -111,5 +131,62 @@ export function useSubmitAttempt() {
       void invalidate();
       return data;
     },
+  });
+}
+
+/** 相似题（举一反三第一级）：零 LLM；面板打开才拉，同题短时间不重复拉。 */
+export function useSimilarQuestions(questionId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["questions", "similar", questionId],
+    queryFn: () => apiFetch<SimilarResponse>(`/api/v1/questions/${questionId}/similar?limit=5`),
+    enabled,
+    staleTime: 30_000,
+  });
+}
+
+/** AI 分类：LLM 看题 + 笔记写回知识点/标签/错因（成功即刷列表——题目本体变了）。 */
+export function useClassifyQuestion() {
+  const invalidate = useInvalidateQuestions();
+  return useMutation({
+    mutationFn: ({ id, language }: { id: string; language: string }) =>
+      apiFetch<ClassifyResponse>(`/api/v1/questions/${id}/classify`, {
+        method: "POST",
+        body: JSON.stringify({ language }),
+      }),
+    onSuccess: () => invalidate(),
+  });
+}
+
+/** 生成变式题（预览态）：**不**失效列表——草稿不落库，勾选采纳时才变。 */
+export function useGenerateVariants() {
+  return useMutation({
+    mutationFn: ({
+      id,
+      mode,
+      count,
+      language,
+    }: {
+      id: string;
+      mode: string;
+      count: number;
+      language: string;
+    }) =>
+      apiFetch<VariantsResponse>(`/api/v1/questions/${id}/variants`, {
+        method: "POST",
+        body: JSON.stringify({ mode, count, language }),
+      }),
+  });
+}
+
+/** 采纳变式题（批量入库）：成功后列表、相似题、计数一起失效重取。 */
+export function useAdoptVariants() {
+  const invalidate = useInvalidateQuestions();
+  return useMutation({
+    mutationFn: ({ parentId, questions }: { parentId: string; questions: QuestionInput[] }) =>
+      apiFetch<BatchAdoptResponse>("/api/v1/questions/batch", {
+        method: "POST",
+        body: JSON.stringify({ parent_id: parentId, questions }),
+      }),
+    onSuccess: () => invalidate(),
   });
 }

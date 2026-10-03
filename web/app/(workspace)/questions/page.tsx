@@ -19,7 +19,8 @@ import QuestionForm, { emptyFormValues, toInput, validate } from "@/components/q
 import { useCreateQuestion, useQuestionList } from "@/hooks/useQuestions";
 import { useI18n } from "@/hooks/useI18n";
 import { errorText } from "@/lib/errors";
-import type { QuestionFilter } from "@/types/api";
+import { ERROR_CAUSES, errorCauseKey } from "@/lib/questions";
+import type { ErrorCause, QuestionFilter } from "@/types/api";
 
 const FILTERS: { value: QuestionFilter; key: string }[] = [
   { value: "all", key: "questions.filterAll" },
@@ -47,6 +48,7 @@ function QuestionsBoard() {
   const nodeId = searchParams.get("node") ?? "";
   const [filter, setFilter] = useState<QuestionFilter>("all");
   const [knowledgePoint, setKnowledgePoint] = useState("");
+  const [errorCause, setErrorCause] = useState("");
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [formOpen, setFormOpen] = useState(false);
@@ -60,8 +62,14 @@ function QuestionsBoard() {
     return () => clearTimeout(timer);
   }, [searchDraft]);
 
-  const { data, isLoading, error } = useQuestionList({ filter, knowledgePoint, search, nodeId });
-  // 知识点下拉的候选：另外拉一份「全部」的第一页（同一条查询缓存住，切筛选不会重复请求）
+  const { data, isLoading, error } = useQuestionList({
+    filter,
+    knowledgePoint,
+    errorCause,
+    search,
+    nodeId,
+  });
+  // 知识点/错因下拉的候选：另外拉一份「全部」的第一页（同一条查询缓存住，切筛选不会重复请求）
   const { data: all } = useQuestionList({ filter: "all" });
   const knowledgePoints = useMemo(
     () =>
@@ -70,6 +78,13 @@ function QuestionsBoard() {
       ].sort(),
     [all]
   );
+  // 错因下拉只列库里真出现过的（枚举固定，但没题的错因不摆出来）
+  const causesPresent = useMemo(() => {
+    const present = new Set(
+      (all?.questions ?? []).flatMap((item) => item.error_causes as ErrorCause[])
+    );
+    return ERROR_CAUSES.filter((cause) => present.has(cause));
+  }, [all]);
 
   const questions = data?.questions ?? [];
   const counts = data?.counts ?? { all: 0, wrong: 0, unanswered: 0 };
@@ -169,6 +184,21 @@ function QuestionsBoard() {
               {knowledgePoints.map((point) => (
                 <option key={point} value={point}>
                   {point}
+                </option>
+              ))}
+            </select>
+          )}
+          {causesPresent.length > 0 && (
+            <select
+              data-testid="q-filter-cause"
+              value={errorCause}
+              onChange={(event) => setErrorCause(event.target.value)}
+              className="rounded-lg border border-border bg-transparent px-2 py-1 text-xs outline-none focus:border-primary/50"
+            >
+              <option value="">{t("questions.causeAll")}</option>
+              {causesPresent.map((cause) => (
+                <option key={cause} value={cause}>
+                  {t(errorCauseKey(cause))}
                 </option>
               ))}
             </select>

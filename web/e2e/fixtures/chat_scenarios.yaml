@@ -453,3 +453,23 @@ steps:
       - '{"summary_text": "做了个 10 秒的斐波那契动画：边长 1、1、2、3、5 的正方形依次拼出来，排成一排后停留；第一次渲染失败，修掉问题后第二次渲染成功。", "key_points": ["斐波那契边长逐个出现", "首次渲染失败后自动修复", "第二次尝试产出视频"]}'
     finish_reason: stop
     usage: { prompt_tokens: 100, completion_tokens: 80 }
+  # Turn 23（questions.e2e ①）：AI 分类——严格 JSON（字段对齐 assist.parse_classification）；
+  # 错因故意写中文别名「概念不清」，验证别名归一
+  - chunks:
+      - |
+        {"knowledge_point": "幂函数求导", "tags": ["易错"], "error_causes": ["概念不清"], "reason": "笔记提到公式记混，题目是幂函数求导"}
+    finish_reason: stop
+    delay_ms: 300
+    usage: { prompt_tokens: 200, completion_tokens: 80 }
+  # Turn 24（questions.e2e ②）：变式题预览——三条草稿里两条合格、一条答案读不准被丢；
+  # 合格的两条答案给选项原文（"12"），验证唯一命中归一成标签
+  - chunks:
+      - |
+        {"variants": [
+          {"stem": "（变式甲）函数 $g(x)=x^3$ 在 $x=2$ 处的导数是多少？", "options": ["6", "12", "8", "4"], "answer": "12", "explanation": "先求导得 $3x^2$，代入得 12。", "difficulty": "easy"},
+          {"stem": "（变式乙）函数 $h(x)=x^3$ 在 $x=1$ 处的导数是多少？", "options": ["3", "1", "6", "9"], "answer": "3", "explanation": "先求导得 $3x^2$，代入得 3。", "difficulty": "easy"},
+          {"stem": "坏题：答案不知所云", "options": ["6", "12"], "answer": "我不知道"}
+        ]}
+    finish_reason: stop
+    delay_ms: 300
+    usage: { prompt_tokens: 300, completion_tokens: 200 }
