@@ -18,12 +18,34 @@ async function openSession(page: import("@playwright/test").Page): Promise<void>
   await expect(page.locator("textarea").first()).toBeVisible();
 }
 
+/** 进行中回合的顶到滚动视口顶的距离（没有回合/容器时返回 null）。 */
+async function turnTopGap(page: import("@playwright/test").Page): Promise<number | null> {
+  return page.evaluate(() => {
+    const container = document.querySelector('[data-testid="message-scroll"]');
+    const turn = document.querySelector('[data-testid="active-turn"]');
+    if (!container || !turn) {
+      return null;
+    }
+    return turn.getBoundingClientRect().top - container.getBoundingClientRect().top;
+  });
+}
+
 test("① 流式一问一答：思考块与正文分离、KaTeX、成本摘要、会话标题", async ({ page }) => {
   await page.goto("/");
   const box = page.locator("textarea").first();
   await box.fill(SESSION_TITLE);
   await box.press("Enter");
-  // 思考块在流式窗口内可见（脚本 delay 1500ms 留出观察窗）
+  // 回复开头钉在视口顶：与顶只差 8px 留白（±2 容亚像素）。回合比一屏短时能不能钉住，
+  // 全靠列表尾巴那块透明占位把下方的滚动余量补满——这里就是那条物理账的回归断言。
+  // 从按下 Enter 就开始采：脚本回合的「思考」块贴着终局才出现，等它可见就没进行中
+  // 回合可采了（占位与钉位随回合卸载）。poll 只要回合活着时采到一次即通过。
+  await expect
+    .poll(async () => {
+      const gap = await turnTopGap(page);
+      return gap === null ? 999 : Math.abs(gap - 8);
+    })
+    .toBeLessThanOrEqual(2);
+  // 思考块可见（脚本 delay 1500ms，流式窗口内或终局后都算）
   await expect(page.getByText("思考", { exact: true })).toBeVisible({ timeout: 5000 });
   // 回合结束：成本徽标出现
   await expect(page.getByText(/成本/).first()).toBeVisible({ timeout: 15000 });
@@ -51,10 +73,16 @@ test("② ask_user 中途提问弹窗：选择后回合继续", async ({ page })
   await expect(page.getByText("好，我们看工程应用方向")).toBeVisible({ timeout: 10000 });
 });
 
-test("③ 重新生成：旧回复被新回复替换", async ({ page }) => {
+test("③ 重新生成：旧回复马上退场，新回复替换到位", async ({ page }) => {
   await openSession(page);
-  await page.getByRole("button", { name: "重新生成" }).first().click();
+  const oldAnswer = page.getByText("好，我们看工程应用方向", { exact: false });
+  await expect(oldAnswer).toBeVisible();
+  await page.getByTestId("regenerate").click();
+  // 乐观删除：不等服务器终局刷新，旧回复立刻从界面消失（§6.8 语义的本地预演）
+  await expect(oldAnswer).toHaveCount(0);
   await expect(page.getByText("重新生成的回答")).toBeVisible({ timeout: 10000 });
+  // 终局后按钮回到最新一条回复上（active 被清干净，不会卡在「忙碌」态）
+  await expect(page.getByTestId("regenerate")).toBeVisible();
 });
 
 test("④ 停止：流式中断，1 秒内回到空闲", async ({ page }) => {

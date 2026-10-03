@@ -5,6 +5,7 @@
  * 学习路径 / 研究各自多一个入口（去学习看板 / 确认大纲），按当前能力显示。
  */
 
+import { memo } from "react";
 import Link from "next/link";
 import { Binoculars, Download, GraduationCap, RefreshCw } from "lucide-react";
 import { useChatStore, type UiMessage } from "@/hooks/useChat";
@@ -19,16 +20,17 @@ import SaveToNotebook from "./SaveToNotebook";
 import ThinkingBlock from "./ThinkingBlock";
 import ToolCallCard from "./ToolCallCard";
 
-export default function AssistantMessage({ message }: { message: UiMessage }) {
+function AssistantMessage({ message }: { message: UiMessage }) {
   const { t } = useI18n();
   const regenerate = useChatStore((s) => s.regenerate);
-  const active = useChatStore((s) => s.active);
+  // 只要「是否忙碌」这一个布尔：流式 delta 期间它不变，历史消息整条不重渲
+  const busy = useChatStore((s) => s.active !== null);
   const send = useChatStore((s) => s.send);
   const capability = useChatStore((s) => s.capability);
   const isLast = useChatStore((s) => s.messages[s.messages.length - 1]?.id === message.id);
   const isResearch = capability === CAPABILITY_RESEARCH;
   // 停在大纲上等答复的那一条：确认按钮只在这时出现（报告那一条不出现）
-  const awaitingConfirm = isResearch && isLast && !active && isResearchOutline(message.content);
+  const awaitingConfirm = isResearch && isLast && !busy && isResearchOutline(message.content);
   return (
     <div className="flex flex-col items-start gap-1.5">
       {message.thinking && <ThinkingBlock text={message.thinking} streaming={false} />}
@@ -83,9 +85,10 @@ export default function AssistantMessage({ message }: { message: UiMessage }) {
             {t("chat.researchConfirm")}
           </button>
         )}
-        {isLast && !active && (
+        {isLast && !busy && (
           <button
             type="button"
+            data-testid="regenerate"
             onClick={regenerate}
             className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] text-muted transition-colors hover:bg-accent hover:text-foreground"
           >
@@ -97,3 +100,7 @@ export default function AssistantMessage({ message }: { message: UiMessage }) {
     </div>
   );
 }
+
+// 历史消息整条 memo：props 只有 message，引用没变（终局重取按 id 复用，见 lib/chat-messages）
+// 就绝不重渲——流式期间不重渲，才是「历史多了也不卡」的关键
+export default memo(AssistantMessage);

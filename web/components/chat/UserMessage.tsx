@@ -7,6 +7,8 @@
  * 序号，换个序号就重挂一次 overlay，让 CSS 动画从头播（气泡本身不 remount）。
  */
 
+import { memo } from "react";
+
 export interface UserMessageProps {
   content: string;
   messageId?: string;
@@ -14,12 +16,7 @@ export interface UserMessageProps {
   flashSeq?: number | null;
 }
 
-export default function UserMessage({
-  content,
-  messageId,
-  ordinal = null,
-  flashSeq = null,
-}: UserMessageProps) {
+function UserMessage({ content, messageId, ordinal = null, flashSeq = null }: UserMessageProps) {
   return (
     <div
       className="flex justify-end"
@@ -41,3 +38,6 @@ export default function UserMessage({
     </div>
   );
 }
+
+// props 全是原始值：内容没变就不重渲（闪烁靠 flashSeq 变化打破 memo，照旧生效）
+export default memo(UserMessage);

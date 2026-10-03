@@ -22,7 +22,9 @@ export default function PlaygroundPage() {
   const sessionId = useChatStore((s) => s.sessionId);
   const sessions = useChatStore((s) => s.sessions);
   const messages = useChatStore((s) => s.messages);
-  const active = useChatStore((s) => s.active);
+  // 细粒度订阅：流式 delta 只换 active 整对象，这里只要布尔与阶段文案
+  const busy = useChatStore((s) => s.active !== null);
+  const stage = useChatStore((s) => s.active?.stage ?? "");
   const send = useChatStore((s) => s.send);
   const stop = useChatStore((s) => s.stop);
   const setCapability = useChatStore((s) => s.setCapability);
@@ -80,7 +82,7 @@ export default function PlaygroundPage() {
   const sessionTitle = sessions.find((s) => s.id === sessionId)?.title ?? "";
 
   const submit = () => {
-    if (!text.trim() || active) {
+    if (!text.trim() || busy) {
       return;
     }
     const message = text;
@@ -128,7 +130,7 @@ export default function PlaygroundPage() {
               <span className="text-xs text-muted">
                 {t(`chat.visualizeRenderType_${renderType}`)}
               </span>
-              {active ? (
+              {busy ? (
                 <button
                   type="button"
                   data-testid="playground-stop"
@@ -161,7 +163,7 @@ export default function PlaygroundPage() {
                   type="button"
                   data-testid="playground-render-type"
                   data-value={option}
-                  disabled={Boolean(active)}
+                  disabled={busy}
                   onClick={() => setRenderType(option)}
                   title={t(`chat.visualizeRenderTypeHint_${option}`)}
                   className={`rounded-full px-2.5 py-1 text-xs transition-colors disabled:opacity-50 ${
@@ -187,13 +189,13 @@ export default function PlaygroundPage() {
         <section className="flex min-w-0 flex-col gap-2">
           <div className="flex items-center gap-2 text-xs text-muted">
             <span className="min-w-0 flex-1 truncate">{sessionTitle}</span>
-            {active && (
+            {busy && (
               <span
                 data-testid="playground-status"
                 className="inline-flex items-center gap-1.5 text-primary"
               >
                 <Loader2 className="h-3 w-3 animate-spin" />
-                {active.stage ?? t("playground.rendering")}
+                {stage || t("playground.rendering")}
               </span>
             )}
           </div>

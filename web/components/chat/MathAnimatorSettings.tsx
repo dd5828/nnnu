@@ -22,7 +22,7 @@ export default function MathAnimatorSettings() {
   const capability = useChatStore((s) => s.capability);
   const quality = useChatStore((s) => s.animatorQuality);
   const setQuality = useChatStore((s) => s.setAnimatorQuality);
-  const active = useChatStore((s) => s.active);
+  const busy = useChatStore((s) => s.active !== null);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -50,7 +50,7 @@ export default function MathAnimatorSettings() {
         value={quality}
         label={t(`chat.animatorQuality_${quality}`)}
         title={t("chat.animatorQualityHint")}
-        disabled={Boolean(active)}
+        disabled={busy}
         open={open}
         onToggle={() => setOpen((prev) => !prev)}
       >

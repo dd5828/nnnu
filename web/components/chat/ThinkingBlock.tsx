@@ -2,11 +2,11 @@
 
 /** 思考块（§6.1 thinking_delta/done）：可折叠面板，流式时默认展开。 */
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Brain, ChevronDown } from "lucide-react";
 import { useI18n } from "@/hooks/useI18n";
 
-export default function ThinkingBlock({ text, streaming }: { text: string; streaming: boolean }) {
+function ThinkingBlock({ text, streaming }: { text: string; streaming: boolean }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(streaming);
   if (!text) {
@@ -34,3 +34,6 @@ export default function ThinkingBlock({ text, streaming }: { text: string; strea
     </div>
   );
 }
+
+// 调用方的 text 已经过流式节流：节流窗口内引用不变，整块跳过重渲
+export default memo(ThinkingBlock);

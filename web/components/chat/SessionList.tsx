@@ -24,7 +24,7 @@ export default function SessionList({
   useFocusTrap(drawerRef, drawerMode);
   const sessions = useChatStore((s) => s.sessions);
   const sessionId = useChatStore((s) => s.sessionId);
-  const active = useChatStore((s) => s.active);
+  const busy = useChatStore((s) => s.active !== null);
   const newSession = useChatStore((s) => s.newSession);
   const selectSession = useChatStore((s) => s.selectSession);
   const renameSession = useChatStore((s) => s.renameSession);
@@ -97,7 +97,7 @@ export default function SessionList({
             <div
               key={session.id}
               onClick={() => {
-                if (!active && session.id !== sessionId) {
+                if (!busy && session.id !== sessionId) {
                   void selectSession(session.id);
                 }
                 onClose?.(); // 窄屏：选中即收起抽屉（桌面端 onClose 没传，等于空操作）

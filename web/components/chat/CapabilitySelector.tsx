@@ -39,7 +39,7 @@ export default function CapabilitySelector() {
   const { t } = useI18n();
   const capability = useChatStore((s) => s.capability);
   const setCapability = useChatStore((s) => s.setCapability);
-  const active = useChatStore((s) => s.active);
+  const busy = useChatStore((s) => s.active !== null);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -71,10 +71,10 @@ export default function CapabilitySelector() {
         data-testid="capability-selector"
         data-value={capability}
         onClick={() => setOpen((prev) => !prev)}
-        disabled={Boolean(active)}
+        disabled={busy}
         aria-label={t("chat.selectCapability")}
         aria-expanded={open}
-        title={active ? t("chat.capabilityBusy") : t("chat.capabilityHint")}
+        title={busy ? t("chat.capabilityBusy") : t("chat.capabilityHint")}
         className={`flex max-w-[10rem] items-center gap-1.5 rounded-lg p-2 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
           capability !== CAPABILITY_CHAT
             ? "text-primary hover:bg-primary/10"

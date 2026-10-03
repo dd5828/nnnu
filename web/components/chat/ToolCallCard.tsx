@@ -2,12 +2,12 @@
 
 /** 工具调用卡片（§6.1 tool_call/tool_result）：状态 + 参数/结果折叠（detail 默认折叠）。 */
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Check, ChevronDown, Loader2, Wrench, X } from "lucide-react";
 import { useI18n } from "@/hooks/useI18n";
 import type { UiToolCall } from "@/hooks/useChat";
 
-export default function ToolCallCard({ call }: { call: UiToolCall }) {
+function ToolCallCard({ call }: { call: UiToolCall }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const running = call.ok === null;
@@ -84,3 +84,6 @@ export default function ToolCallCard({ call }: { call: UiToolCall }) {
     </div>
   );
 }
+
+// call 对象只在对应工具事件里换引用：正文/思考 delta 时不重渲
+export default memo(ToolCallCard);

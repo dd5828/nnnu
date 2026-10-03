@@ -15,6 +15,10 @@ export type Throttled<A extends unknown[]> = {
   cancel: () => void;
 };
 
+/** 流式文本的渲染节流窗口（ms）：正文与思考共用。50ms≈每帧最多一次重排，
+ *  比 90ms 跟手，又远低于每 delta 一渲的密度（§7.21 增量渲染）。 */
+export const STREAM_THROTTLE_MS = 50;
+
 export function createThrottle<A extends unknown[]>(
   fn: (...args: A) => void,
   ms: number

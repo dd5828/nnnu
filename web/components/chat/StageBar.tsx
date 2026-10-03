@@ -11,11 +11,12 @@
  * currentIndex 会一直是 -1）。
  */
 
+import { memo } from "react";
 import { Check, Circle, Loader2 } from "lucide-react";
 import { useI18n } from "@/hooks/useI18n";
 import { CAPABILITY_LABEL_KEYS, STAGE_LABEL_KEYS, STAGES_BY_CAPABILITY } from "@/lib/capabilities";
 
-export default function StageBar({ capability, stages }: { capability: string; stages: string[] }) {
+function StageBar({ capability, stages }: { capability: string; stages: string[] }) {
   const { t } = useI18n();
   // 声明顺序打头（含还没到的灰点），观测到的未知阶段按出现顺序补在后面
   const declared = STAGES_BY_CAPABILITY[capability] ?? [];
@@ -84,3 +85,6 @@ export default function StageBar({ capability, stages }: { capability: string; s
     </div>
   );
 }
+
+// stages 数组在正文/思考 delta 时不换引用（只有 status 事件才追加）：阶段条稳定不重渲
+export default memo(StageBar);

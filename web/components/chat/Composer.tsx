@@ -23,7 +23,8 @@ export default function Composer() {
   const { t } = useI18n();
   const send = useChatStore((s) => s.send);
   const stop = useChatStore((s) => s.stop);
-  const active = useChatStore((s) => s.active);
+  // 只订「是否忙碌」布尔：流式 delta 不重渲输入区
+  const busy = useChatStore((s) => s.active !== null);
   const ensureSession = useChatStore((s) => s.ensureSession);
   const capability = useChatStore((s) => s.capability);
   const [text, setText] = useState("");
@@ -169,7 +170,7 @@ export default function Composer() {
               className="hidden"
               onChange={(event) => void handleUpload(event.target.files)}
             />
-            {active ? (
+            {busy ? (
               <button
                 type="button"
                 onClick={stop}

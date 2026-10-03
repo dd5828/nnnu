@@ -30,7 +30,7 @@ export default function ResearchSettings() {
   const mode = useChatStore((s) => s.researchMode);
   const setDepth = useChatStore((s) => s.setResearchDepth);
   const setMode = useChatStore((s) => s.setResearchMode);
-  const active = useChatStore((s) => s.active);
+  const busy = useChatStore((s) => s.active !== null);
   const [open, setOpen] = useState<"depth" | "mode" | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -63,7 +63,7 @@ export default function ResearchSettings() {
         value={depth}
         label={t(`chat.researchDepth_${depth}`)}
         title={t("chat.researchDepthHint")}
-        disabled={Boolean(active)}
+        disabled={busy}
         open={open === "depth"}
         onToggle={() => setOpen((prev) => (prev === "depth" ? null : "depth"))}
       >
@@ -84,7 +84,7 @@ export default function ResearchSettings() {
         value={mode}
         label={t(`chat.researchMode_${mode}`)}
         title={t("chat.researchModeHint")}
-        disabled={Boolean(active)}
+        disabled={busy}
         open={open === "mode"}
         onToggle={() => setOpen((prev) => (prev === "mode" ? null : "mode"))}
       >

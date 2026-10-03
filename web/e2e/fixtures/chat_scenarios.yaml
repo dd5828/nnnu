@@ -22,7 +22,9 @@ steps:
     finish_reason: stop
     usage: { prompt_tokens: 100, completion_tokens: 30 }
   # Turn 3（测试③）：重新生成——同一条用户消息重跑出新答案
-  - chunks: ["重新生成的回答：傅里叶变换把时域信号分解为频域分量。"]
+  # delay 800ms 把「旧回复已退场、新回复还没到」的窗口拉开，乐观删除才可断言
+  - delay_ms: 800
+    chunks: ["重新生成的回答：傅里叶变换把时域信号分解为频域分量。"]
     finish_reason: stop
     usage: { prompt_tokens: 100, completion_tokens: 30 }
   # Turn 4（测试④）：停止——8s 停顿留出停表窗口，用户在完成前点停止

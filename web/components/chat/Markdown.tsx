@@ -4,7 +4,7 @@
  *  ```svg / ```echarts / ```mermaid / ```html 围栏换成真渲染块（§7.7），```nnnu-artifact
  *  换成产物卡片（§7.8）——正文契约见 `lib/render.ts`。 */
 
-import { isValidElement, useEffect, useMemo, useState, type ReactNode } from "react";
+import { isValidElement, memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
@@ -12,14 +12,14 @@ import remarkMath from "remark-math";
 import ArtifactCard from "@/components/render/ArtifactCard";
 import RenderViewer from "@/components/render/RenderViewer";
 import { ARTIFACT_LANG, isRenderLang, kindFromLang, parseArtifactJson } from "@/lib/render";
-import { createThrottle } from "@/lib/throttle";
+import { createThrottle, STREAM_THROTTLE_MS } from "@/lib/throttle";
 import "katex/dist/katex.min.css";
 
 /** 流式正文节流（§7.21 增量渲染）：增量再密也最多每 `ms` 重渲染一次。
  *
  * 这里必须是**节流**：防抖会在「增量间隔短于窗口」时把更新一路顺延，正文直到流
  * 结束才整段出现（真机踩过）。见 `lib/throttle.ts`。 */
-export function useThrottledText(text: string, ms = 90): string {
+export function useThrottledText(text: string, ms = STREAM_THROTTLE_MS): string {
   const [display, setDisplay] = useState(text);
   const throttle = useMemo(() => createThrottle<[string]>((value) => setDisplay(value), ms), [ms]);
   useEffect(() => {
@@ -69,7 +69,9 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   return <pre>{children}</pre>;
 }
 
-export default function Markdown({ text }: { text: string }) {
+// memo 是流式不抖的关键一击：react-markdown 内部零缓存，text 引用不变就直接跳过——
+// 思考在流时正文的字符串引用根本没变，历史消息更是整条不动（见 tests 里的合并逻辑）
+function Markdown({ text }: { text: string }) {
   return (
     <div className="markdown-body">
       <ReactMarkdown
@@ -89,3 +91,5 @@ export default function Markdown({ text }: { text: string }) {
     </div>
   );
 }
+
+export default memo(Markdown);

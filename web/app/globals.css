@@ -360,3 +360,9 @@ body {
 [data-theme="glass"] .svg-host svg [class*="c-"] .box {
   fill: color-mix(in srgb, var(--c-bd) 18%, var(--surface));
 }
+
+/* 聊天滚动区：流式内容在下方增长时，别让浏览器的滚动锚定去补偿 scrollTop——
+   它会把「回复开头对到视口顶」的钉住位置拽走（见 MessageList.tsx 的滚动策略） */
+.overflow-anchor-none {
+  overflow-anchor: none;
+}

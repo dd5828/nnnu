@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { CircleStop, Loader2 } from "lucide-react";
-import { useChatStore, type ActiveTurn, type AskUserPrompt } from "@/hooks/useChat";
+import { useChatStore, type AskUserPrompt } from "@/hooks/useChat";
 import { useI18n } from "@/hooks/useI18n";
 import CitationsPanel from "./CitationsPanel";
 import CostBadge from "./CostBadge";
@@ -90,25 +90,34 @@ function AskUserCard({
   );
 }
 
-export default function ActiveTurnView({ turn }: { turn: ActiveTurn }) {
+export default function ActiveTurnView() {
   const { t } = useI18n();
   const stop = useChatStore((s) => s.stop);
   const replyAskUser = useChatStore((s) => s.replyAskUser);
   const capability = useChatStore((s) => s.capability);
-  const renderedContent = useThrottledText(turn.content);
+  // 进行中回合由本组件自订阅：每个 delta 只重渲这棵子树——历史消息/输入区/侧栏
+  // 都不再跟着动（MessageList 只在回合出现/消失时重渲）。子树里 Markdown /
+  // ThinkingBlock / StageBar / ToolCallCard 都 memo 过，节流后的值没变就整块跳过。
+  const turn = useChatStore((s) => s.active);
+  // 思考与正文同款节流：thinking_delta 也是逐字来的，不节流会逐帧重排
+  const renderedContent = useThrottledText(turn?.content ?? "");
+  const renderedThinking = useThrottledText(turn?.thinking ?? "");
+  if (!turn) {
+    return null;
+  }
   const running = !turn.terminal;
 
   return (
     <div className="flex flex-col items-start gap-1.5">
       {/* 阶段条只在跑着的时候显示：终局（error/stopped）后还转圈就是骗人 */}
       {running && <StageBar capability={capability} stages={turn.stages} />}
-      {turn.thinking && <ThinkingBlock text={turn.thinking} streaming={running} />}
+      {renderedThinking && <ThinkingBlock text={renderedThinking} streaming={running} />}
       {renderedContent && (
         <div className="max-w-full">
           <Markdown text={renderedContent} />
         </div>
       )}
-      {!renderedContent && !turn.thinking && running && (
+      {!renderedContent && !renderedThinking && running && (
         <div className="flex items-center gap-2 py-1 text-sm text-muted">
           <Loader2 className="h-4 w-4 animate-spin" />
           {t("chat.working")}

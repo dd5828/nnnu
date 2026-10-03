@@ -22,7 +22,7 @@ export default function VisualizeSettings() {
   const capability = useChatStore((s) => s.capability);
   const renderType = useChatStore((s) => s.visualizeRenderType);
   const setRenderType = useChatStore((s) => s.setVisualizeRenderType);
-  const active = useChatStore((s) => s.active);
+  const busy = useChatStore((s) => s.active !== null);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -50,7 +50,7 @@ export default function VisualizeSettings() {
         value={renderType}
         label={t(`chat.visualizeRenderType_${renderType}`)}
         title={t("chat.visualizeRenderTypeHint")}
-        disabled={Boolean(active)}
+        disabled={busy}
         open={open}
         onToggle={() => setOpen((prev) => !prev)}
       >

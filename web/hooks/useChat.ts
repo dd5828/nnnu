@@ -5,6 +5,7 @@
 import { create } from "zustand";
 import { useLanguageStore } from "@/i18n/language-store";
 import { apiFetch } from "@/lib/api";
+import { mergeMessages, messagesThroughLastUser } from "@/lib/chat-messages";
 import {
   CAPABILITY_MATH_ANIMATOR,
   CAPABILITY_RESEARCH,
@@ -233,8 +234,10 @@ async function refreshMessages(
       model?: string | null;
       capability?: string;
     }>(`/api/v1/sessions/${sessionId}`);
-    set(() => ({
-      messages: toUiMessages(detail.messages ?? []),
+    set((s) => ({
+      // 按 id 复用没变的旧消息对象：终局重取时 memo 过的历史消息原地不动，
+      // 不然每回合结束全列表都要重新 parse 一遍 Markdown（长会话肉眼可见卡一下）
+      messages: mergeMessages(s.messages, toUiMessages(detail.messages ?? [])),
       ...(hydrateKb ? { kbIds: detail.kb_ids ?? [] } : {}),
       ...(hydrateModel ? { modelRef: detail.model ?? null } : {}),
       // 已下线能力的历史会话（解题/出题）回落 chat：本地选择器与后端注册表都没有这个名字
@@ -386,6 +389,12 @@ function bindSocket(
           }));
         } else {
           set(() => ({ topError: String(payload.message ?? "") }));
+          // 服务端拒了请求（error 帧不带 turn_id，如 regenerate 被回合互斥挡下）：
+          // 本地可能已经先动过消息（乐观删除），拉一次服务器状态把视图对齐回来
+          const sid = env.session_id ?? state.sessionId;
+          if (sid) {
+            void refreshMessages(set, sid);
+          }
         }
         break;
       case "done":
@@ -590,10 +599,17 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   regenerate: () => {
-    const { sessionId } = get();
-    if (sessionId) {
-      socket.send({ type: "regenerate", session_id: sessionId });
+    const { sessionId, messages } = get();
+    if (!sessionId) {
+      return;
     }
+    // 乐观删除（§6.8 语义对齐）：旧回复先本地切掉，新回合流式期间不残留。
+    // 请求被服务端拒（error 帧）/终局重取时都会从服务器拉回真实状态，自愈。
+    const sliced = messagesThroughLastUser(messages);
+    if (sliced) {
+      set(() => ({ messages: sliced }));
+    }
+    socket.send({ type: "regenerate", session_id: sessionId });
   },
 
   replyAskUser: (answer: string) => {
