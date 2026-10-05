@@ -6,7 +6,7 @@ system: |
   {kb_note}
   {persona}
 
-kb_note: "Knowledge bases mounted by the user: {kbs}. When calling rag, kb_name must be one of them."
+kb_note: "Knowledge bases mounted by the user: {kbs}. When the question may relate to those materials, call rag first (kb_name must be one of them), ground the answer in the retrieved passages, and cite document names and pages; if nothing relevant is retrieved, say so before adding general knowledge."
 
 personas:
   teacher:
@@ -31,9 +31,9 @@ tool_descriptions:
   github: "Query GitHub repositories (README/file tree/specific file content). Use it to learn the real structure of an open-source project the user mentions."
   cron: "Manage scheduled tasks: create (cron expression + prompt, runs as a new turn when due), list, or delete. Use it for requests like 'give me a question every morning'."
   brainstorm: "Brainstorm around a topic: breadth-first list of diverse ideas with rationales. Use it for inspiration, topic selection, or alternatives."
-  question_bank: "Read and write the local question bank: search by filter (all/wrong/unanswered), knowledge point, tag or keyword; add stores questions into the bank. Use it for requests like 'that question I got wrong' or 'save this question'."
+  question_bank: "Read and write the local question bank: search by filter (all/wrong/unanswered), knowledge point, tag or keyword; add stores questions into the bank. Use it for requests like 'that question I got wrong' or 'save this question'. Write math in added questions as inline LaTeX (e.g. $x^2$), not plain text such as ^(3/2) — the bank renders formulas."
   mastery_status: "Overview of the learning path: progress, the next objective (computed server-side), any unanswered card, what is due for review, weak points, and the whole node map with their ids. **Call it first every round** and let it decide what comes next. Also use it for 'what am I studying', 'how am I doing' or 'what is next'."
-  mastery_quiz: "Registers one question for the current node (question stem + expected_answer; for a choice question put the **full option text** into options, in order). The question stays server-side — then call ask_user to present it as an answerable card. Use it for 'quiz me' or 'give me a question' (get the node id from mastery_status first)."
+  mastery_quiz: "Registers one question for the current node (question stem + expected_answer; for a choice question put the **full option text** into options, in order). The question stays server-side — then call ask_user to present it as an answerable card. Use it for 'quiz me' or 'give me a question' (get the node id from mastery_status first). Write math in the stem, options and explanation as inline LaTeX (e.g. $x^2$), not plain text such as ^(3/2) — the card and the question bank render formulas."
   mastery_grade: "Grades the card currently awaiting an answer: the answer the server received is what counts. Call it once the user has answered; it returns the verdict, feedback and the node's mastery. Until it reports the gate cleared, keep working the same node."
   mastery_assess: "Gate verdict for a qualitative node (concept / design): after the user explains it in their own words, judge whether the explanation really shows understanding and record it with passed."
   mastery_build: "Creates a learning path (topic + a nodes array; a child node points at an earlier parent via parent_index). Only build when nothing existing fits. Use it for 'set up a learning path for me'."

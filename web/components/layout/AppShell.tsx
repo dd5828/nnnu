@@ -34,6 +34,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // h-screen + 内部滚动：Chat 等工作台页面自己管滚动区，设置页页面根部加 overflow-y-auto
   return (
     <div className="flex h-screen overflow-hidden">
+      {/* 键盘用户跳过常驻侧栏，直达主内容 */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-surface focus:px-3 focus:py-2 focus:text-sm focus:shadow-lg"
+      >
+        {t("common.skipToContent")}
+      </a>
       {/* 窄屏（< md）：侧栏藏进抽屉，汉堡按钮（页头）开、遮罩/选中项/Esc 关；
           桌面端（≥ md）：照旧常驻在左侧，一个像素都不动 */}
       <div
@@ -59,7 +66,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       )}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Header onMenu={() => setNavOpen(true)} navOpen={navOpen} />
-        {children}
+        <main id="main-content" className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {children}
+        </main>
       </div>
     </div>
   );

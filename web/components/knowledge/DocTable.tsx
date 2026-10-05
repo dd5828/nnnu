@@ -3,6 +3,7 @@
 /** 文档表（§7.9）：每份文档的状态、进度、页码/切块数，失败的可单独删（验收 D）。 */
 
 import { FileText, Trash2 } from "lucide-react";
+import { confirmDialog } from "@/hooks/useConfirm";
 import { useDeleteDoc } from "@/hooks/useKnowledge";
 import { useI18n } from "@/hooks/useI18n";
 import type { KbDoc } from "@/types/api";
@@ -21,9 +22,14 @@ export default function DocTable({ kbId, docs, onOpen }: DocTableProps) {
   const remove = useDeleteDoc(kbId);
 
   const handleDelete = (doc: KbDoc) => {
-    if (window.confirm(t("knowledge.deleteDocConfirm", { name: doc.filename }))) {
-      remove.mutate(doc.doc_id);
-    }
+    void confirmDialog({
+      message: t("knowledge.deleteDocConfirm", { name: doc.filename }),
+      danger: true,
+    }).then((ok) => {
+      if (ok) {
+        remove.mutate(doc.doc_id);
+      }
+    });
   };
 
   if (docs.length === 0) {

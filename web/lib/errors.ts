@@ -10,6 +10,14 @@ export function errorText(error: unknown, fallback: string): string {
   if (error instanceof ApiError) {
     return error.message; // 后端 §9.1 信封里的 message，本来就是给人读的
   }
+  // 超时/中止（apiFetch 的 AbortSignal.timeout）：DOMException 的英文原文对用户没意义
+  if (
+    typeof DOMException !== "undefined" &&
+    error instanceof DOMException &&
+    (error.name === "TimeoutError" || error.name === "AbortError")
+  ) {
+    return fallback;
+  }
   if (error instanceof TypeError) {
     return fallback; // fetch 网络层失败（后端没起/断网）统一成一句人话
   }

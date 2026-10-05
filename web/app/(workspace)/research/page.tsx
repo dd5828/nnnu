@@ -11,9 +11,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Loader2, Telescope, Trash2 } from "lucide-react";
+import { confirmDialog } from "@/hooks/useConfirm";
 import { useI18n } from "@/hooks/useI18n";
 import { isResearchRunActive, useDeleteResearchRun, useResearchRuns } from "@/hooks/useResearch";
 import { errorText } from "@/lib/errors";
+import { formatDateTime } from "@/lib/format";
+import type { Language } from "@/i18n";
 import type { ResearchRun, ResearchRunStatus } from "@/types/api";
 
 const STATUS_KEYS: Record<ResearchRunStatus, string> = {
@@ -32,12 +35,12 @@ const STATUS_CLASS: Record<ResearchRunStatus, string> = {
   abandoned: "bg-accent text-muted",
 };
 
-function dateLabel(seconds: number): string {
-  return new Date(seconds * 1000).toLocaleString();
+function dateLabel(seconds: number, lang: Language): string {
+  return formatDateTime(seconds, lang);
 }
 
 export default function ResearchPage() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { data, isLoading, error } = useResearchRuns();
   const remove = useDeleteResearchRun();
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -45,7 +48,11 @@ export default function ResearchPage() {
 
   const handleDelete = async (run: ResearchRun) => {
     const title = run.refined_topic || run.topic;
-    if (!window.confirm(t("research.deleteConfirm", { topic: title }))) {
+    const ok = await confirmDialog({
+      message: t("research.deleteConfirm", { topic: title }),
+      danger: true,
+    });
+    if (!ok) {
       return;
     }
     setDeleteError(null);
@@ -128,7 +135,7 @@ export default function ResearchPage() {
                           {t("research.failedCount", { n: String(run.failed_subtopics.length) })}
                         </span>
                       )}
-                      <span className="ml-auto">{dateLabel(run.created_at)}</span>
+                      <span className="ml-auto">{dateLabel(run.created_at, lang)}</span>
                     </div>
                     {run.session_title && (
                       <p className="mt-1.5 truncate text-xs text-muted">

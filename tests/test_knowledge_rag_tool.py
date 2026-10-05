@@ -257,6 +257,9 @@ async def test_chat_turn_injects_kb_note_and_enum(client, tmp_path, repo_prompts
     request = captured[0].calls[0]
     system_prompt = request.messages[0]["content"]
     assert "已挂载知识库：信号处理" in system_prompt
+    # 只写「kb_name 从其中选」不够——模型会把知识库当可选项，选了库也照自己肚子里的货答
+    # （2026-10-05 第 42 条）。这条锁住「先检索再作答」的指令不被改弱。
+    assert "先调 rag" in system_prompt
     rag_schema = next(t for t in request.tools or [] if t["function"]["name"] == "rag")
     assert rag_schema["function"]["parameters"]["properties"]["kb_name"]["enum"] == ["信号处理"]
 

@@ -339,7 +339,7 @@ steps:
         <h1>圆的半径与面积</h1>
         <div class="row">
           <input id="radius" type="range" min="20" max="90" value="45" />
-          <span>半径 <b id="r">45</b>，面积 <b id="a">6362</b></span>
+          <span>半径 <b id="r">45</b>，面积 <b id="a">6362</b>（$S=\pi r^2$）</span>
         </div>
         <svg id="board" viewBox="0 0 220 220" width="220" height="220">
           <circle id="disc" cx="110" cy="110" r="45" fill="#38bdf8" fill-opacity="0.35" stroke="#38bdf8" stroke-width="2" />

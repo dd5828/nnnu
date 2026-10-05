@@ -13,6 +13,8 @@ system: |
      {allowed_causes}
      Use an empty array when there is no evidence; do not force a choice.
   4. reason: one sentence explaining the classification, written in {language}.
+  5. knowledge_point, tags and reason render as plain text: never put $ or LaTeX notation
+     there; spell the formula out in words (e.g. "swap the order of a double integral").
   Output exactly one JSON object with no extra text, fixed fields:
   knowledge_point (string), tags (array of strings), error_causes (array of strings),
   reason (string).

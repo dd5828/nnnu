@@ -45,7 +45,10 @@ export default function ChatWorkspace() {
             <PanelLeft className="h-4 w-4" />
           </button>
           {title && <span className="truncate text-sm font-medium">{title}</span>}
-          <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-muted">
+          <span
+            role="status"
+            className="ml-auto inline-flex items-center gap-1.5 text-xs text-muted"
+          >
             <span
               className={`inline-block h-2 w-2 rounded-full ${
                 socketStatus === "open"
@@ -63,7 +66,10 @@ export default function ChatWorkspace() {
           </span>
         </div>
         {topError && (
-          <div className="flex items-center justify-between gap-2 border-b border-danger/30 bg-danger/10 px-4 py-2 text-xs text-danger">
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-2 border-b border-danger/30 bg-danger/10 px-4 py-2 text-xs text-danger"
+          >
             <span className="truncate">{topError}</span>
             <button type="button" onClick={clearTopError} className="shrink-0 underline">
               {t("common.close")}

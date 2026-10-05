@@ -9,16 +9,19 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Loader2, NotebookPen, Plus, Trash2 } from "lucide-react";
+import { confirmDialog } from "@/hooks/useConfirm";
 import { useCreateNotebook, useDeleteNotebook, useNotebookList } from "@/hooks/useNotebooks";
 import { useI18n } from "@/hooks/useI18n";
 import { errorText } from "@/lib/errors";
+import { formatDate } from "@/lib/format";
+import type { Language } from "@/i18n";
 
-function dateLabel(seconds: number): string {
-  return new Date(seconds * 1000).toLocaleDateString();
+function dateLabel(seconds: number, lang: Language): string {
+  return formatDate(seconds, lang);
 }
 
 export default function NotebooksPage() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { data, isLoading, error } = useNotebookList();
   const create = useCreateNotebook();
   const remove = useDeleteNotebook();
@@ -49,9 +52,14 @@ export default function NotebooksPage() {
   };
 
   const handleDelete = (id: string, title: string) => {
-    if (window.confirm(t("notebooks.deleteConfirm", { name: title }))) {
-      remove.mutate(id);
-    }
+    void confirmDialog({
+      message: t("notebooks.deleteConfirm", { name: title }),
+      danger: true,
+    }).then((ok) => {
+      if (ok) {
+        remove.mutate(id);
+      }
+    });
   };
 
   return (
@@ -152,7 +160,7 @@ export default function NotebooksPage() {
                       <span>
                         {t("notebooks.recordCount", { n: String(notebook.record_count ?? 0) })}
                       </span>
-                      <span>{dateLabel(notebook.created_at)}</span>
+                      <span>{dateLabel(notebook.created_at, lang)}</span>
                     </div>
                   </Link>
                   <button

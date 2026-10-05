@@ -17,6 +17,15 @@
     "discard": "Discard",
     "saved": "Saved",
     "navigation": "Navigation",
+    "confirm": "Confirm",
+    "retry": "Retry",
+    "loading": "Loading…",
+    "errorTitle": "Something went wrong",
+    "errorBody": "The page hit a problem. Retry, or head back home.",
+    "notFoundTitle": "Page not found",
+    "notFoundBody": "The link may be stale, or the content was deleted.",
+    "backHome": "Back home",
+    "skipToContent": "Skip to content",
     "requestFailed": "Request failed — is the backend running?"
   },
   "chat": {

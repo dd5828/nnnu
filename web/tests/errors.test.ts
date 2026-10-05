@@ -17,6 +17,13 @@ describe("errorText", () => {
     expect(errorText(new TypeError("Failed to fetch"), FALLBACK)).toBe(FALLBACK);
   });
 
+  it("超时/中止（AbortSignal.timeout）也换算成一句人话", () => {
+    expect(errorText(new DOMException("signal timed out", "TimeoutError"), FALLBACK)).toBe(
+      FALLBACK
+    );
+    expect(errorText(new DOMException("aborted", "AbortError"), FALLBACK)).toBe(FALLBACK);
+  });
+
   it("其他异常原样透出，别把真话盖掉", () => {
     expect(errorText(new Error("某个没被包装的错"), FALLBACK)).toBe("Error: 某个没被包装的错");
     expect(errorText("裸字符串", FALLBACK)).toBe("裸字符串");

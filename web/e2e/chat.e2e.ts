@@ -612,23 +612,10 @@ function trackConsoleErrors(page: import("@playwright/test").Page): string[] {
   return errors;
 }
 
-/** 沙箱 iframe 里的 KaTeX 走公网 CDN（HtmlViewer 的既定做法，iframe 够不着打包产物）——
- *  测试里路由到本地 node_modules：外网一抖 ERR_CONNECTION_RESET，console 断言就跟着红
- *  （CI 同理，jsdelivr 抽风不该算我们失败）。字体是 CSS 里的相对路径，也会经过这里。 */
-const KATEX_DIST = path.resolve(__dirname, "../node_modules/katex/dist");
-
-async function stubKatexCdn(page: import("@playwright/test").Page): Promise<void> {
-  await page.route("https://cdn.jsdelivr.net/npm/katex@**/dist/**", (route) => {
-    const file = new URL(route.request().url()).pathname.split("/dist/")[1];
-    return route.fulfill({ path: path.join(KATEX_DIST, file) });
-  });
-}
-
 test("⑲ 可视化：SVG/ECharts/Mermaid/HTML 四种图当场渲染，能全屏能下载，console 干净", async ({
   page,
 }) => {
   const consoleErrors = trackConsoleErrors(page);
-  await stubKatexCdn(page);
 
   await page.goto("/");
   await page.getByRole("button", { name: "新对话" }).click();
@@ -715,6 +702,11 @@ test("⑲ 可视化：SVG/ECharts/Mermaid/HTML 四种图当场渲染，能全屏
   await expect(htmlFrame).toBeVisible();
   await expect(htmlFrame).toHaveAttribute("sandbox", "allow-scripts");
   await expect(htmlFrame).toHaveAttribute("srcdoc", /圆的半径与面积/);
+  // 同源 /vendor/katex 真加载并渲染：iframe 里的 $S=\pi r^2$ 变成 KaTeX 节点
+  // （此前走 jsdelivr，测试得 route stub 才能离线跑；#44 的回归锁）
+  await expect(
+    page.frameLocator('[data-testid="html-viewer"]').locator(".katex").first()
+  ).toBeVisible({ timeout: 15000 });
 
   // 四种图都画过一遍，主框架一条 console 报错都没有（§7.7 验收）
   expect(consoleErrors).toEqual([]);
@@ -836,9 +828,16 @@ test("㉒ 调研历史：成稿能导出成文件，删掉的行从列表消失"
   expect(saved).toContain("主流产品对比");
   expect(saved).toContain("先做索引重建演练，再谈切换");
 
-  // ---- 删除：确认后回列表，只有这一行没了（⑮ 那次的卡还在）----
-  page.on("dialog", (dialog) => void dialog.accept());
+  // ---- 删除：自有确认弹窗（cancel 不留痕 → 再点 → accept）后回列表，
+  //      只有这一行没了（⑮ 那次的卡还在）----
   await page.getByTestId("research-delete").click();
+  await expect(page.getByTestId("confirm-dialog")).toBeVisible();
+  await page.getByTestId("confirm-cancel").click();
+  await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
+  // 取消后留在详情页（这页没有列表行可断；还在原地就是没删）
+  await expect(page.getByTestId("research-detail")).toBeVisible();
+  await page.getByTestId("research-delete").click();
+  await page.getByTestId("confirm-accept").click();
   await expect(page).toHaveURL(/\/research$/, { timeout: 15000 });
   await expect(page.locator(`[data-testid="research-run"][data-id="${runId}"]`)).toHaveCount(0);
   await expect(
@@ -891,4 +890,45 @@ test("㉓ 会话进度条：悬停出预览卡，点刻度跳到那一轮并闪�
     page.locator(`[data-testid="user-message"][data-ordinal="${total}"]`)
   ).toBeInViewport();
   await expect(page.locator('[data-testid="question-tick"][data-active="true"]')).toHaveCount(1);
+});
+
+// ㉕ 输入区粘贴图片：浏览器对「粘贴文件」默认什么都不做，这条锁 in-house 的 onPaste
+// 接管——剪贴板有图就挂成附件（与点回形针同一上传链路）。零 LLM、不发消息，
+// 不占脚本调用、不碰共享会话的问答记录；上传的附件当场移除，不留痕迹。
+test("㉕ 输入区粘贴图片：挂成附件 chip，可移除", async ({ page }) => {
+  await openSession(page);
+  const box = page.locator("textarea").first();
+  await box.click();
+  await page.evaluate(() => {
+    // 1×1 透明 PNG
+    const png =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0));
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([bytes], "pasted.png", { type: "image/png" }));
+    const target = document.querySelector("textarea");
+    if (!target) {
+      throw new Error("找不到输入框");
+    }
+    let event: ClipboardEvent;
+    try {
+      event = new ClipboardEvent("paste", {
+        clipboardData: transfer,
+        bubbles: true,
+        cancelable: true,
+      });
+    } catch {
+      event = new ClipboardEvent("paste", { bubbles: true, cancelable: true });
+    }
+    if (!event.clipboardData) {
+      // 个别实现构造时不收 clipboardData，补上再派发
+      Object.defineProperty(event, "clipboardData", { value: transfer });
+    }
+    target.dispatchEvent(event);
+  });
+
+  const chip = page.getByText("pasted.png", { exact: true });
+  await expect(chip).toBeVisible({ timeout: 10000 });
+  await page.getByRole("button", { name: "移除附件" }).click();
+  await expect(chip).toHaveCount(0);
 });

@@ -17,6 +17,15 @@
     "discard": "放弃",
     "saved": "已保存",
     "navigation": "导航",
+    "confirm": "确定",
+    "retry": "重试",
+    "loading": "加载中…",
+    "errorTitle": "出错了",
+    "errorBody": "页面遇到一个问题，可以重试或回到首页。",
+    "notFoundTitle": "页面不存在",
+    "notFoundBody": "链接可能已失效，或者内容已被删除。",
+    "backHome": "回到首页",
+    "skipToContent": "跳到主内容",
     "requestFailed": "请求没发出去，检查后端是否在跑"
   },
   "chat": {

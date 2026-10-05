@@ -9,6 +9,7 @@
 
 import { useState } from "react";
 import { Check, Loader2, Pencil, Sparkles, Trash2, Wand2, X } from "lucide-react";
+import { confirmDialog } from "@/hooks/useConfirm";
 import { useI18n } from "@/hooks/useI18n";
 import {
   useClassifyQuestion,
@@ -123,9 +124,11 @@ export default function QuestionCard({
   };
 
   const handleDelete = () => {
-    if (window.confirm(t("questions.deleteConfirm"))) {
-      remove.mutate(question.id);
-    }
+    void confirmDialog({ message: t("questions.deleteConfirm"), danger: true }).then((ok) => {
+      if (ok) {
+        remove.mutate(question.id);
+      }
+    });
   };
 
   const saveNote = async () => {
@@ -444,7 +447,9 @@ export default function QuestionCard({
 
       {result && (
         <div className="mt-2 space-y-1.5 rounded-lg bg-accent/40 px-3 py-2 text-xs">
-          <p className="whitespace-pre-wrap">{result.feedback}</p>
+          <div className="markdown-body">
+            <Markdown text={result.feedback} />
+          </div>
           <div data-testid="q-explanation" className="text-muted">
             <span className="font-medium">{t("questions.reference")}：</span>
             <span className="markdown-body inline-block align-top">

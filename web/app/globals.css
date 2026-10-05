@@ -133,6 +133,13 @@ body {
   color: var(--foreground);
 }
 
+/* 键盘焦点圈：全站统一。必须放在 Tailwind 图层之外——组件上的 outline-none 在
+   utilities 层里，无层样式优先级更高，才盖得住（鼠标点击不触发 :focus-visible）。 */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 /* ── Markdown 正文样式（无 typography 插件，手写最小集；KaTeX 自带样式） ── */
 .markdown-body {
   line-height: 1.7;
@@ -224,6 +231,12 @@ body {
 .markdown-body img {
   max-width: 100%;
   border-radius: 8px;
+}
+/* KaTeX 显示式公式（$$）：题卡这类窄容器里把溢出收进自身横向滚动，别撑破布局 */
+.markdown-body .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
 }
 
 /* ── 工作台滚动区：藏掉系统滚动条（内容照旧滚：滚轮/触控板/键盘/拖选都正常） ──

@@ -12,7 +12,8 @@ short:
     3. Bands: fully correct 1.0; right direction but missing the key conclusion 0.5;
        wrong or off-topic 0.0.
     4. Write the feedback in {language}, one or two sentences: what is right, what is missing.
-       Do not restate the question.
+       Do not restate the question. Write any math as inline LaTeX (e.g. $x^2$, $\int_0^1$),
+       never as plain text such as ^(3/2).
     Output a single JSON object with no extra text, with exactly these fields:
     score (number from 0 to 1), correct (true or false), feedback (one or two sentences).
   user: |

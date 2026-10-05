@@ -5,14 +5,18 @@
  * **不给 allow-same-origin**：脚本因此跑在 null origin 里，碰不到父页面的 localStorage /
  * cookie / DOM（提示词里也是这么向模型承诺的）。KaTeX 由宿主注入（页面只写 $...$ / $$...$$）：
  * 模型产出的 HTML 里不许自带 `</head>` 之外的东西，注入位置挑 head 末尾。
+ *
+ * KaTeX 资源走**同源** /vendor/katex/（文件由 node_modules 拷进 public，见该目录）：
+ * srcdoc 的 base URL 继承父页，沙箱帧照样能取；之前走 jsdelivr CDN，断网/被墙时
+ * 公式直接渲染不出来（E2E 也得把 CDN 路由到本地才能保 console 干净）。
  */
 
 import { useMemo } from "react";
 
 const KATEX_SNIPPET = [
-  '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">',
-  '<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>',
-  '<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>',
+  '<link rel="stylesheet" href="/vendor/katex/katex.min.css">',
+  '<script src="/vendor/katex/katex.min.js"></script>',
+  '<script src="/vendor/katex/contrib/auto-render.min.js"></script>',
   "<script>document.addEventListener('DOMContentLoaded',function(){",
   "if(window.renderMathInElement){renderMathInElement(document.body,{delimiters:[",
   '{left:"$$",right:"$$",display:true},{left:"$",right:"$",display:false}]});}});</script>',

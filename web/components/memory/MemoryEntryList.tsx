@@ -4,11 +4,12 @@
  * L2/L3 条目列表（§7.10 工作台）：查看 / 人工编辑（进保护集）/ 删除 / 交还自动管理。
  *
  * 未纳管（id 为空）的手写条目只读展示——下轮 consolidator 的 audit 会给它补 id，
- * 之后才可编辑（与后端 PATCH 的寻址口径一致）。删除走 window.confirm（列表页惯例）。
+ * 之后才可编辑（与后端 PATCH 的寻址口径一致）。删除走统一确认弹窗（confirmDialog）。
  */
 
 import { useState } from "react";
 import { Check, Loader2, Pencil, RotateCcw, Trash2, X } from "lucide-react";
+import { confirmDialog } from "@/hooks/useConfirm";
 import { useI18n } from "@/hooks/useI18n";
 import { useDeleteMemoryEntry, usePatchMemoryEntry } from "@/hooks/useMemory";
 import { errorText } from "@/lib/errors";
@@ -45,10 +46,14 @@ export default function MemoryEntryList({ layer, doc }: Props) {
   };
 
   const handleDelete = async (entry: MemoryEntryView) => {
-    if (
-      !entry.id ||
-      !window.confirm(t("memory.deleteConfirm", { text: previewText(entry.text, 40) }))
-    ) {
+    if (!entry.id) {
+      return;
+    }
+    const ok = await confirmDialog({
+      message: t("memory.deleteConfirm", { text: previewText(entry.text, 40) }),
+      danger: true,
+    });
+    if (!ok) {
       return;
     }
     setRowError(null);
@@ -63,7 +68,11 @@ export default function MemoryEntryList({ layer, doc }: Props) {
   };
 
   const handleRelease = async (entry: MemoryEntryView) => {
-    if (!entry.id || !window.confirm(t("memory.releaseConfirm"))) {
+    if (!entry.id) {
+      return;
+    }
+    const ok = await confirmDialog({ message: t("memory.releaseConfirm") });
+    if (!ok) {
       return;
     }
     setRowError(null);

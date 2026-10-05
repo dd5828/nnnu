@@ -154,6 +154,35 @@ interface ChatState {
 const socket = new ChatSocket();
 let initialized = false;
 
+/** 上次停留的会话（localStorage）：刷新/重开页面自动回到原地，回合中断也能 resume 补发。 */
+const LAST_SESSION_KEY = "nnnu-last-session";
+
+function readLastSession(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    return window.localStorage.getItem(LAST_SESSION_KEY);
+  } catch {
+    return null; // 私隐模式等存储不可用：当没有记忆
+  }
+}
+
+function writeLastSession(id: string | null): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    if (id) {
+      window.localStorage.setItem(LAST_SESSION_KEY, id);
+    } else {
+      window.localStorage.removeItem(LAST_SESSION_KEY);
+    }
+  } catch {
+    // 存储不可用就只影响「刷新回原地」，不影响主流程
+  }
+}
+
 /** 卡片选项归一：契约形状是 {label, description}；裸字符串（旧模型输出）兜成 label-only。 */
 function normalizeAskOptions(raw: unknown): AskUserOption[] {
   if (!Array.isArray(raw)) {
@@ -414,12 +443,14 @@ function bindSocket(
 
 async function refreshSessions(
   set: (fn: (s: ChatState) => Partial<ChatState>) => void
-): Promise<void> {
+): Promise<boolean> {
   try {
     const data = await apiFetch<{ sessions: SessionMeta[] }>("/api/v1/sessions");
     set(() => ({ sessions: data.sessions ?? [] }));
+    return true;
   } catch {
     // 后端未起：保留现有列表，状态由健康条体现
+    return false;
   }
 }
 
@@ -444,9 +475,33 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     }
     initialized = true;
     bindSocket(set, get);
-    const { sessionId } = get();
-    socket.connect(sessionId);
-    void refreshSessions(set);
+    const stored = readLastSession();
+    if (!stored) {
+      socket.connect(null);
+      void refreshSessions(set);
+      return;
+    }
+    // 先按记忆里的会话连上（resume 排队在 outbox 里），再核对它在服务器上还在不在
+    set(() => ({ sessionId: stored }));
+    socket.connect(stored);
+    void refreshSessions(set).then((ok) => {
+      if (!ok) {
+        return; // 后端没起：保留这个会话，等连上以后照常可用
+      }
+      if (!get().sessions.some((session) => session.id === stored)) {
+        socket.setSession(null);
+        writeLastSession(null);
+        set(() => ({ sessionId: null, messages: [] }));
+        return;
+      }
+      void refreshMessages(set, stored, {
+        hydrateKb: true,
+        hydrateModel: true,
+        hydrateCapability: true,
+      });
+      // 上次刷新时回合还在跑：resume 从头上补发，聊天区接着流
+      socket.resume(stored);
+    });
   },
 
   refreshSessions: async () => {
@@ -464,6 +519,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     socket.setSession(session.id);
     // 能力选择不清：那是输入区里的一档「模式」，用户没换就一直是它（切已有会话才水合）
     set(() => ({ sessionId: session.id, messages: [], active: null, kbIds: [], modelRef: null }));
+    writeLastSession(session.id);
     await refreshSessions(set);
   },
 
@@ -483,6 +539,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     // 不动 kbIds/modelRef/capability：空状态页上用户可以先把库、模型和能力选好再发
     // 第一条消息，这里清掉的话选择会被静默吞掉（会话建出来时选择照常随消息下发）
     set(() => ({ sessionId: session.id }));
+    writeLastSession(session.id);
     await refreshSessions(set);
     return session.id;
   },
@@ -494,6 +551,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     }
     socket.setSession(id);
     set(() => ({ sessionId: id, active: null, topError: null }));
+    writeLastSession(id);
     await refreshMessages(set, id, {
       hydrateKb: true,
       hydrateModel: true,
@@ -538,6 +596,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     await apiFetch(`/api/v1/sessions/${id}`, { method: "DELETE" });
     if (get().sessionId === id) {
       socket.setSession(null);
+      writeLastSession(null);
       set(() => ({ sessionId: null, messages: [], active: null, kbIds: [], modelRef: null }));
     }
     await refreshSessions(set);

@@ -16,10 +16,13 @@ import { ArrowLeft, Download, Loader2, MessageSquare, Trash2 } from "lucide-reac
 import Markdown from "@/components/chat/Markdown";
 import CitationsPanel from "@/components/chat/CitationsPanel";
 import { useChatStore } from "@/hooks/useChat";
+import { confirmDialog } from "@/hooks/useConfirm";
 import { useI18n } from "@/hooks/useI18n";
 import { isResearchRunActive, useDeleteResearchRun, useResearchRun } from "@/hooks/useResearch";
 import { downloadMarkdown } from "@/lib/download";
 import { errorText } from "@/lib/errors";
+import { formatDateTime } from "@/lib/format";
+import type { Language } from "@/i18n";
 import type { ResearchRunStatus } from "@/types/api";
 
 const CAPABILITY_RESEARCH = "deep_research";
@@ -44,12 +47,12 @@ const NO_REPORT_KEYS: Record<ResearchRunStatus, string> = {
   abandoned: "research.noReportAbandoned",
 };
 
-function dateLabel(seconds: number): string {
-  return new Date(seconds * 1000).toLocaleString();
+function dateLabel(seconds: number, lang: Language): string {
+  return formatDateTime(seconds, lang);
 }
 
 export default function ResearchRunPage() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const params = useParams<{ id: string }>();
   const runId = params?.id ?? null;
   const { data, isLoading, error } = useResearchRun(runId);
@@ -81,7 +84,11 @@ export default function ResearchRunPage() {
       return;
     }
     const title = data.refined_topic || data.topic;
-    if (!window.confirm(t("research.deleteConfirm", { topic: title }))) {
+    const ok = await confirmDialog({
+      message: t("research.deleteConfirm", { topic: title }),
+      danger: true,
+    });
+    if (!ok) {
       return;
     }
     setActionError(null);
@@ -133,7 +140,7 @@ export default function ResearchRunPage() {
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
                 <span>{t(`chat.researchDepth_${data.depth}`)}</span>
                 <span>{t(`chat.researchMode_${data.mode}`)}</span>
-                <span>{dateLabel(data.created_at)}</span>
+                <span>{dateLabel(data.created_at, lang)}</span>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 {data.session_title && (

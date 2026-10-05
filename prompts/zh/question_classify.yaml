@@ -10,7 +10,9 @@ system: |
   3. error_causes：错因只能从下面的枚举里挑，最多 2 个，要能从笔记或题目里看出依据：
      {allowed_causes}
      看不出错因就给空数组，不要硬凑；
-  4. reason：一句话说明分类依据，用 {language} 写。
+  4. reason：一句话说明分类依据，用 {language} 写；
+  5. knowledge_point、tags、reason 都按纯文本显示：不要出现 $ 符号或 LaTeX 记号，
+     公式含义用普通文字写（如「二重积分换序」）。
   只输出一个 JSON 对象，不要任何额外文字，字段固定：
   knowledge_point（字符串）、tags（字符串数组）、error_causes（字符串数组）、reason（字符串）。
 user: |

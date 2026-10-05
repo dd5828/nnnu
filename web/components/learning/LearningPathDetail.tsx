@@ -29,6 +29,7 @@ import {
   Unlink,
 } from "lucide-react";
 import QuestionCard from "@/components/quiz/QuestionCard";
+import { confirmDialog } from "@/hooks/useConfirm";
 import { useI18n } from "@/hooks/useI18n";
 import {
   useDeletePath,
@@ -149,10 +150,14 @@ export default function LearningPathDetail() {
   };
 
   const dropPath = async () => {
-    if (
-      !pathId ||
-      !window.confirm(t("learning.deletePathConfirm", { title: data?.path.title ?? "" }))
-    ) {
+    if (!pathId) {
+      return;
+    }
+    const ok = await confirmDialog({
+      message: t("learning.deletePathConfirm", { title: data?.path.title ?? "" }),
+      danger: true,
+    });
+    if (!ok) {
       return;
     }
     try {
@@ -178,10 +183,14 @@ export default function LearningPathDetail() {
   };
 
   const redo = async () => {
-    if (
-      !pathId ||
-      !window.confirm(t("learning.redoPathConfirm", { title: data?.path.title ?? "" }))
-    ) {
+    if (!pathId) {
+      return;
+    }
+    const ok = await confirmDialog({
+      message: t("learning.redoPathConfirm", { title: data?.path.title ?? "" }),
+      danger: true,
+    });
+    if (!ok) {
       return;
     }
     setNotice(null);

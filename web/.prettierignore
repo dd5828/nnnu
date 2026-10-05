@@ -1,0 +1,5 @@
+# 随仓库分发的第三方静态资产（自托管 Geist 字体 / KaTeX 运行时）：不格式化
+public/
+# Next 构建产物
+.next/
+.next-e2e/

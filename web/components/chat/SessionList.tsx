@@ -5,6 +5,7 @@
 import { useRef, useState } from "react";
 import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useChatStore } from "@/hooks/useChat";
+import { confirmDialog } from "@/hooks/useConfirm";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useI18n } from "@/hooks/useI18n";
 import { useIsNarrow } from "@/hooks/useIsNarrow";
@@ -48,9 +49,11 @@ export default function SessionList({
   };
 
   const handleDelete = (id: string) => {
-    if (window.confirm(t("chat.deleteConfirm"))) {
-      void deleteSession(id);
-    }
+    void confirmDialog({ message: t("chat.deleteConfirm"), danger: true }).then((ok) => {
+      if (ok) {
+        void deleteSession(id);
+      }
+    });
   };
 
   return (

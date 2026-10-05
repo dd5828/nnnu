@@ -32,6 +32,7 @@ function AskUserCard({
   return (
     <div
       data-testid="ask-card"
+      aria-live="polite"
       className="w-full rounded-xl border border-primary/30 bg-surface p-3"
     >
       {prompt.context && (
@@ -118,7 +119,7 @@ export default function ActiveTurnView() {
         </div>
       )}
       {!renderedContent && !renderedThinking && running && (
-        <div className="flex items-center gap-2 py-1 text-sm text-muted">
+        <div role="status" className="flex items-center gap-2 py-1 text-sm text-muted">
           <Loader2 className="h-4 w-4 animate-spin" />
           {t("chat.working")}
         </div>

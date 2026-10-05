@@ -38,7 +38,10 @@ class MasteryQuizTool(BaseTool):
                     "type": "string",
                     "description": "目标知识点 id（取自 mastery_status；不填就是它给的下一目标）",
                 },
-                "question": {"type": "string", "description": "题干"},
+                "question": {
+                    "type": "string",
+                    "description": "题干（数学式用 LaTeX 行内写法，如 $x^2$）",
+                },
                 "expected_answer": {
                     "type": "string",
                     "description": (
@@ -55,7 +58,7 @@ class MasteryQuizTool(BaseTool):
                 "options": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "选项原文数组（single/multi 必填，至少两个；short 不填）",
+                    "description": "选项原文数组（single/multi 必填，至少两个；short 不填；数学式用 LaTeX 行内写法）",
                 },
                 "explanation": {"type": "string", "description": "解析（判分后随反馈出现）"},
                 "difficulty": {

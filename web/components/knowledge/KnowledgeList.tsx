@@ -4,6 +4,7 @@
 
 import Link from "next/link";
 import { FileText, Layers, Trash2 } from "lucide-react";
+import { confirmDialog } from "@/hooks/useConfirm";
 import { useDeleteKb } from "@/hooks/useKnowledge";
 import { useI18n } from "@/hooks/useI18n";
 import type { KbManifest } from "@/types/api";
@@ -14,9 +15,14 @@ export default function KnowledgeList({ kbs }: { kbs: KbManifest[] }) {
   const remove = useDeleteKb();
 
   const handleDelete = (kb: KbManifest) => {
-    if (window.confirm(t("knowledge.deleteKbConfirm", { name: kb.name }))) {
-      remove.mutate(kb.id);
-    }
+    void confirmDialog({
+      message: t("knowledge.deleteKbConfirm", { name: kb.name }),
+      danger: true,
+    }).then((ok) => {
+      if (ok) {
+        remove.mutate(kb.id);
+      }
+    });
   };
 
   return (

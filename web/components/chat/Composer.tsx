@@ -105,6 +105,24 @@ export default function Composer() {
     }
   };
 
+  // 剪贴板里带文件（截图 / 复制的图片）就按附件上传：浏览器默认对文件不作声，
+  // 这里接住 Ctrl+V，效果和点回形针一致；纯文本粘贴没有文件，放行走默认行为。
+  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(event.clipboardData.items)
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+    if (files.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    const transfer = new DataTransfer();
+    for (const file of files) {
+      transfer.items.add(file);
+    }
+    void handleUpload(transfer.files);
+  };
+
   return (
     <div className="border-t border-border/70 px-4 py-3">
       <div className="mx-auto max-w-3xl">
@@ -137,6 +155,7 @@ export default function Composer() {
             value={text}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             onCompositionStart={() => {
               composingRef.current = true;
             }}

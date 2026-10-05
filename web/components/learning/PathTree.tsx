@@ -10,6 +10,7 @@
 
 import { useState } from "react";
 import { ArrowDown, ArrowUp, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
+import { confirmDialog } from "@/hooks/useConfirm";
 import { useI18n } from "@/hooks/useI18n";
 import { useAddNode, useDeleteNode, useMoveNode, useUpdateNode } from "@/hooks/useLearning";
 import { errorText } from "@/lib/errors";
@@ -118,7 +119,11 @@ export default function PathTree({
   };
 
   const drop = async (node: LearningNode) => {
-    if (!window.confirm(t("learning.deleteNodeConfirm", { title: node.title }))) {
+    const ok = await confirmDialog({
+      message: t("learning.deleteNodeConfirm", { title: node.title }),
+      danger: true,
+    });
+    if (!ok) {
       return;
     }
     try {

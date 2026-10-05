@@ -12,9 +12,12 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, Loader2, Plus, Trash2 } from "lucide-react";
 import Markdown from "@/components/chat/Markdown";
+import { confirmDialog } from "@/hooks/useConfirm";
 import { useAddRecord, useDeleteRecord, useNotebook } from "@/hooks/useNotebooks";
 import { useI18n } from "@/hooks/useI18n";
 import { errorText } from "@/lib/errors";
+import { formatDateTime } from "@/lib/format";
+import type { Language } from "@/i18n";
 import type { NotebookRecordType } from "@/types/api";
 
 const TYPE_LABEL_KEYS: Record<NotebookRecordType, string> = {
@@ -27,12 +30,12 @@ const TYPE_LABEL_KEYS: Record<NotebookRecordType, string> = {
   math_animator: "notebooks.typeMathAnimator",
 };
 
-function dateLabel(seconds: number): string {
-  return new Date(seconds * 1000).toLocaleString();
+function dateLabel(seconds: number, lang: Language): string {
+  return formatDateTime(seconds, lang);
 }
 
 export default function NotebookDetailPage() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const params = useParams<{ id: string }>();
   const notebookId = params?.id ?? null;
   const { data, isLoading, error } = useNotebook(notebookId);
@@ -65,10 +68,14 @@ export default function NotebookDetailPage() {
   };
 
   const handleDelete = (recordId: string) => {
-    if (!notebookId || !window.confirm(t("notebooks.deleteRecordConfirm"))) {
+    if (!notebookId) {
       return;
     }
-    remove.mutate({ notebookId, recordId });
+    void confirmDialog({ message: t("notebooks.deleteRecordConfirm"), danger: true }).then((ok) => {
+      if (ok) {
+        remove.mutate({ notebookId, recordId });
+      }
+    });
   };
 
   return (
@@ -158,7 +165,7 @@ export default function NotebookDetailPage() {
                             {t(TYPE_LABEL_KEYS[record.type] ?? "notebooks.typeNote")}
                           </span>
                           <span className="shrink-0 text-[11px] text-muted">
-                            {dateLabel(record.created_at)}
+                            {dateLabel(record.created_at, lang)}
                           </span>
                         </div>
                       </div>

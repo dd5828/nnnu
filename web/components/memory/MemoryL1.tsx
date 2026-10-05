@@ -25,7 +25,7 @@ import ChipRow from "./Chips";
 const PAGE_SIZE = 200;
 
 export default function MemoryL1({ surfaces }: { surfaces: string[] }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [surface, setSurface] = useState(surfaces[0] ?? "chat");
   const [file, setFile] = useState(""); // 空串 = 最新月（后端默认）
   const [offset, setOffset] = useState(0);
@@ -106,7 +106,7 @@ export default function MemoryL1({ surfaces }: { surfaces: string[] }) {
               <span className="min-w-0 flex-1 break-words text-xs">
                 {previewText(l1Summary(row), 240)}
               </span>
-              <span className="shrink-0 text-[10px] text-muted">{formatTs(row.ts)}</span>
+              <span className="shrink-0 text-[10px] text-muted">{formatTs(row.ts, lang)}</span>
             </li>
           ))}
         </ul>

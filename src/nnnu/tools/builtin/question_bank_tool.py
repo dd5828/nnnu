@@ -29,7 +29,7 @@ FILTER_LABELS: dict[str, str] = {"all": "全部", "wrong": "错题", "unanswered
 _QUESTION_SCHEMA = {
     "type": "object",
     "properties": {
-        "stem": {"type": "string", "description": "题面"},
+        "stem": {"type": "string", "description": "题面（数学式用 LaTeX 行内写法，如 $x^2$）"},
         "type": {
             "type": "string",
             "enum": ["single", "multi", "short"],
@@ -38,13 +38,13 @@ _QUESTION_SCHEMA = {
         "options": {
             "type": "array",
             "items": {"type": "string"},
-            "description": "选择题选项（简答题留空）",
+            "description": "选择题选项（简答题留空；数学式用 LaTeX 行内写法）",
         },
         "answer": {
             "type": "string",
             "description": "单选取一个标签（如 B）；多选取标签升序拼接（如 AC）；简答写参考答案",
         },
-        "explanation": {"type": "string", "description": "解析"},
+        "explanation": {"type": "string", "description": "解析（数学式用 LaTeX 行内写法）"},
         "knowledge_point": {"type": "string"},
         "difficulty": {
             "type": "string",

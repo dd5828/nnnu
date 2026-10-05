@@ -25,7 +25,7 @@ type Tab = "l3" | "l2" | "l1";
 const TABS: Tab[] = ["l3", "l2", "l1"];
 
 export default function MemoryPage() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const overview = useMemoryOverview();
   const [tab, setTab] = useState<Tab>("l3");
   const [l3Doc, setL3Doc] = useState<string | null>(null);
@@ -149,7 +149,7 @@ export default function MemoryPage() {
                   {data.last_run
                     ? t("memory.lastRun", {
                         status: t(`memory.run.${data.last_run.status}`),
-                        time: formatTs(data.last_run.finished_at ?? data.last_run.started_at),
+                        time: formatTs(data.last_run.finished_at ?? data.last_run.started_at, lang),
                       })
                     : t("memory.neverRun")}
                 </span>

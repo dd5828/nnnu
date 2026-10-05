@@ -85,9 +85,9 @@ describe("文本与格式化", () => {
   });
 
   it("formatTs 无效值给空串", () => {
-    expect(formatTs(0)).toBe("");
-    expect(formatTs(Number.NaN)).toBe("");
-    expect(formatTs(1759000000)).not.toBe("");
+    expect(formatTs(0, "zh")).toBe("");
+    expect(formatTs(Number.NaN, "zh")).toBe("");
+    expect(formatTs(1759000000, "zh")).not.toBe("");
   });
 
   it("refLayer 识别引用前缀", () => {

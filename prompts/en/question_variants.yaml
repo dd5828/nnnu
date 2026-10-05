@@ -13,7 +13,9 @@ system: |
   4. The type (single / multi / short) matches the original;
   5. For choice questions the answer field holds option labels (e.g. A; multi-select e.g. AC),
      never the option text itself;
-  6. Write the stem and explanation in the same language as the original.
+  6. Write the stem and explanation in the same language as the original;
+  7. Write any math in the stem, options or explanation as inline LaTeX (e.g. $x^2$,
+     $\int_0^1$), never as plain text such as ^(3/2) — the preview and the question bank render formulas.
   Output exactly one JSON object with no extra text, fixed fields:
   variants (array); each element has: stem (string), options (array of strings, empty for
   short-answer), answer (string), explanation (string), difficulty (easy / medium / hard).

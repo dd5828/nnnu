@@ -21,3 +21,10 @@ DeepTutor 版权声明（HKUDS，Apache-2.0 原文保留）：
 > you may not use this file except in compliance with the License.
 > You may obtain a copy of the License at
 > http://www.apache.org/licenses/LICENSE-2.0
+
+## 前端随仓库分发的第三方资产
+
+| 资产 | 位置 | 许可 | 说明 |
+|------|------|------|------|
+| Geist / Geist Mono 字体（woff2，子集） | `web/public/fonts/geist/` | SIL Open Font License 1.1（Vercel） | 自托管替代 `next/font/google`：构建期不再请求 fonts.googleapis.com，离线/被墙也能 `next build` |
+| KaTeX 运行时（katex.min.js / katex.min.css / auto-render.min.js / 字体） | `web/public/vendor/katex/` | MIT（Copyright (c) 2013-2020 Khan Academy and other contributors） | 沙箱 iframe（HtmlViewer）同源加载 KaTeX，替代 jsdelivr CDN；版本随 `web/package.json` 的 katex 依赖同步 |

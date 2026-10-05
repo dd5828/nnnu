@@ -4,6 +4,8 @@
  * 事件种类口径与后端 `services/memory/models.py` 的 EVENT_KINDS 对齐。
  */
 
+import type { Language } from "@/i18n";
+import { formatDateTime } from "@/lib/format";
 import type { MemoryL1Row } from "@/types/api";
 
 /** L1 事件种类（顺序即展示顺序；与后端 EVENT_KINDS 一致）。 */
@@ -110,12 +112,9 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** 秒级时间戳 → 本地时间（无效值给空串，列表不炸）。 */
-export function formatTs(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds <= 0) {
-    return "";
-  }
-  return new Date(seconds * 1000).toLocaleString();
+/** 秒级时间戳 → 本地时间（跟随界面语言；无效值给空串，列表不炸）。 */
+export function formatTs(seconds: number, lang: Language): string {
+  return formatDateTime(seconds, lang);
 }
 
 /** 条目引用 → 目标层（"L1:chat/…" → "l1"；无法识别给空串）。 */

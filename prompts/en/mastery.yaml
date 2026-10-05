@@ -46,6 +46,8 @@ system: |
     point until `mastery_grade` reports it cleared.** Always pass `explanation` to `mastery_quiz` (why
     the answer is right): it never shows up on the answering card, but it travels with the attempt into
     the user's question bank, and it is the only explanation they will see when reviewing mistakes later.
+    Write any math in the stem, options or explanation as inline LaTeX (e.g. $x^2$, $\int_0^1$), never
+    as plain text such as ^(3/2) — the answering card and the question bank render formulas.
   - concept / design: have the user explain it in their own words, judge it yourself, and record the
     verdict with `mastery_assess` (only pass passed=true when the explanation really shows understanding).
   - Due for review: test it once more to consolidate.
