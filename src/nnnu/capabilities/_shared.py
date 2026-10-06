@@ -39,6 +39,10 @@ PAGE_INJECT_MAX_CHARS = 2000  # 每页注入上限
 ATTACHMENT_INJECT_MAX_CHARS = 12000  # 每附件注入总上限
 HISTORY_REF_INJECT_MAX_CHARS = 6000  # 每个引用会话的转录注入上限
 HISTORY_REF_MESSAGE_MAX_CHARS = 2000  # 引用会话中单条消息上限
+# 笔记本记录/题目引用注入上限（§7.1 P9；两者共用一个总预算，超出合并省略行）
+NOTEBOOK_REF_ITEM_MAX_CHARS = 4000  # 单条记录正文上限
+QUESTION_REF_ITEM_MAX_CHARS = 2000  # 单条题目（题干+选项+答案+解析）上限
+REF_INJECT_TOTAL_MAX_CHARS = 12000  # 笔记本+题目引用合计上限
 
 
 @dataclass(slots=True)
@@ -220,11 +224,19 @@ async def build_user_message(
     content_text = ctx.message.content
     # 首回合记忆摘录在最前（背景），附件与引用转录随后（本次请求的载荷）
     memory_note = memory_injection_note(ctx)
-    # 一次性引用：历史会话转录（§7.1；笔记本/题库/书页随 P9/P10 实体扩展）
+    # 一次性引用：历史会话转录 + 笔记本记录/题目（§7.1；后两者共用一个总预算）
     ref_texts = [
         format_history_ref(ref, ctx.language)
         for ref in ctx.metadata.get("history_ref_transcripts", [])
     ]
+    entity_texts = [
+        format_notebook_ref(payload, ctx.language)
+        for payload in ctx.metadata.get("notebook_ref_payloads", [])
+    ] + [
+        format_question_ref(payload, ctx.language)
+        for payload in ctx.metadata.get("question_ref_payloads", [])
+    ]
+    ref_texts.extend(_cap_ref_texts(entity_texts, ctx.language))
     injected = ([memory_note] if memory_note else []) + [*attachment_texts, *ref_texts]
     if injected:
         content_text += "\n\n" + "\n\n".join(injected)
@@ -344,6 +356,65 @@ def supports_vision(provider_id: str | None, model: str) -> bool:
     spec = find_by_id(build_registry(), provider_id) if provider_id else None
     info = find_model(spec, model) if spec else None
     return info is not None and "vision" in info.capabilities
+
+
+def format_notebook_ref(ref: dict[str, Any], lang: str) -> str:
+    """引用笔记本记录：标题给模型认出处，正文按单条上限截断（双语头，同历史会话）。"""
+    label = ref.get("title") or ref.get("record_id")
+    notebook = ref.get("notebook_name") or ""
+    if lang == "zh":
+        suffix = f"（笔记本「{notebook}」）" if notebook else ""
+        header = f"【引用笔记本记录《{label}》{suffix}】"
+    else:
+        suffix = f' (notebook "{notebook}")' if notebook else ""
+        header = f'[Referenced notebook record "{label}"{suffix}]'
+    content = str(ref.get("content_md", ""))[:NOTEBOOK_REF_ITEM_MAX_CHARS]
+    return f"{header}\n{content}"
+
+
+def format_question_ref(ref: dict[str, Any], lang: str) -> str:
+    """引用题库题目：题干/选项/答案/解析整块给模型（用户可能问「为什么选这个」）。"""
+    labels = "ABCDEFGH"
+    options = [str(option) for option in ref.get("options") or []]
+    option_lines = [
+        f"{labels[index]}. {option}" for index, option in enumerate(options[: len(labels)])
+    ]
+    if lang == "zh":
+        lines = [f"【引用题目 id={ref.get('question_id')}】", f"题干：{ref.get('stem', '')}"]
+        if option_lines:
+            lines.append("选项：" + " ".join(option_lines))
+        lines.append(f"参考答案：{ref.get('answer', '')}")
+        if ref.get("explanation"):
+            lines.append(f"解析：{ref['explanation']}")
+    else:
+        lines = [
+            f"[Referenced question id={ref.get('question_id')}]",
+            f"Stem: {ref.get('stem', '')}",
+        ]
+        if option_lines:
+            lines.append("Options: " + " ".join(option_lines))
+        lines.append(f"Reference answer: {ref.get('answer', '')}")
+        if ref.get("explanation"):
+            lines.append(f"Explanation: {ref['explanation']}")
+    return "\n".join(lines)[:QUESTION_REF_ITEM_MAX_CHARS]
+
+
+def _cap_ref_texts(texts: list[str], lang: str) -> list[str]:
+    """笔记本/题目引用共用总预算：超限的合并成一条省略行（不逐条留半个）。"""
+    budget = REF_INJECT_TOTAL_MAX_CHARS
+    capped: list[str] = []
+    for index, text in enumerate(texts):
+        if budget <= 0:
+            omitted = len(texts) - index
+            capped.append(
+                f"（另有 {omitted} 条引用因总长超限已省略）"
+                if lang == "zh"
+                else f"({omitted} more reference(s) omitted: total length limit reached)"
+            )
+            break
+        capped.append(text[:budget])
+        budget -= len(text)
+    return capped
 
 
 def format_history_ref(ref: dict[str, Any], lang: str) -> str:

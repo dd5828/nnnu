@@ -19,7 +19,9 @@ from typing import Any, Protocol
 from nnnu.core.context import (
     KbRef,
     ModelRef,
+    NotebookRef,
     PersonaRef,
+    QuestionRef,
     SessionRef,
     UnifiedContext,
 )
@@ -135,11 +137,13 @@ def build_unified_context(
     language: str,
     model_ref: ModelRef | None = None,
     history_refs: list[SessionRef] | None = None,
+    notebook_refs: list[NotebookRef] | None = None,
+    question_refs: list[QuestionRef] | None = None,
 ) -> UnifiedContext:
     """粘性（模型/persona/kb/语言取会话）vs 一次性（refs 仅当回合）——纯函数。
 
     附件参数与数量上限已在 TurnRequest 校验层拒绝（传输层 fail-fast）；
-    history_refs 由传输层解析（引用会话存在性检查在其处完成）。
+    三类引用均由传输层解析（存在性检查在其处完成，查不到的已剔除）。
     """
     from nnnu.services.llm.factory import parse_model_ref
 
@@ -179,6 +183,8 @@ def build_unified_context(
         message=user_message,
         attachments=request.attachments,
         history_refs=history_refs or [],
+        notebook_refs=notebook_refs or [],
+        question_refs=question_refs or [],
         kb_refs=[KbRef(kb_id=kb_id) for kb_id in request.kb_ids],
         tool_flags=ToolMountFlags(
             context=context_flags,

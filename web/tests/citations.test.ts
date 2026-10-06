@@ -2,7 +2,14 @@
 
 import { describe, expect, it } from "vitest";
 
-import { citationTarget, externalLabel, isExternalDoc, kbDeepLink } from "@/lib/citations";
+import {
+  citationTarget,
+  externalLabel,
+  isExternalDoc,
+  kbDeepLink,
+  refTarget,
+} from "@/lib/citations";
+import type { RefEntry } from "@/lib/refs";
 import type { CitationSource } from "@/types/stream";
 
 function source(overrides: Partial<CitationSource> = {}): CitationSource {
@@ -91,5 +98,67 @@ describe("citationTarget 纯文本分支", () => {
   it("缺 kb 的引用也当纯文本，不拼出不存在的知识库路径", () => {
     const target = citationTarget(source({ kb: "", doc_id: "kbdoc-9" }));
     expect(target).toEqual({ kind: "text", label: "kbdoc-9" });
+  });
+});
+
+describe("refTarget（用户消息的引用 chip 落点）", () => {
+  it("笔记本记录 → 笔记本页 ?record= 深链", () => {
+    const entry: RefEntry = {
+      kind: "notebook_record",
+      notebook_id: "nb-1",
+      record_id: "nbr-2",
+      label: "极限笔记",
+      resolved: true,
+    };
+    expect(refTarget(entry)).toEqual({
+      kind: "internal",
+      href: "/notebooks/nb-1?record=nbr-2",
+      label: "极限笔记",
+    });
+  });
+
+  it("题目 → 题库页 ?question= 置顶", () => {
+    const entry: RefEntry = {
+      kind: "question",
+      question_id: "q-1",
+      label: "下列极限",
+      resolved: true,
+    };
+    expect(refTarget(entry)).toEqual({
+      kind: "internal",
+      href: "/questions?question=q-1",
+      label: "下列极限",
+    });
+  });
+
+  it("已解析但 label 为空：退到 id 当标签", () => {
+    const entry: RefEntry = {
+      kind: "question",
+      question_id: "q-9",
+      label: "",
+      resolved: true,
+    };
+    expect(refTarget(entry).label).toBe("q-9");
+  });
+
+  it("已删（resolved=false）→ 纯文本，不造死链", () => {
+    const entry: RefEntry = {
+      kind: "question",
+      question_id: "q-9",
+      label: "旧题",
+      resolved: false,
+    };
+    expect(refTarget(entry)).toEqual({ kind: "text", label: "旧题" });
+  });
+
+  it("已删的笔记本记录（快照没带归属）→ 纯文本", () => {
+    const entry: RefEntry = {
+      kind: "notebook_record",
+      notebook_id: "",
+      record_id: "nbr-9",
+      label: "",
+      resolved: false,
+    };
+    expect(refTarget(entry)).toEqual({ kind: "text", label: "nbr-9" });
   });
 });

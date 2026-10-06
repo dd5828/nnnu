@@ -37,6 +37,9 @@ class Message(BaseModel):
     tool_calls: list[dict] = Field(default_factory=list)
     citations: list[dict] = Field(default_factory=list)
     cost: dict | None = None
+    # 消息级元数据（v12 加）：现用途是 user 消息的引用快照 {"refs": [...]}，
+    # 刷新后引用 chip 还原、regenerate 重解析都读它；空 dict 落库为 NULL
+    metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: float = Field(default_factory=time.time)
 
     @classmethod

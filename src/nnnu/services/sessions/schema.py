@@ -28,7 +28,10 @@ from pathlib import Path
 # v11：P9 题库增强——questions 补四列：用户笔记（note/note_updated_at）、
 #     LLM 分类错因（error_causes，JSON 数组）、变式题来源（parent_id 软引用）。
 #     配图不在本版（将来走 note/stem 里的 markdown 图片，无需再加列）。
-SCHEMA_VERSION = "11"
+# v12：P9 笔记本正式版 + @引用——messages 补 metadata（user 消息的引用快照：
+#     笔记本记录/题库题目。刷新后消息上的引用 chip 还原、regenerate 重解析都读它；
+#     老行 NULL，读取端按空 dict 处理）。
+SCHEMA_VERSION = "12"
 
 MIGRATIONS: dict[str, list[str]] = {
     "2": [
@@ -273,6 +276,14 @@ MIGRATIONS: dict[str, list[str]] = {
         "ALTER TABLE questions ADD COLUMN parent_id TEXT",
         "CREATE INDEX IF NOT EXISTS idx_questions_parent ON questions(parent_id)",
     ],
+    # 注意：同 v9/v11，本级的 ADD COLUMN 不是幂等语句（SQLite 没有 IF EXISTS 语法），
+    # 崩在「DDL 已应用、版本文件还没写」之间要把 data/system/schema_version.txt 退回 v11 重跑。
+    "12": [
+        # 消息级元数据（本批用途：user 消息的引用快照 {"refs": [...]}）。
+        # 不解析进 Message 的固定字段：形状还会随引用种类长（书页/导入会话），
+        # 且只有 user 消息用得上——单开一列 JSON 比一排稀疏列干净。
+        "ALTER TABLE messages ADD COLUMN metadata TEXT",
+    ],
 }
 
 # 每级迁移应落地的产物——启动自检清单（见 _verify）。
@@ -300,6 +311,7 @@ EXPECTED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("questions", "error_causes"),
         ("questions", "parent_id"),
     ),
+    "12": (("messages", "metadata"),),
 }
 
 

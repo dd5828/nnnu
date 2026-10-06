@@ -7,6 +7,14 @@ import { useLanguageStore } from "@/i18n/language-store";
 import { apiFetch } from "@/lib/api";
 import { mergeMessages, messagesThroughLastUser } from "@/lib/chat-messages";
 import {
+  normalizeRefs,
+  refKey,
+  toSnapshotEntries,
+  toWireRefs,
+  type MessageMetadata,
+  type PendingRef,
+} from "@/lib/refs";
+import {
   CAPABILITY_MATH_ANIMATOR,
   CAPABILITY_RESEARCH,
   CAPABILITY_VISUALIZE,
@@ -60,6 +68,8 @@ export interface UiMessage {
   citations: CitationSource[];
   cost: { tokens: number; cost: number } | null;
   created_at: number;
+  /** 引用快照（§7.1）：发送时落库、刷新后还原消息上的 chips；助手消息为空。 */
+  metadata: MessageMetadata;
 }
 
 export interface AskUserPrompt {
@@ -128,6 +138,8 @@ interface ChatState {
   visualizeRenderType: VisualizeRenderType;
   /** 数学动画画质（§7.8）：只在 capability=math_animator 时下发 */
   animatorQuality: AnimatorQuality;
+  /** 待发引用（§7.1「+」菜单挑的）：随下一条消息一次性注入，发完即清 */
+  pendingRefs: PendingRef[];
 
   init: () => void;
   refreshSessions: () => Promise<void>;
@@ -142,6 +154,9 @@ interface ChatState {
   setResearchMode: (value: ResearchMode) => void;
   setVisualizeRenderType: (value: VisualizeRenderType) => void;
   setAnimatorQuality: (value: AnimatorQuality) => void;
+  addPendingRef: (ref: PendingRef) => void;
+  removePendingRef: (ref: PendingRef) => void;
+  clearPendingRefs: () => void;
   renameSession: (id: string, title: string) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
   send: (text: string, attachments: AttachmentRef[], extraConfig?: TurnConfig) => Promise<void>;
@@ -205,24 +220,28 @@ function normalizeAskOptions(raw: unknown): AskUserOption[] {
 /** 服务器消息 → UI 消息：tool_calls 落库是 done 事件的 ToolTrace 形状
  *（tool_name 键），与实时回合的 UiToolCall（name 键）不同，这里归一化。 */
 function toUiMessages(raw: RawMessage[]): UiMessage[] {
-  return raw.map((message) => ({
-    id: message.id,
-    role: message.role,
-    content: message.content ?? "",
-    thinking: message.thinking ?? null,
-    tool_calls: (message.tool_calls ?? []).map((call) => ({
-      name: String(call.tool_name ?? call.name ?? "tool"),
-      call_id: String(call.call_id ?? ""),
-      args: (call.args as Record<string, unknown>) ?? {},
-      ok: typeof call.ok === "boolean" ? call.ok : null,
-      summary: String(call.summary ?? ""),
-      // 小结构 detail 也落库（答题结果卡刷新后仍是卡）；超限的没落，用 null 兜住
-      detail: (call.detail as Record<string, unknown>) ?? null,
-    })),
-    citations: message.citations ?? [],
-    cost: message.cost ?? null,
-    created_at: message.created_at,
-  }));
+  return raw.map((message) => {
+    const refs = normalizeRefs(message.metadata);
+    return {
+      id: message.id,
+      role: message.role,
+      content: message.content ?? "",
+      thinking: message.thinking ?? null,
+      tool_calls: (message.tool_calls ?? []).map((call) => ({
+        name: String(call.tool_name ?? call.name ?? "tool"),
+        call_id: String(call.call_id ?? ""),
+        args: (call.args as Record<string, unknown>) ?? {},
+        ok: typeof call.ok === "boolean" ? call.ok : null,
+        summary: String(call.summary ?? ""),
+        // 小结构 detail 也落库（答题结果卡刷新后仍是卡）；超限的没落，用 null 兜住
+        detail: (call.detail as Record<string, unknown>) ?? null,
+      })),
+      citations: message.citations ?? [],
+      cost: message.cost ?? null,
+      created_at: message.created_at,
+      metadata: refs.length > 0 ? { refs } : {},
+    };
+  });
 }
 
 interface RawMessage {
@@ -242,6 +261,8 @@ interface RawMessage {
   citations: CitationSource[];
   cost: { tokens: number; cost: number } | null;
   created_at: number;
+  /** 自由 dict（服务端 Message.metadata）：目前只有引用快照，宽容解析见 normalizeRefs。 */
+  metadata?: unknown;
 }
 
 /** hydrateKb/hydrateModel/hydrateCapability：切会话时顺带水合库、模型与能力选择；
@@ -468,6 +489,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   researchMode: "report",
   visualizeRenderType: "auto",
   animatorQuality: "medium",
+  pendingRefs: [],
 
   init: () => {
     if (initialized) {
@@ -584,6 +606,21 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
   setAnimatorQuality: (value: AnimatorQuality) => set(() => ({ animatorQuality: value })),
 
+  addPendingRef: (ref: PendingRef) => {
+    const { pendingRefs } = get();
+    if (pendingRefs.some((item) => refKey(item) === refKey(ref))) {
+      return;
+    }
+    set(() => ({ pendingRefs: [...pendingRefs, ref] }));
+  },
+
+  removePendingRef: (ref: PendingRef) => {
+    const key = refKey(ref);
+    set((s) => ({ pendingRefs: s.pendingRefs.filter((item) => refKey(item) !== key) }));
+  },
+
+  clearPendingRefs: () => set(() => ({ pendingRefs: [] })),
+
   renameSession: async (id: string, title: string) => {
     await apiFetch(`/api/v1/sessions/${id}`, {
       method: "PATCH",
@@ -603,8 +640,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   send: async (text: string, attachments: AttachmentRef[], extraConfig?: TurnConfig) => {
-    if (!text.trim() && attachments.length === 0) {
-      return;
+    const pendingRefs = get().pendingRefs;
+    if (!text.trim() && attachments.length === 0 && pendingRefs.length === 0) {
+      return; // 引用也算内容：只带一条引用提问是合法的一条消息（「看看这条记录」）
     }
     const sid = await get().ensureSession();
     // 本地先贴出用户气泡（服务器落库后终局重取会替换为正式消息）
@@ -617,13 +655,17 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       citations: [],
       cost: null,
       created_at: Date.now() / 1000,
+      metadata: pendingRefs.length > 0 ? { refs: toSnapshotEntries(pendingRefs) } : {},
     };
-    set((s) => ({ messages: [...s.messages, optimistic], topError: null }));
+    // 引用发完即清（一次性语义，§7.1）；清空和贴消息同一次 set，弹层不会闪一帧空 chips
+    set((s) => ({ messages: [...s.messages, optimistic], topError: null, pendingRefs: [] }));
     socket.send({
       type: "chat",
       session_id: sid,
       message: text,
       attachments: attachments.map((a) => ({ id: a.id, name: a.name, mime: a.mime })),
+      // 引用（§7.1）：按类分组全量下发，后端发送时一次性解析注入并落进消息 metadata
+      refs: toWireRefs(pendingRefs),
       // 知识库选择随消息全量下发（§7.9 粘性）：空数组也是明确意思——取消全部选择
       kb_ids: get().kbIds,
       // 模型选择同款全量下发（§6.10 粘性）：null 也是明确意思——跟随设置默认

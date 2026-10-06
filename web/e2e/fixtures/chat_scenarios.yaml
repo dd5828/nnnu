@@ -475,3 +475,30 @@ steps:
     finish_reason: stop
     delay_ms: 300
     usage: { prompt_tokens: 300, completion_tokens: 200 }
+  # Turn 25（refs.e2e ①）：write_note 存一条记录（§7.15 验收①：对话里写 → 控制台可见 → 可导出）。
+  # 不传 notebook → 目标本「速记」不存在会被工具自动建出来，正是要验的那条宽容路径
+  - tool_calls:
+      - {
+          id: note-1,
+          name: write_note,
+          arguments: '{"title": "链式法则", "content": "链式法则：复合函数求导，外层导数乘以内层导数。例：$(2x+1)^2$ 的导数是 $4(2x+1)$。"}',
+        }
+    finish_reason: tool_calls
+    usage: { prompt_tokens: 200, completion_tokens: 60 }
+  - chunks: ["记好了：链式法则已经存进笔记本「速记」。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 200, completion_tokens: 30 }
+  # Turn 26（refs.e2e ②）：带错题引用提问（§7.15 验收②）——回答内容无关紧要，断言看
+  # 用户消息上的引用 chip 与它的深链落点
+  - chunks: ["这道题用链式法则：外层导数乘以内层导数，选 A。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 200, completion_tokens: 30 }
+  # Turn 27（refs.e2e ③）：带笔记本记录引用提问（§7.15 验收③的前半截；移动发生在发送之后）
+  - chunks: ["这条记录讲的是链式法则，重点在外层乘内层。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 200, completion_tokens: 30 }
+  # Turn 28（refs.e2e ③）：记录搬去「乙本」后重新生成——引用从末条 user 消息的 metadata
+  # 重建并**活查**（按 record_id 全局找），搬了家也照常注入、回合不炸
+  - chunks: ["重新讲一遍这条记录：链式法则就是外层乘内层。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 200, completion_tokens: 30 }

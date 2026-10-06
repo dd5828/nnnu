@@ -1,7 +1,9 @@
-"""笔记本服务（§7.15 极简版）：笔记本 CRUD + 记录增删。
+"""笔记本服务（§7.15 正式版）：笔记本 CRUD + 记录增删改移拷 + 全局按 id 查。
 
-批一只做「存得下、看得见」：记录一经写入不可改（要改就删了重存），
-移动/复制/导出、`@笔记本:记录` 引用、`write_note` 工具归 P9 §7.15 正式版。
+P9 正式版在极简版之上补齐：记录编辑（标题/正文）、在笔记本间移动/复制、
+整本 Markdown 导出（见 export.py）。对话里的 write_note / list_notebook 工具
+与 @ 引用解析都走 `get_record` 全局按 id 取——**移动只改归属列、id 不变**，
+引用关系因此不随移动失效。
 """
 
 import unicodedata
@@ -89,6 +91,32 @@ class NotebookService:
         cursor = await self._db.execute("DELETE FROM notebooks WHERE id = ?", (notebook_id,))
         return cursor.rowcount > 0
 
+    async def update_notebook(
+        self,
+        notebook_id: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+    ) -> Notebook | None:
+        """None = 不改；description 传空串 = 清空；全都没给视为无效请求。"""
+        if await self.get_notebook(notebook_id) is None:
+            return None
+        updates: list[str] = []
+        params: list[Any] = []
+        if name is not None:
+            updates.append("name = ?")
+            params.append(validate_name(name))
+        if description is not None:
+            updates.append("description = ?")
+            params.append((description or "").strip() or None)
+        if not updates:
+            raise NotebookError("没有要更新的字段")
+        params.append(notebook_id)
+        await self._db.execute(
+            f"UPDATE notebooks SET {', '.join(updates)} WHERE id = ?", tuple(params)
+        )
+        return await self.get_notebook(notebook_id)
+
     # ---- 记录 ----
 
     async def list_records(self, notebook_id: str) -> list[NotebookRecord]:
@@ -145,6 +173,75 @@ class NotebookService:
         )
         return cursor.rowcount > 0
 
+    async def get_record(self, record_id: str) -> NotebookRecord | None:
+        """全库按 id 查（不限定笔记本）——@ 引用解析与移动后的深链跟随都靠它。"""
+        row = await self._db.fetch_one("SELECT * FROM notebook_records WHERE id = ?", (record_id,))
+        return self._row_to_record(row) if row else None
+
+    async def update_record(
+        self,
+        record_id: str,
+        *,
+        title: str | None = None,
+        content_md: str | None = None,
+    ) -> NotebookRecord | None:
+        """编辑记录：None = 不改；title 传空串 = 按正文首行重取（与 add_record 同规则）。"""
+        record = await self.get_record(record_id)
+        if record is None:
+            return None
+        content = record.content_md
+        if content_md is not None:
+            content = content_md or ""
+            if not content.strip():
+                raise NotebookError("记录内容不能为空")
+            if len(content) > MAX_CONTENT_CHARS:
+                raise NotebookError(f"记录内容最多 {MAX_CONTENT_CHARS} 个字符")
+        updates: list[str] = []
+        params: list[Any] = []
+        if content_md is not None:
+            updates.append("content_md = ?")
+            params.append(content)
+        if title is not None:
+            updates.append("title = ?")
+            params.append(_title_of(title, content))
+        if not updates:
+            raise NotebookError("没有要更新的字段")
+        params.append(record_id)
+        await self._db.execute(
+            f"UPDATE notebook_records SET {', '.join(updates)} WHERE id = ?", tuple(params)
+        )
+        return await self.get_record(record_id)
+
+    async def move_record(self, record_id: str, target_notebook_id: str) -> NotebookRecord | None:
+        """移动只改归属列、id 不变——引用按 record_id 解析，移动后不失效的根。"""
+        if await self.get_record(record_id) is None:
+            return None
+        if await self.get_notebook(target_notebook_id) is None:
+            raise NotebookError(f"目标笔记本 {target_notebook_id} 不存在")
+        await self._db.execute(
+            "UPDATE notebook_records SET notebook_id = ? WHERE id = ?",
+            (target_notebook_id, record_id),
+        )
+        return await self.get_record(record_id)
+
+    async def copy_record(
+        self, record_id: str, *, target_notebook_id: str | None = None
+    ) -> NotebookRecord | None:
+        """复制成新记录（新 nbr- id）；缺省复制到原笔记本。"""
+        record = await self.get_record(record_id)
+        if record is None:
+            return None
+        target = target_notebook_id or record.notebook_id
+        if await self.get_notebook(target) is None:
+            raise NotebookError(f"目标笔记本 {target} 不存在")
+        return await self.add_record(
+            target,
+            record_type=record.type,
+            content_md=record.content_md,
+            title=record.title,
+            source_ref=record.source_ref,
+        )
+
     # ---- 行转换 ----
 
     @staticmethod
@@ -167,3 +264,20 @@ class NotebookService:
             source_ref=row["source_ref"],
             created_at=float(row["created_at"] or 0.0),
         )
+
+
+# ---- 单例装配（工具/引用解析用）——照 question_bank 的存取器模式 ----
+
+_notebook_service: NotebookService | None = None
+
+
+def get_notebook_service() -> NotebookService:
+    """服务层取笔记本（write_note/list_notebook 工具、@ 引用解析用）。"""
+    if _notebook_service is None:
+        raise RuntimeError("笔记本服务未装配（lifespan 未调用 set_notebook_service）")
+    return _notebook_service
+
+
+def set_notebook_service(service: NotebookService | None) -> None:
+    global _notebook_service
+    _notebook_service = service

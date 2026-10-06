@@ -19,6 +19,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useChatStore } from "@/hooks/useChat";
 import { TURN_TOP_GAP_PX, tailSpacerHeight } from "@/lib/chat-scroll";
+import { EMPTY_REFS } from "@/lib/refs";
 import { FLASH_MS, buildQuestionEntries, jumpTargetTop } from "@/lib/chat-rail";
 import ActiveTurnView from "./ActiveTurnView";
 import AssistantMessage from "./AssistantMessage";
@@ -244,6 +245,7 @@ export default function MessageList() {
                 ordinal={ordinalById.get(message.id) ?? null}
                 flashSeq={flash?.id === message.id ? flash.seq : null}
                 content={message.content}
+                refs={message.metadata.refs ?? EMPTY_REFS}
               />
             ) : (
               <AssistantMessage key={message.id} message={message} />

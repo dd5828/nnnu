@@ -9,6 +9,8 @@ import CapabilitySelector from "@/components/chat/CapabilitySelector";
 import KnowledgeSelector from "@/components/chat/KnowledgeSelector";
 import MathAnimatorSettings from "@/components/chat/MathAnimatorSettings";
 import ModelSelector from "@/components/chat/ModelSelector";
+import RefChips from "@/components/chat/RefChips";
+import ReferenceMenu from "@/components/chat/ReferenceMenu";
 import ResearchSettings from "@/components/chat/ResearchSettings";
 import VisualizeSettings from "@/components/chat/VisualizeSettings";
 import { useChatStore, type AttachmentRef } from "@/hooks/useChat";
@@ -27,6 +29,8 @@ export default function Composer() {
   const busy = useChatStore((s) => s.active !== null);
   const ensureSession = useChatStore((s) => s.ensureSession);
   const capability = useChatStore((s) => s.capability);
+  // 只订条数：发送按钮的可用性与 chips 行要不要占位看它；条目内容由子组件自己订
+  const pendingRefCount = useChatStore((s) => s.pendingRefs.length);
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<AttachmentRef[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -88,7 +92,8 @@ export default function Composer() {
   };
 
   const handleSubmit = async () => {
-    if (!text.trim() && attachments.length === 0) {
+    // 引用也算内容：只带一条引用提问是合法的一条消息（「看看这条记录」）
+    if (!text.trim() && attachments.length === 0 && pendingRefCount === 0) {
       return;
     }
     const message = text;
@@ -126,8 +131,9 @@ export default function Composer() {
   return (
     <div className="border-t border-border/70 px-4 py-3">
       <div className="mx-auto max-w-3xl">
-        {(attachments.length > 0 || uploading) && (
+        {(attachments.length > 0 || pendingRefCount > 0 || uploading) && (
           <div className="mb-2 flex flex-wrap items-center gap-1.5">
+            <RefChips />
             {attachments.map((attachment) => (
               <span
                 key={attachment.id}
@@ -173,6 +179,7 @@ export default function Composer() {
             <MathAnimatorSettings />
             <KnowledgeSelector />
             <ModelSelector />
+            <ReferenceMenu />
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -202,7 +209,7 @@ export default function Composer() {
               <button
                 type="button"
                 onClick={() => void handleSubmit()}
-                disabled={!text.trim() && attachments.length === 0}
+                disabled={!text.trim() && attachments.length === 0 && pendingRefCount === 0}
                 className="ml-auto rounded-xl bg-primary p-2 text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-40"
                 aria-label={t("chat.send")}
               >

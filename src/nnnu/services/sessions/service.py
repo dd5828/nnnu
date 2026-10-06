@@ -115,8 +115,9 @@ class SessionManager:
     async def append_message(self, message: Message) -> None:
         await self._db.execute(
             """INSERT INTO messages
-               (id, session_id, role, content, thinking, tool_calls, citations, cost, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (id, session_id, role, content, thinking, tool_calls, citations, cost,
+                metadata, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 message.id,
                 message.session_id,
@@ -126,6 +127,7 @@ class SessionManager:
                 _dumps(message.tool_calls),
                 _dumps(message.citations),
                 _dumps(message.cost) if message.cost is not None else None,
+                _dumps(message.metadata) if message.metadata else None,
                 message.created_at,
             ),
         )
@@ -212,6 +214,7 @@ class SessionManager:
             tool_calls=_loads(row["tool_calls"], []),
             citations=_loads(row["citations"], []),
             cost=_loads(row["cost"], None),
+            metadata=_loads(row["metadata"], {}),
             created_at=row["created_at"],
         )
 

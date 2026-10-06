@@ -23,6 +23,8 @@ interface MergeableMessage {
   citations: readonly unknown[];
   cost: { tokens: number; cost: number } | null;
   created_at: number;
+  /** 引用快照（§7.1）：变了必须换新对象，否则消息上的 chips 一直停在旧快照。 */
+  metadata?: { refs?: readonly unknown[] } | null;
 }
 
 /** 终局重取时按 id 复用旧对象引用：字段全等就沿用 prev 的那一份。
@@ -54,6 +56,17 @@ function sameMessage(a: MergeableMessage, b: MergeableMessage): boolean {
     a.citations.length === 0 &&
     b.citations.length === 0 &&
     (a.cost?.tokens ?? null) === (b.cost?.tokens ?? null) &&
-    (a.cost?.cost ?? null) === (b.cost?.cost ?? null)
+    (a.cost?.cost ?? null) === (b.cost?.cost ?? null) &&
+    sameRefs(a.metadata?.refs, b.metadata?.refs)
   );
+}
+
+/** 引用快照逐条比：条目小、条数少，序列化比最省事也最不容易漏字段。 */
+function sameRefs(a: readonly unknown[] | undefined, b: readonly unknown[] | undefined): boolean {
+  const left = a ?? [];
+  const right = b ?? [];
+  if (left.length !== right.length) {
+    return false;
+  }
+  return left.every((entry, index) => JSON.stringify(entry) === JSON.stringify(right[index]));
 }

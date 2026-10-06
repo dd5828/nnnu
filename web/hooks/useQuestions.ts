@@ -67,6 +67,17 @@ export function useQuestionList(filters: QuestionFilters) {
   });
 }
 
+/** 单题查询（§7.1 引用深链 `?question=` 的置顶卡）：404 是「引用失效」的
+ *  正常分支，不重试（对齐 useRecord 的口径）。 */
+export function useQuestion(id: string | null) {
+  return useQuery({
+    queryKey: ["questions", "detail", id],
+    queryFn: () => apiFetch<Question>(`/api/v1/questions/${id}`),
+    enabled: Boolean(id),
+    retry: false,
+  });
+}
+
 /** 题目形态的提交体（新增与编辑共用；编辑走 PATCH，只发改动的字段也支持）。 */
 export interface QuestionInput {
   stem: string;

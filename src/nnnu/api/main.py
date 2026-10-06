@@ -82,7 +82,7 @@ def create_app() -> FastAPI:
         from nnnu.services.cost.service import CostService
         from nnnu.services.files.service import AttachmentsService
         from nnnu.services.learning.service import LearningService, set_learning_service
-        from nnnu.services.notebooks.service import NotebookService
+        from nnnu.services.notebooks.service import NotebookService, set_notebook_service
         from nnnu.services.question_bank.service import QuestionBankService, set_question_bank
         from nnnu.services.research.service import ResearchService, set_research_service
         from nnnu.services.sessions.db import Database
@@ -108,7 +108,10 @@ def create_app() -> FastAPI:
         )
         _app.state.db = db
         _app.state.attachments = AttachmentsService(db, runtime_home.get_data_root())
-        _app.state.notebooks = NotebookService(db)
+        # 笔记本（§7.15）：单例给 write_note/list_notebook 工具与 @ 引用解析用
+        notebooks_service = NotebookService(db)
+        set_notebook_service(notebooks_service)
+        _app.state.notebooks = notebooks_service
         # 题库（§7.4）：单例给出题能力/工具用，app.state 给路由用；成本服务同理
         # （判分端点要写 usage_records，之前只塞进了 TurnRuntimeManager）
         questions_service = QuestionBankService(db)
@@ -181,6 +184,7 @@ def create_app() -> FastAPI:
         set_kb_service(None)
         set_embedding_service(None)
         set_question_bank(None)
+        set_notebook_service(None)
         set_learning_service(None)
         set_research_service(None)
         set_render_service(None)

@@ -10,6 +10,7 @@ interface Msg {
   citations: readonly unknown[];
   cost: { tokens: number; cost: number } | null;
   created_at: number;
+  metadata: { refs?: readonly unknown[] };
 }
 
 function msg(role: string, content: string, id = role + content): Msg {
@@ -22,6 +23,7 @@ function msg(role: string, content: string, id = role + content): Msg {
     citations: [],
     cost: null,
     created_at: 1,
+    metadata: {},
   };
 }
 
@@ -87,5 +89,28 @@ describe("终局重取的消息合并", () => {
     const prev = [msg("user", "旧会话", "u1")];
     const next = [msg("user", "新会话", "u9")];
     expect(mergeMessages(prev, next)[0]).toBe(next[0]);
+  });
+
+  it("引用快照没变沿用旧对象，变了换新（消息上的 chips 靠这个刷新）", () => {
+    const refs = [{ kind: "question", question_id: "q-1", label: "题", resolved: true }];
+    const prev = [{ ...msg("user", "问1", "u1"), metadata: { refs } }];
+    // 重新取回来的是新数组、新条目对象，但字段全等 → 沿用
+    const same = [{ ...msg("user", "问1", "u1"), metadata: { refs: [{ ...refs[0] }] } }];
+    expect(mergeMessages(prev, same)[0]).toBe(prev[0]);
+    // 服务端把引用标了失效（目标被删）→ 必须换新对象
+    const changed = [
+      { ...msg("user", "问1", "u1"), metadata: { refs: [{ ...refs[0], resolved: false }] } },
+    ];
+    expect(mergeMessages(prev, changed)[0]).toBe(changed[0]);
+  });
+
+  it("一边有引用一边没有：不等价（发送时快照补落库后要还原成有 chips 的那版）", () => {
+    const withRefs = [
+      {
+        ...msg("user", "问1", "u1"),
+        metadata: { refs: [{ kind: "question", question_id: "q-1", label: "", resolved: true }] },
+      },
+    ];
+    expect(mergeMessages([msg("user", "问1", "u1")], withRefs)[0]).toBe(withRefs[0]);
   });
 });

@@ -45,6 +45,8 @@ tool_descriptions:
   videogen: "Video generation (not supported yet; returns a clear message. Prefer imagegen or other ways to satisfy the user)."
   read_memory: "Read long-term memory: the L3 profile (who the user is, preferences, scope) plus L2 fact entries for the current surface. Read it first when the answer depends on what you already know about the user or should be personalized; an empty memory returns \"no memories yet\" rather than an error."
   write_memory: "Save a long-term fact the user stated explicitly (write text as one complete sentence, under 400 Chinese characters). Use it for durable facts like \"remember that...\", \"from now on...\", \"I'm working on...\"; do not store one-off task details or transient state. Absolute wording (always/never) is rejected — use conditional phrasing."
+  write_note: "Save content into a notebook as a record: content is required (Markdown; write math as inline LaTeX), title defaults to the first non-empty line, and notebook picks the target notebook by name or id (defaults to the \"Notes\" notebook; a missing name is created on the fly). Use it for 'write this down', 'save to my notebook' or 'turn this into notes'; durable facts like 'remember that...' belong to write_memory instead."
+  list_notebook: "Browse notebooks: with no arguments, list all notebooks with their record counts; with notebook (name or id), list that notebook's records; with record_id, read one record in full. Use it for 'show my notes', 'that record in my notebook', or whenever you need to find an earlier record."
 # Cost/limit hints shown on tool cards (§7.2): the settings tool catalog picks them by language
 tool_cost_hints:
   web_search: "Web search (billed/latency per provider)"

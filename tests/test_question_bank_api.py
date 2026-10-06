@@ -84,6 +84,12 @@ async def test_question_crud_round_trip(bank):
     assert [item["id"] for item in listed["questions"]] == [created["id"]]
     assert listed["counts"] == {"all": 1, "wrong": 0, "unanswered": 1}
 
+    # 单题查询（P9 引用链路加）：引用深链与 ?question= 置顶都用它
+    fetched = (await client.get(f"/api/v1/questions/{created['id']}")).json()
+    assert fetched["stem"] == SINGLE["stem"]
+    assert fetched["answer"] == "B"
+    assert (await client.get("/api/v1/questions/q-nope")).status_code == 404
+
     patched = await client.patch(
         f"/api/v1/questions/{created['id']}",
         json={"stem": "改过的题面：函数 $f(x)=x^2$ 在 $x=3$ 处的导数？", "answer": "C"},

@@ -397,6 +397,50 @@ def test_migrate_v10_to_v11_keeps_rows(tmp_home):
         conn.close()
     assert old_row == ("老题面", None, None, "[]", None)
     assert new_row == ("笔记正文", 3.0, '["calculation"]', "q-v10")
+
+
+def test_migrate_v11_to_v12_keeps_rows(tmp_home):
+    # 模拟 P9 题库增强后的状态：v11 库里有会话与消息（还没有 metadata 列）。升到 v12 后
+    # 消息还在、metadata 列就位：老行 NULL（读取端兜底空 dict），新行能写引用快照。
+    data = tmp_home / "data"
+    (data / "system").mkdir(parents=True)
+    _version_file(tmp_home).write_text("11\n", encoding="utf-8")
+    path = db_path(data)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    try:
+        for level in (str(v) for v in range(2, 12)):
+            for statement in MIGRATIONS[level]:
+                conn.execute(statement)
+        conn.execute(
+            "INSERT INTO sessions (id, title, created_at, updated_at) "
+            "VALUES ('s-v11', '老会话', 1.0, 1.0)"
+        )
+        conn.execute(
+            "INSERT INTO messages (id, session_id, role, content, created_at) "
+            "VALUES ('m-v11', 's-v11', 'user', '老消息', 1.0)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert migrate(data) == SCHEMA_VERSION
+    assert "metadata" in _columns(tmp_home, "messages")
+    conn = sqlite3.connect(path)
+    try:
+        old_row = conn.execute(
+            "SELECT content, metadata FROM messages WHERE id = 'm-v11'"
+        ).fetchone()
+        conn.execute(
+            "INSERT INTO messages (id, session_id, role, content, metadata, created_at) "
+            "VALUES ('m-v12', 's-v11', 'user', '新消息', '{\"refs\": []}', 2.0)"
+        )
+        new_row = conn.execute("SELECT metadata FROM messages WHERE id = 'm-v12'").fetchone()
+        conn.commit()
+    finally:
+        conn.close()
+    assert old_row == ("老消息", None)
+    assert new_row == ('{"refs": []}',)
     # 来源索引是普通索引（非唯一、非部分：道道变式题都挂同一道源题是常态）
     assert _indexes(tmp_home, "questions")["idx_questions_parent"] == (0, 0)
 

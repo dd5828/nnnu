@@ -21,7 +21,7 @@ from typing import Any, AsyncIterator
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from nnnu.core.context import Attachment, SessionRef
+from nnnu.core.context import Attachment, NotebookRef, QuestionRef, SessionRef
 from nnnu.core.events import StreamEventType
 from nnnu.core.ids import new_id
 from nnnu.core.stream_bus import StreamBus
@@ -44,12 +44,17 @@ FINISHED_LRU_SIZE = 100  # 已结束回合的迟来重放上限
 
 
 class TurnRefs(BaseModel):
-    """一次性引用（§6.7 仅当回合有效）：P2 先落地历史会话；笔记本/题库/书页
-    随 P9/P10 实体扩展字段，未知字段宽容。"""
+    """一次性引用（§6.7 仅当回合有效）：历史会话（P2）+ 笔记本记录/题库题目（P9）。
+
+    `extra="ignore"` 是坑：wire 上带了新字段但这里没显式声明会被**静默丢弃**，
+    加引用类型时必须同时在这加字段（test_refs.py 有防回归用例）。
+    """
 
     model_config = ConfigDict(extra="ignore")
 
     sessions: list[str] = field(default_factory=list)  # 引用会话 id
+    notebooks: list[NotebookRef] = field(default_factory=list)  # 笔记本记录引用
+    questions: list[QuestionRef] = field(default_factory=list)  # 题库题目引用
 
 
 class TurnRequest(BaseModel):
@@ -117,6 +122,39 @@ class _TurnExecution:
     pending_ask_id: str | None = None
     reply_queue: asyncio.Queue[tuple[str, str]] | None = None
     reply_timeout_task: asyncio.Task | None = None
+
+
+@dataclass(slots=True)
+class _ResolvedRefs:
+    """一次回合引用解析的产物：注入载荷 + 上下文 refs + 落库快照 + 待发 warning。"""
+
+    notebook_refs: list[NotebookRef] = field(default_factory=list)
+    question_refs: list[QuestionRef] = field(default_factory=list)
+    notebook_payloads: list[dict[str, Any]] = field(default_factory=list)
+    question_payloads: list[dict[str, Any]] = field(default_factory=list)
+    snapshot: list[dict[str, Any]] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+
+def _snapshot_entry(
+    kind: str, identifier: str, resolved: bool, *, notebook_id: str = ""
+) -> dict[str, Any]:
+    """引用快照条目（v12 消息 metadata）：前端 chip 还原 + regenerate 重建用。"""
+    if kind == "question":
+        return {"kind": kind, "question_id": identifier, "label": "", "resolved": resolved}
+    return {
+        "kind": kind,
+        "notebook_id": notebook_id,
+        "record_id": identifier,
+        "label": "",
+        "resolved": resolved,
+    }
+
+
+def _question_label(stem: str) -> str:
+    """题目 chip 文案：题干压成单行，截 60 字符。"""
+    text = " ".join(stem.split())
+    return text[:60]
 
 
 class TurnRuntimeManager:
@@ -382,21 +420,39 @@ class TurnRuntimeManager:
     async def _run_turn_body(
         self, execution: _TurnExecution, request: TurnRequest, session, relay
     ) -> None:
-        """session 解析后的回合主体（异常上抛，收尾全归 _run_turn 单出口）。"""
+        """session 解析后的回合主体（异常上抛，收尾全归 _run_turn 单出口）。
+
+        引用解析顺序（§7.1）：先解析（纯查库）→ 快照随用户消息落库 → turn_start →
+        warning → 历史会话引用 → 组装上下文。regenerate 不重落库，从末条 user 消息
+        的 metadata 重建 TurnRefs 后**活查重解析**——被引记录移动了也能读到新位置。
+        """
         user_message: Message | None
         if request.persist_user_message:
+            # 引用先解析：快照（含 resolved 与解析时的归属）随消息一起落库，
+            # 刷新后引用 chip 由它还原；查不到的项也进快照（resolved=false）
+            ref_state = await self._resolve_turn_refs(request.refs)
+            user_message = Message.new(
+                session_id=session.id,
+                role="user",
+                content=request.message,
+                metadata={"refs": ref_state.snapshot} if ref_state.snapshot else {},
+            )
             # 用户消息落库（ask_user 挂起时对会话列表可见）+ 标题
-            user_message = Message.new(session_id=session.id, role="user", content=request.message)
             await self._sessions.append_message(user_message)
             await self._sessions.set_title_from_first_user(session.id)
         else:
-            # regenerate：复用末条 user 消息为快照（§6.8）
+            # regenerate：复用末条 user 消息为快照（§6.8），引用从 metadata 重建
             user_message = await self._sessions.get_last_user_message(session.id)
             if user_message is None:
                 raise TurnRejected(f"会话 {session.id} 无用户消息可重新生成")
+            ref_state = await self._resolve_turn_refs(
+                self._refs_from_metadata(user_message.metadata)
+            )
         session_messages = await self._sessions.list_messages(session.id)
 
         await execution.bus.emit_turn_start(capability=request.capability, model=request.model)
+        for warning in ref_state.warnings:
+            await execution.bus.emit_warning(message=warning)
         history_refs, history_transcripts = await self._resolve_history_refs(request, execution.bus)
         ctx = build_unified_context(
             request,
@@ -405,10 +461,129 @@ class TurnRuntimeManager:
             session_messages,
             language=request.language or session.language,
             history_refs=history_refs,
+            notebook_refs=ref_state.notebook_refs,
+            question_refs=ref_state.question_refs,
         )
         ctx.metadata["history_ref_transcripts"] = history_transcripts
+        ctx.metadata["notebook_ref_payloads"] = ref_state.notebook_payloads
+        ctx.metadata["question_ref_payloads"] = ref_state.question_payloads
         ctx.metadata["ask_user_fn"] = self._make_ask_user_fn(execution)
         await self._orchestrator.handle(ctx, execution.bus)
+
+    async def _resolve_turn_refs(self, refs: TurnRefs) -> "_ResolvedRefs":
+        """笔记本记录/题目引用：解析一次（regenerate 也走这里，活查重解析）。"""
+        state = _ResolvedRefs()
+        await self._resolve_notebook_refs(refs.notebooks, state)
+        await self._resolve_question_refs(refs.questions, state)
+        return state
+
+    async def _resolve_notebook_refs(self, refs: list[NotebookRef], state: "_ResolvedRefs") -> None:
+        """记录按 record_id 全局查（不限定笔记本）——移动只改归属、id 不变，
+        引用因此不随移动失效；查不到 → warning + 跳过 + resolved=false（宽容语义）。"""
+        if not refs:
+            return
+        try:
+            from nnnu.services.notebooks.service import get_notebook_service
+
+            service = get_notebook_service()
+        except RuntimeError:
+            for ref in refs:
+                state.snapshot.append(
+                    _snapshot_entry(
+                        "notebook_record", ref.record_id or "", False, notebook_id=ref.notebook_id
+                    )
+                )
+            state.warnings.append("引用的笔记本记录不可用：笔记本服务未装配")
+            return
+        for ref in refs:
+            record = await service.get_record(ref.record_id) if ref.record_id else None
+            if record is None:
+                state.snapshot.append(
+                    _snapshot_entry("notebook_record", ref.record_id or "", False)
+                )
+                state.warnings.append(
+                    f"引用的笔记本记录 {ref.record_id or '(未指定)'} 不存在，已忽略"
+                )
+                continue
+            notebook = await service.get_notebook(record.notebook_id)
+            state.notebook_refs.append(
+                NotebookRef(notebook_id=record.notebook_id, record_id=record.id)
+            )
+            state.notebook_payloads.append(
+                {
+                    "record_id": record.id,
+                    "notebook_id": record.notebook_id,
+                    "notebook_name": notebook.name if notebook else "",
+                    "title": record.title,
+                    "content_md": record.content_md,
+                }
+            )
+            state.snapshot.append(
+                {
+                    "kind": "notebook_record",
+                    "notebook_id": record.notebook_id,  # 解析时的实际归属：移动后 chip 指新位置
+                    "record_id": record.id,
+                    "label": record.title,
+                    "resolved": True,
+                }
+            )
+
+    async def _resolve_question_refs(self, refs: list[QuestionRef], state: "_ResolvedRefs") -> None:
+        """题目引用：按 id 查题库；查不到 → warning + 跳过（同历史会话引用的宽容语义）。"""
+        if not refs:
+            return
+        try:
+            from nnnu.services.question_bank.service import get_question_bank
+
+            service = get_question_bank()
+        except RuntimeError:
+            for ref in refs:
+                state.snapshot.append(_snapshot_entry("question", ref.question_id, False))
+            state.warnings.append("引用的题目不可用：题库服务未装配")
+            return
+        for ref in refs:
+            question = await service.get_question(ref.question_id)
+            if question is None:
+                state.snapshot.append(_snapshot_entry("question", ref.question_id, False))
+                state.warnings.append(f"引用的题目 {ref.question_id} 不存在，已忽略")
+                continue
+            state.question_refs.append(QuestionRef(question_id=question.id))
+            state.question_payloads.append(
+                {
+                    "question_id": question.id,
+                    "stem": question.stem,
+                    "options": list(question.options),
+                    "answer": question.answer,
+                    "explanation": question.explanation or "",
+                    "knowledge_point": question.knowledge_point,
+                }
+            )
+            state.snapshot.append(
+                {
+                    "kind": "question",
+                    "question_id": question.id,
+                    "label": _question_label(question.stem),
+                    "resolved": True,
+                }
+            )
+
+    @staticmethod
+    def _refs_from_metadata(metadata: dict[str, Any]) -> TurnRefs:
+        """从 user 消息的引用快照重建 TurnRefs（regenerate 用；坏条目宽容跳过）。"""
+        refs = TurnRefs()
+        for entry in metadata.get("refs", []):
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("kind") == "notebook_record" and entry.get("record_id"):
+                refs.notebooks.append(
+                    NotebookRef(
+                        notebook_id=str(entry.get("notebook_id") or ""),
+                        record_id=str(entry["record_id"]),
+                    )
+                )
+            elif entry.get("kind") == "question" and entry.get("question_id"):
+                refs.questions.append(QuestionRef(question_id=str(entry["question_id"])))
+        return refs
 
     async def _resolve_history_refs(
         self, request: TurnRequest, bus: StreamBus

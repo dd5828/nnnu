@@ -14,6 +14,7 @@
  * `label` 只给「这是哪一份」的名字，页码后缀由调用方拼（要走 i18n 的 `chat.page`）。
  */
 
+import type { RefEntry } from "@/lib/refs";
 import type { CitationSource } from "@/types/stream";
 
 export type CitationTarget =
@@ -60,5 +61,37 @@ export function citationTarget(source: CitationSource): CitationTarget {
     kind: "internal",
     href: kbDeepLink(source.kb, source.doc_id, source.page),
     label: title || source.kb,
+  };
+}
+
+// ---- 用户消息上的「引用」chip（§7.1，与助手引文是两套来源） ----
+
+/** 引用 chip 的落点：对象是消息 metadata 里的引用快照条目，不是助手引文。
+ *  已解析 → 深链跟随（快照里的归属是服务端解析时的实际位置，记录移动过也跟着走）；
+ *  未解析（发送后目标被删）→ 纯文本，不造死链。 */
+export type RefTarget =
+  | { kind: "internal"; href: string; label: string }
+  | { kind: "text"; label: string };
+
+export function refTarget(entry: RefEntry): RefTarget {
+  if (entry.kind === "notebook_record") {
+    const label = entry.label || entry.record_id;
+    if (!entry.resolved || !entry.notebook_id) {
+      return { kind: "text", label };
+    }
+    return {
+      kind: "internal",
+      href: `/notebooks/${entry.notebook_id}?record=${encodeURIComponent(entry.record_id)}`,
+      label,
+    };
+  }
+  const label = entry.label || entry.question_id;
+  if (!entry.resolved) {
+    return { kind: "text", label };
+  }
+  return {
+    kind: "internal",
+    href: `/questions?question=${encodeURIComponent(entry.question_id)}`,
+    label,
   };
 }

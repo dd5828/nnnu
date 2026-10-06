@@ -189,6 +189,11 @@ export interface Notebook {
   records?: NotebookRecord[];
 }
 
+/** GET /api/v1/notebooks/records/{id}（P9 引用深链跟随）：记录 + 当前归属的笔记本名。 */
+export interface RecordDetail extends NotebookRecord {
+  notebook_name: string;
+}
+
 /** 对应 GET /api/v1/plugins（§6.11）：能力清单里的 stages 是声明式的阶段顺序。 */
 export interface CapabilityStageMeta {
   key: string;

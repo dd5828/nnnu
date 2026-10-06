@@ -195,6 +195,15 @@ async def create_question(body: QuestionBody, http_request: Request):
     return question.model_dump()
 
 
+@router.get("/api/v1/questions/{question_id}")
+async def get_question(question_id: str, http_request: Request):
+    """单题查询（P9 引用链路加）：聊天引用 chip 的深链跟随与题库页 ?question= 置顶。"""
+    question = await _service(http_request).get_question(question_id)
+    if question is None:
+        return _not_found(f"题目 {question_id} 不存在")
+    return question.model_dump()
+
+
 @router.patch("/api/v1/questions/{question_id}")
 async def update_question(question_id: str, body: QuestionPatch, http_request: Request):
     try:

@@ -16,7 +16,7 @@ import { useSearchParams } from "next/navigation";
 import { ListChecks, Loader2, Plus, Search, X } from "lucide-react";
 import QuestionCard from "@/components/quiz/QuestionCard";
 import QuestionForm, { emptyFormValues, toInput, validate } from "@/components/quiz/QuestionForm";
-import { useCreateQuestion, useQuestionList } from "@/hooks/useQuestions";
+import { useCreateQuestion, useQuestion, useQuestionList } from "@/hooks/useQuestions";
 import { useI18n } from "@/hooks/useI18n";
 import { errorText } from "@/lib/errors";
 import { ERROR_CAUSES, errorCauseKey } from "@/lib/questions";
@@ -46,6 +46,9 @@ function QuestionsBoard() {
   const { t, lang } = useI18n();
   const searchParams = useSearchParams();
   const nodeId = searchParams.get("node") ?? "";
+  // 引用深链（§7.1）：消息上的引用 chip 点进来，那道题置顶展示（不依赖当前筛选）
+  const questionParam = searchParams.get("question") ?? "";
+  const pinned = useQuestion(questionParam || null);
   const [filter, setFilter] = useState<QuestionFilter>("all");
   const [knowledgePoint, setKnowledgePoint] = useState("");
   const [errorCause, setErrorCause] = useState("");
@@ -86,7 +89,8 @@ function QuestionsBoard() {
     return ERROR_CAUSES.filter((cause) => present.has(cause));
   }, [all]);
 
-  const questions = data?.questions ?? [];
+  // 置顶那道题从列表里剔掉（不然同一张卡出现两次）
+  const questions = (data?.questions ?? []).filter((item) => item.id !== questionParam);
   const counts = data?.counts ?? { all: 0, wrong: 0, unanswered: 0 };
 
   const submitNew = async () => {
@@ -135,6 +139,31 @@ function QuestionsBoard() {
             <Link href="/questions" className="ml-auto text-muted hover:text-foreground">
               {t("questions.nodeFilterClear")}
             </Link>
+          </div>
+        )}
+
+        {questionParam && (
+          <div
+            data-testid="q-ref-pinned"
+            className="rounded-xl border border-primary/40 bg-primary/5 p-3"
+          >
+            <div className="mb-2 flex items-center gap-2 text-xs">
+              <span className="text-primary">{t("questions.refPinned")}</span>
+              <Link href="/questions" className="ml-auto text-muted hover:text-foreground">
+                {t("questions.refClear")}
+              </Link>
+            </div>
+            {pinned.isLoading ? (
+              <div className="flex justify-center py-3">
+                <Loader2 className="h-4 w-4 animate-spin text-muted" />
+              </div>
+            ) : pinned.data ? (
+              <QuestionCard question={pinned.data} language={lang} />
+            ) : (
+              <p data-testid="q-ref-gone" className="text-xs text-danger">
+                {t("questions.refMissing")}
+              </p>
+            )}
           </div>
         )}
 
@@ -230,7 +259,7 @@ function QuestionsBoard() {
           </div>
         ) : error ? (
           <p className="text-sm text-danger">{errorText(error, t("common.requestFailed"))}</p>
-        ) : questions.length === 0 ? (
+        ) : questions.length === 0 && !questionParam ? (
           <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-12 text-center">
             <ListChecks className="h-6 w-6 text-muted" />
             <p className="text-sm text-muted">{t("questions.empty")}</p>
