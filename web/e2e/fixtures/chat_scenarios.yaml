@@ -502,3 +502,13 @@ steps:
   - chunks: ["重新讲一遍这条记录：链式法则就是外层乘内层。"]
     finish_reason: stop
     usage: { prompt_tokens: 200, completion_tokens: 30 }
+  # Turn 29（writer.e2e ②）：Co-Writer 扩写——模型输出**就是改写后的正文本身**
+  #（edit.py 会剥掉围栏与首尾引号，这里直接给纯文本），前端拿它做 diff 与 accept
+  - chunks: ["北京是中国的首都，也是全国的政治、文化与国际交往中心，常住人口超过两千万。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 300, completion_tokens: 60 }
+  # Turn 30（writer.e2e ③）：第二次改写（用来验 reject）——故意给一段**不一样**的文本，
+  # 「放弃后正文一分不动」才有断言价值
+  - chunks: ["北京是中国的政治中心。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 300, completion_tokens: 40 }

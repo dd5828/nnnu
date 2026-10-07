@@ -16,6 +16,7 @@ _TYPE_LABELS: dict[str, dict[str, str]] = {
     "research": {"zh": "研究报告", "en": "Research"},
     "visualize": {"zh": "图表", "en": "Visualization"},
     "math_animator": {"zh": "数学动画", "en": "Math animation"},
+    "co_writer": {"zh": "写作", "en": "Writing"},
 }
 _RECORDS = {"zh": "条记录", "en": "records"}
 

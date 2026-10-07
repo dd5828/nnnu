@@ -157,7 +157,8 @@ export interface KbDocContent {
 
 // ---- 笔记本（§8.2 / §9.1，对应 nnnu/services/notebooks/models.py） ----
 
-/** 记录类型：批一三种 + 批二补的 question（出题回合存进笔记本的记录）+ P6 的 research。
+/** 记录类型：批一三种 + 批二补的 question（出题回合存进笔记本的记录）+ P6 的 research
+ *  + P7 的 visualize / math_animator + P9 的 co_writer（协作写作的文档存到笔记本）。
  *  solve / question 是历史类型（解题、出题能力已下线），保留只为读旧记录。
  *  与后端 `services/notebooks/models.py:RecordType` 同一张表（多了就两边一起加）。 */
 export type NotebookRecordType =
@@ -167,7 +168,8 @@ export type NotebookRecordType =
   | "question"
   | "research"
   | "visualize"
-  | "math_animator";
+  | "math_animator"
+  | "co_writer";
 
 export interface NotebookRecord {
   id: string;
@@ -710,3 +712,91 @@ export interface ConsolidateResponse {
   started: boolean;
   run: ConsolidationRun;
 }
+
+// ---- Co-Writer 协作编辑器（§7.13，对应 nnnu/api/routers/co_writer.py） ----
+
+/** 六个改写动作（键与后端 co_writer/models.ACTIONS 同一张表）。 */
+export type CoWriterAction = "rewrite" | "expand" | "shorten" | "translate" | "tone" | "free";
+
+/** 文档元数据（正文不在表里：单独存文件，见后端 co_writer/storage.py）。 */
+export interface CoWriterDoc {
+  id: string;
+  title: string;
+  created_at: number;
+  updated_at: number;
+}
+
+/** 列表端点每条带正文预览（服务端只读文件头算出来的）。 */
+export interface CoWriterDocSummary extends CoWriterDoc {
+  preview: string;
+}
+
+/** 详情端点带整篇正文。 */
+export interface CoWriterDocDetail extends CoWriterDoc {
+  content: string;
+}
+
+/** 行级 diff 的一行（服务端 difflib 产出；纯展示，写回不回放 ops）。 */
+export interface CoWriterDiffOp {
+  tag: "eq" | "del" | "add";
+  text: string;
+}
+
+export interface CoWriterDiffStats {
+  added: number;
+  deleted: number;
+  kept: number;
+}
+
+/** 工具轨迹一条：结果（摘要/成败/detail）× 调用参数按 call_id 合并。 */
+export interface CoWriterTraceEntry {
+  tool_name: string;
+  call_id: string;
+  ok: boolean;
+  summary: string;
+  detail?: Record<string, unknown>;
+  args: Record<string, unknown>;
+}
+
+/** 成本记账（CostTracker.summary() 的镜像；界面只用 tokens/cost）。 */
+export interface CoWriterUsage {
+  tokens: number;
+  cost: number;
+  per_model: Record<
+    string,
+    {
+      provider: string;
+      model: string;
+      input_tokens: number;
+      output_tokens: number;
+      calls: number;
+      cost: number;
+    }
+  >;
+}
+
+/** 一次改写的完整结果（发起端点响应；编辑还在待确认状态，确认前文档不变）。 */
+export interface CoWriterEditResult {
+  edit_id: string;
+  original: string;
+  edited: string;
+  ops: CoWriterDiffOp[];
+  stats: CoWriterDiffStats;
+  trace: CoWriterTraceEntry[];
+  citations: CitationSource[];
+  usage: CoWriterUsage;
+  degraded: string | null; // kb_not_ready = 勾了知识库但没就绪，这轮没接地
+  model: string;
+}
+
+/** 确认响应：doc 是更新后的元数据；正文要前端自己按 start/end 写回（不回传整篇）。 */
+export interface CoWriterAcceptResponse {
+  doc: CoWriterDoc;
+  applied: true;
+}
+
+export interface CoWriterRejectResponse {
+  rejected: string;
+}
+
+export type CoWriterResolveResponse = CoWriterAcceptResponse | CoWriterRejectResponse;

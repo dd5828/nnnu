@@ -9,11 +9,15 @@ from nnnu.core.ids import new_id
 
 # 批一产 chat（聊天问答）/ solve（深度解题）/ note（手写笔记）；
 # question 是批二加的（出题能力的题目清单可存进笔记本）；research 随 §7.15 后续条目再加；
-# visualize / math_animator 是 P7 加的（渲染块与动画产物也能存进笔记本）。
+# visualize / math_animator 是 P7 加的（渲染块与动画产物也能存进笔记本）；
+# co_writer 是 P9 加的（协作写作的文档存到笔记本）。
 # solve / question 是历史类型：解题、出题两个能力已下线（2026-10-03），保留类型只为
 # 读旧记录，新写入不再产生。
-# 与 `service.py:RECORD_TYPES`、前端 `web/lib/capabilities.ts:recordTypeFor` 三处同表。
-RecordType = Literal["chat", "solve", "note", "question", "research", "visualize", "math_animator"]
+# 与 `service.py:RECORD_TYPES`、`export.py:_TYPE_LABELS`、前端
+# `web/types/api.ts:NotebookRecordType` 与 `web/lib/capabilities.ts:recordTypeFor` 同表。
+RecordType = Literal[
+    "chat", "solve", "note", "question", "research", "visualize", "math_animator", "co_writer"
+]
 
 
 class Notebook(BaseModel):

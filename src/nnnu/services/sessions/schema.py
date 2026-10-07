@@ -31,7 +31,9 @@ from pathlib import Path
 # v12：P9 笔记本正式版 + @引用——messages 补 metadata（user 消息的引用快照：
 #     笔记本记录/题库题目。刷新后消息上的引用 chip 还原、regenerate 重解析都读它；
 #     老行 NULL，读取端按空 dict 处理）。
-SCHEMA_VERSION = "12"
+# v13：P9 Co-Writer（§7.13）——新增 co_writer_docs（文档元数据；正文是
+#     data/user/co_writer/<id>.md 文件，见 src/nnnu/co_writer/storage.py）。
+SCHEMA_VERSION = "13"
 
 MIGRATIONS: dict[str, list[str]] = {
     "2": [
@@ -284,6 +286,19 @@ MIGRATIONS: dict[str, list[str]] = {
         # 且只有 user 消息用得上——单开一列 JSON 比一排稀疏列干净。
         "ALTER TABLE messages ADD COLUMN metadata TEXT",
     ],
+    # 注意：本级全是幂等语句（CREATE ... IF NOT EXISTS），与 v9/v11/v12 的
+    # ADD COLUMN 不同——崩在「DDL 已应用、版本文件还没写」之间直接重跑即可。
+    "13": [
+        # Co-Writer 文档元数据（§7.13）；正文不进库：动辄几万字，每次自动保存
+        # 整篇回写会放大 WAL，且文件原子替换已是既有成熟路径（atomic_write_text）。
+        """CREATE TABLE IF NOT EXISTS co_writer_docs (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL DEFAULT '',
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_co_writer_docs_updated ON co_writer_docs(updated_at DESC)",
+    ],
 }
 
 # 每级迁移应落地的产物——启动自检清单（见 _verify）。
@@ -299,6 +314,7 @@ EXPECTED_TABLES: dict[str, tuple[str, ...]] = {
     "8": ("learning_paths", "learning_nodes"),
     "9": ("learning_interactions",),
     "10": ("research_runs",),
+    "13": ("co_writer_docs",),
 }
 
 EXPECTED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {

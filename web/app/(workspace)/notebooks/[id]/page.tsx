@@ -51,6 +51,7 @@ const TYPE_LABEL_KEYS: Record<NotebookRecordType, string> = {
   research: "notebooks.typeResearch",
   visualize: "notebooks.typeVisualize",
   math_animator: "notebooks.typeMathAnimator",
+  co_writer: "notebooks.typeCoWriter",
 };
 
 function dateLabel(seconds: number, lang: Language): string {

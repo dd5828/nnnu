@@ -7,6 +7,7 @@ import pytest
 from nnnu.services.i18n.prompts import PromptManager
 
 FIXTURES = Path(__file__).parent / "fixtures" / "prompts"
+REPO_PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
 
 
 @pytest.fixture
@@ -59,3 +60,41 @@ def test_parity_reports_missing_zh_key(manager):
 def test_parity_empty_when_root_missing(tmp_path):
     manager = PromptManager(prompts_root=tmp_path / "prompts")
     assert manager.check_parity() == []
+
+
+def test_repo_co_writer_keys_match_between_languages(repo_prompts):
+    """真实 prompts/ 里的 co_writer.yaml：中英键集合一致（含嵌套 action_verb.*），
+    且 edit.py 要用到的每条模板都渲染得出东西（防两边同时改名、静默渲染成空串）。
+
+    repo_prompts 备用：以后若改走单例（get_prompt_manager）也不会跟着安装方式漂。
+    """
+    manager = PromptManager(prompts_root=REPO_PROMPTS)
+    assert [issue for issue in manager.check_parity() if issue.startswith("co_writer")] == []
+    keys = (
+        "system",
+        "action_template",
+        "context_template",
+        "user_template",
+        "kb_note",
+        "action_verb.rewrite",
+        "action_verb.expand",
+        "action_verb.shorten",
+        "action_verb.translate",
+        "action_verb.tone",
+        "action_verb.free",
+    )
+    for lang in ("zh", "en"):
+        for key in keys:
+            rendered = manager.render(
+                "co_writer",
+                lang,
+                key,
+                tools="T",
+                kb_note="K",
+                instruction="I",
+                action_verb="V",
+                context="C",
+                text="X",
+                kbs="B",
+            )
+            assert rendered, (lang, key)

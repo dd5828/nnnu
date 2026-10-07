@@ -4,6 +4,9 @@
  *
  * 标题不在这里造：后端按正文首个非空行推（`services/notebooks/service.py:_title_of`），
  * 前端再抄一份规则只会两边慢慢长歪。来源记会话 id，方便以后回溯到原始对话。
+ *
+ * recordType/sourceRef 是两个可选覆盖：聊天里不传（按当前能力推、来源记会话）；
+ * Co-Writer 工作台没有会话，显式传 "co_writer" 与 null。
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -13,8 +16,22 @@ import { useI18n } from "@/hooks/useI18n";
 import { useAddRecord, useCreateNotebook, useNotebookList } from "@/hooks/useNotebooks";
 import { recordTypeFor } from "@/lib/capabilities";
 import { errorText } from "@/lib/errors";
+import type { NotebookRecordType } from "@/types/api";
 
-export default function SaveToNotebook({ content }: { content: string }) {
+export default function SaveToNotebook({
+  content,
+  recordType,
+  sourceRef,
+  menuPlacement = "up",
+}: {
+  content: string;
+  /** 不给就按当前会话能力推（聊天里的用法）。 */
+  recordType?: NotebookRecordType;
+  /** 不给就用当前会话 id；显式传 null = 无来源（Co-Writer 文档没有会话）。 */
+  sourceRef?: string | null;
+  /** 菜单往哪边弹：聊天里按钮在底部所以朝上（默认）；Co-Writer 顶栏在顶部，要朝下。 */
+  menuPlacement?: "up" | "down";
+}) {
   const { t } = useI18n();
   const capability = useChatStore((s) => s.capability);
   const sessionId = useChatStore((s) => s.sessionId);
@@ -47,9 +64,9 @@ export default function SaveToNotebook({ content }: { content: string }) {
     try {
       await add.mutateAsync({
         notebookId,
-        type: recordTypeFor(capability),
+        type: recordType ?? recordTypeFor(capability),
         content_md: content,
-        source_ref: sessionId,
+        source_ref: sourceRef !== undefined ? sourceRef : sessionId,
       });
       setSaved(true);
       setOpen(false);
@@ -83,7 +100,11 @@ export default function SaveToNotebook({ content }: { content: string }) {
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-0 z-50 mb-1.5 w-[min(280px,calc(100vw-32px))] overflow-hidden rounded-xl border border-border bg-surface py-1 shadow-lg">
+        <div
+          className={`absolute left-0 z-50 w-[min(280px,calc(100vw-32px))] overflow-hidden rounded-xl border border-border bg-surface py-1 shadow-lg ${
+            menuPlacement === "up" ? "bottom-full mb-1.5" : "top-full mt-1.5"
+          }`}
+        >
           {notebooks.length === 0 ? (
             <div className="px-3 py-2 text-[11px] text-muted">{t("notebooks.noNotebooks")}</div>
           ) : (

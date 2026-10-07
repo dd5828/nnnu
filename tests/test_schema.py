@@ -445,6 +445,50 @@ def test_migrate_v11_to_v12_keeps_rows(tmp_home):
     assert _indexes(tmp_home, "questions")["idx_questions_parent"] == (0, 0)
 
 
+def test_migrate_v12_to_v13_keeps_rows(tmp_home):
+    # 模拟 P9 引用全链路后的状态：v12 库里有会话与消息。升到 v13 后消息还在、
+    # co_writer_docs 就位——本级全是幂等 CREATE，没有 ADD COLUMN 的退回坑。
+    data = tmp_home / "data"
+    (data / "system").mkdir(parents=True)
+    _version_file(tmp_home).write_text("12\n", encoding="utf-8")
+    path = db_path(data)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    try:
+        for level in (str(v) for v in range(2, 13)):
+            for statement in MIGRATIONS[level]:
+                conn.execute(statement)
+        conn.execute(
+            "INSERT INTO sessions (id, title, created_at, updated_at) "
+            "VALUES ('s-v12', '老会话', 1.0, 1.0)"
+        )
+        conn.execute(
+            "INSERT INTO messages (id, session_id, role, content, metadata, created_at) "
+            "VALUES ('m-v12', 's-v12', 'user', '老消息', '{\"refs\": []}', 1.0)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert migrate(data) == SCHEMA_VERSION
+    assert "co_writer_docs" in _table_names(tmp_home)
+    conn = sqlite3.connect(path)
+    try:
+        kept = conn.execute("SELECT content FROM messages WHERE id = 'm-v12'").fetchone()
+        conn.execute(
+            "INSERT INTO co_writer_docs (id, title, created_at, updated_at) "
+            "VALUES ('cw-0a1b2c3d', '新文档', 2.0, 2.0)"
+        )
+        doc = conn.execute("SELECT title FROM co_writer_docs WHERE id = 'cw-0a1b2c3d'").fetchone()
+        conn.commit()
+    finally:
+        conn.close()
+    assert kept == ("老消息",)
+    assert doc == ("新文档",)
+    # 列表排序索引是普通索引（updated_at DESC，非唯一非部分）
+    assert _indexes(tmp_home, "co_writer_docs")["idx_co_writer_docs_updated"] == (0, 0)
+
+
 def test_migrate_v9_idempotent(tmp_home):
     migrate(tmp_home / "data")
     assert migrate(tmp_home / "data") == SCHEMA_VERSION

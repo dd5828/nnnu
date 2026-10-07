@@ -25,6 +25,8 @@ KNOWN_PREFIXES = (
     "qrun",  # 一次题库 AI 操作（分类/出题）的记账批次（合成 turn_id 用）
     "mem",  # 记忆 L2/L3 条目（stable entry id，§7.10）
     "mrun",  # 一次记忆整合（consolidator run，§7.10）
+    "cw",  # Co-Writer 文档（co_writer_docs，§7.13）
+    "cwe",  # 一次待确认的改写（内存态，不落库；仅统一 edit_id 形状）
 )
 
 

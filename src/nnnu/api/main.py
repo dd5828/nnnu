@@ -15,6 +15,7 @@ from nnnu import __version__
 from nnnu.api.routers import (
     attachments,
     chat,
+    co_writer,
     cost,
     health,
     knowledge,
@@ -75,6 +76,7 @@ def create_app() -> FastAPI:
             except Exception:
                 logger.exception("启动步骤 %s 失败，继续启动", step)
         # 运行时装配：数据库 + 会话/成本服务 + 编排器 + TurnRuntime（§6.5 唯一收敛点）
+        from nnnu.co_writer.service import CoWriterService, set_co_writer_service
         from nnnu.runtime.orchestrator import ChatOrchestrator
         from nnnu.runtime.registry.capability_registry import get_capability_registry
         from nnnu.runtime.registry.tool_registry import get_tool_registry
@@ -112,6 +114,11 @@ def create_app() -> FastAPI:
         notebooks_service = NotebookService(db)
         set_notebook_service(notebooks_service)
         _app.state.notebooks = notebooks_service
+        # Co-Writer（§7.13）：正文文件 + 元数据表（v13）；待确认编辑只在内存，
+        # 单例给路由取用（其余子系统若要读文档走 get_co_writer_service）
+        co_writer_service = CoWriterService(db, data_root=runtime_home.get_data_root())
+        set_co_writer_service(co_writer_service)
+        _app.state.co_writer = co_writer_service
         # 题库（§7.4）：单例给出题能力/工具用，app.state 给路由用；成本服务同理
         # （判分端点要写 usage_records，之前只塞进了 TurnRuntimeManager）
         questions_service = QuestionBankService(db)
@@ -185,6 +192,7 @@ def create_app() -> FastAPI:
         set_embedding_service(None)
         set_question_bank(None)
         set_notebook_service(None)
+        set_co_writer_service(None)
         set_learning_service(None)
         set_research_service(None)
         set_render_service(None)
@@ -224,6 +232,7 @@ def create_app() -> FastAPI:
     app.include_router(attachments.router)
     app.include_router(knowledge.router)
     app.include_router(notebooks.router)
+    app.include_router(co_writer.router)
     app.include_router(questions.router)
     app.include_router(learning.router)
     app.include_router(research.router)

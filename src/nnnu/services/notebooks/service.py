@@ -16,8 +16,8 @@ MAX_NAME_CHARS = 60  # 与知识库名同一个量级：够长，又不至于把
 MAX_TITLE_CHARS = 120
 MAX_CONTENT_CHARS = 200_000  # 一份解答/一次问答的正文上限（防手滑贴进整本书）
 
-# 记录类型白名单：请求里的 type 落库前必须在这里面（与 models.RecordType、前端
-# recordTypeFor 三处同表；表结构没有 CHECK 约束，加类型不用迁移）
+# 记录类型白名单：请求里的 type 落库前必须在这里面（与 models.RecordType、export._TYPE_LABELS、
+# 前端 NotebookRecordType/recordTypeFor 同表；表结构没有 CHECK 约束，加类型不用迁移）
 RECORD_TYPES: tuple[str, ...] = (
     "chat",
     "solve",
@@ -26,6 +26,7 @@ RECORD_TYPES: tuple[str, ...] = (
     "research",
     "visualize",
     "math_animator",
+    "co_writer",
 )
 
 # 取正文首行当标题时要剥掉的 markdown 装饰
