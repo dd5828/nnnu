@@ -8,8 +8,8 @@
 - state.json：consolidator 水位与人工编辑哈希（§8.1）。
 
 SURFACES 与各能力 manifest.name 一一对齐（tests/test_memory_trace.py 有锁）：
-L1 只在「回合」上落——非回合面（notebook REST / 判分 / KB 构建 / 共写）
-不在此列，属 P8 已知范围（记遗留）。
+L1 只在「回合」上落——非回合面（notebook REST / 判分 / KB 构建 / 共写 /
+Book 的编译与页聊，页聊会话 id 是伪的 book-<page_id>）不在此列，属 P8 已知范围（记遗留）。
 """
 
 from pathlib import Path

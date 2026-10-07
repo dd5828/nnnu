@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from nnnu import __version__
 from nnnu.api.routers import (
     attachments,
+    book,
     chat,
     co_writer,
     cost,
@@ -184,7 +185,24 @@ def create_app() -> FastAPI:
         render_store = RenderStore(data_root)
         _app.state.renders = render_store
         set_render_service(build_render_service(render_store))
+        # Book 活书引擎（§7.14）：素材 → spine → 编译 → 阅读。编译任务是进程内长任务，
+        # 启动时 recover（上次没跑完的改回可续），关停先收编任务再关库
+        from nnnu.book.service import BookService, set_book_service
+
+        book_service = BookService(
+            db,
+            kb=kb_service,
+            notebooks=notebooks_service,
+            questions=questions_service,
+            sessions=session_manager,
+            cost=cost_service,
+        )
+        set_book_service(book_service)
+        _app.state.book = book_service
+        await book_service.recover_compile()
         yield
+        await book_service.shutdown()
+        set_book_service(None)
         await memory_service.shutdown()
         set_memory_service(None)
         await kb_service.shutdown()
@@ -233,6 +251,7 @@ def create_app() -> FastAPI:
     app.include_router(knowledge.router)
     app.include_router(notebooks.router)
     app.include_router(co_writer.router)
+    app.include_router(book.router)
     app.include_router(questions.router)
     app.include_router(learning.router)
     app.include_router(research.router)
