@@ -33,7 +33,12 @@ from pathlib import Path
 #     老行 NULL，读取端按空 dict 处理）。
 # v13：P9 Co-Writer（§7.13）——新增 co_writer_docs（文档元数据；正文是
 #     data/user/co_writer/<id>.md 文件，见 src/nnnu/co_writer/storage.py）。
-SCHEMA_VERSION = "13"
+# v14：P10 Book 活书引擎（§7.14）——books / book_pages 两张 §8.2 表 +
+#     book_page_messages / book_attempts 两张偏离表（§8.2 没有；页聊天与测验作答
+#     必须有地方放，见 src/nnnu/book/storage.py）。相对 §8.2 字面的偏离：
+#     sources/spine 存 JSON 对象（不是 '[]'）、status 多一个 paused（§14 编译中断
+#     可续必须有它）、books 多 error/updated_at 两列（错误要落库给前端看）。
+SCHEMA_VERSION = "14"
 
 MIGRATIONS: dict[str, list[str]] = {
     "2": [
@@ -299,6 +304,59 @@ MIGRATIONS: dict[str, list[str]] = {
         )""",
         "CREATE INDEX IF NOT EXISTS idx_co_writer_docs_updated ON co_writer_docs(updated_at DESC)",
     ],
+    # 注意：本级全是幂等语句（CREATE ... IF NOT EXISTS），与 v9/v11/v12 的
+    # ADD COLUMN 不同——崩在「DDL 已应用、版本文件还没写」之间直接重跑即可。
+    "14": [
+        # 活书（§7.14）：sources/spine/fingerprints 都是 JSON 文本（形状见
+        # src/nnnu/book/models.py）；status 的 paused 是 §14「编译中断可续」的落点。
+        """CREATE TABLE IF NOT EXISTS books (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            sources TEXT NOT NULL DEFAULT '{}',
+            spine TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL DEFAULT 'draft',
+            fingerprints TEXT DEFAULT '{}',
+            error TEXT DEFAULT '',
+            created_at REAL,
+            updated_at REAL
+        )""",
+        # 一章一页（chapter_key=ch-N、page_no=N，多页章节留后续）；块是这一列的
+        # JSON 数组（每块独立 blk- id，供编辑/作答寻址），不单开表。
+        """CREATE TABLE IF NOT EXISTS book_pages (
+            id TEXT PRIMARY KEY,
+            book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+            chapter_key TEXT NOT NULL,
+            page_no INTEGER NOT NULL,
+            blocks TEXT NOT NULL DEFAULT '[]',
+            visited INTEGER DEFAULT 0,
+            bookmarked INTEGER DEFAULT 0,
+            updated_at REAL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_book_pages_book ON book_pages(book_id, page_no)",
+        # 页聊天历史（§8.2 外，登记）：非流式 REST（§9.1），历史要自主页读回。
+        """CREATE TABLE IF NOT EXISTS book_page_messages (
+            id TEXT PRIMARY KEY,
+            page_id TEXT NOT NULL REFERENCES book_pages(id) ON DELETE CASCADE,
+            role TEXT NOT NULL,
+            content_md TEXT NOT NULL DEFAULT '',
+            citations TEXT DEFAULT '[]',
+            created_at REAL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_book_msgs_page ON book_page_messages(page_id, created_at)",
+        # 测验作答（§8.2 外，登记）：判分零 LLM（option key 集合比较），落库给
+        # 进度/薄弱章用。block_id 在 pages.blocks 的 JSON 里，FK 管不到——
+        # 删块时由服务层清该块作答（见 book/service.py）。
+        """CREATE TABLE IF NOT EXISTS book_attempts (
+            id TEXT PRIMARY KEY,
+            book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+            page_id TEXT NOT NULL REFERENCES book_pages(id) ON DELETE CASCADE,
+            block_id TEXT NOT NULL,
+            answer TEXT NOT NULL DEFAULT '[]',
+            correct INTEGER NOT NULL DEFAULT 0,
+            created_at REAL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_book_attempts_page ON book_attempts(page_id, created_at)",
+    ],
 }
 
 # 每级迁移应落地的产物——启动自检清单（见 _verify）。
@@ -315,6 +373,7 @@ EXPECTED_TABLES: dict[str, tuple[str, ...]] = {
     "9": ("learning_interactions",),
     "10": ("research_runs",),
     "13": ("co_writer_docs",),
+    "14": ("books", "book_pages", "book_page_messages", "book_attempts"),
 }
 
 EXPECTED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {

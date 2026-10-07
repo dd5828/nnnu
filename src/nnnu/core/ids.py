@@ -27,6 +27,11 @@ KNOWN_PREFIXES = (
     "mrun",  # 一次记忆整合（consolidator run，§7.10）
     "cw",  # Co-Writer 文档（co_writer_docs，§7.13）
     "cwe",  # 一次待确认的改写（内存态，不落库；仅统一 edit_id 形状）
+    "bk",  # Book 活书（books，§7.14）
+    "bp",  # 书的一页（book_pages；一章一页）
+    "blk",  # 页内一个类型化块（存在 book_pages.blocks 的 JSON 里，不单表）
+    "bmsg",  # 书页聊天的一条消息（book_page_messages，§8.2 外）
+    "bat",  # 书页测验的一次作答（book_attempts，§8.2 外）
 )
 
 

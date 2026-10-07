@@ -489,6 +489,52 @@ def test_migrate_v12_to_v13_keeps_rows(tmp_home):
     assert _indexes(tmp_home, "co_writer_docs")["idx_co_writer_docs_updated"] == (0, 0)
 
 
+def test_migrate_v13_to_v14_keeps_rows(tmp_home):
+    # 模拟 P9 收尾后的状态：v13 库里有 Co-Writer 文档。升到 v14 后文档还在、
+    # Book 四表就位——本级全是幂等 CREATE，没有 ADD COLUMN 的退回坑。
+    data = tmp_home / "data"
+    (data / "system").mkdir(parents=True)
+    _version_file(tmp_home).write_text("13\n", encoding="utf-8")
+    path = db_path(data)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    try:
+        for level in (str(v) for v in range(2, 14)):
+            for statement in MIGRATIONS[level]:
+                conn.execute(statement)
+        conn.execute(
+            "INSERT INTO co_writer_docs (id, title, created_at, updated_at) "
+            "VALUES ('cw-0a1b2c3d', '老文档', 1.0, 1.0)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert migrate(data) == SCHEMA_VERSION
+    assert {"books", "book_pages", "book_page_messages", "book_attempts"} <= _table_names(tmp_home)
+    conn = sqlite3.connect(path)
+    try:
+        kept = conn.execute("SELECT title FROM co_writer_docs WHERE id = 'cw-0a1b2c3d'").fetchone()
+        conn.execute(
+            "INSERT INTO books (id, title, sources, spine, status, created_at, updated_at) "
+            "VALUES ('bk-0a1b2c3d', '新书', '{}', '{}', 'draft', 2.0, 2.0)"
+        )
+        conn.execute(
+            "INSERT INTO book_pages (id, book_id, chapter_key, page_no, updated_at) "
+            "VALUES ('bp-0a1b2c3d', 'bk-0a1b2c3d', 'ch-1', 1, 2.0)"
+        )
+        book = conn.execute("SELECT title FROM books WHERE id = 'bk-0a1b2c3d'").fetchone()
+        conn.commit()
+    finally:
+        conn.close()
+    assert kept == ("老文档",)
+    assert book == ("新书",)
+    # 三个查询索引都是普通索引（非唯一非部分）
+    assert _indexes(tmp_home, "book_pages")["idx_book_pages_book"] == (0, 0)
+    assert _indexes(tmp_home, "book_page_messages")["idx_book_msgs_page"] == (0, 0)
+    assert _indexes(tmp_home, "book_attempts")["idx_book_attempts_page"] == (0, 0)
+
+
 def test_migrate_v9_idempotent(tmp_home):
     migrate(tmp_home / "data")
     assert migrate(tmp_home / "data") == SCHEMA_VERSION
