@@ -512,3 +512,93 @@ steps:
   - chunks: ["北京是中国的政治中心。"]
     finish_reason: stop
     usage: { prompt_tokens: 300, completion_tokens: 40 }
+  # Turn 31（zz-book.e2e ①）：活书目录一次成——3 章 + 每章 blocks_plan + 整书概念图。
+  # 必须**零 issues**（不然 generate_spine 会带问题重试、多吃一步）：章只带白名单键、
+  # 计划只带 type/focus、quiz/flashcard/figure 三件套齐（验收硬要求）；source_refs 留空
+  # ——KB 文档 id 运行时才生成，夹具里编不出真 ref，写了会被收编丢掉还会发 issue
+  - chunks:
+      - |
+        {"chapters": [
+          {"key": "ch-1", "title": "时域与频域", "summary": "从日常的波形入手，看傅里叶变换怎么把时间轴上的信号挪到频率轴上。", "objectives": ["说清时域与频域各自在看什么", "认出频谱里的一条谱线对应一个正弦分量"], "content_type": "concept", "blocks_plan": [{"type": "text", "focus": "开场：一段声音波形为什么要拆频率"}, {"type": "quiz", "focus": "横轴含义与谱线读法"}, {"type": "figure", "focus": "时域到频域的流向示意"}], "source_refs": []},
+          {"key": "ch-2", "title": "频谱能做什么", "summary": "滤波、降噪与压缩这些事，为什么先在频谱上动手。", "objectives": ["举例说明滤波在频域里为什么更直接"], "content_type": "practice", "blocks_plan": [{"type": "text", "focus": "滤波与降噪的直观图景"}, {"type": "flashcard", "focus": "三个关键词：滤波、带宽、压缩"}], "source_refs": []},
+          {"key": "ch-3", "title": "从傅里叶到今天", "summary": "从热传导论文到 FFT，这条线怎么走到日常的信号处理里。", "objectives": ["记住 FFT 的作用是让计算可行"], "content_type": "history", "blocks_plan": [{"type": "text", "focus": "小史：热传导、三角级数、FFT"}], "source_refs": []}
+        ], "concept_graph": {"nodes": [{"id": "n1", "label": "时域", "group": "基础"}, {"id": "n2", "label": "频域", "group": "基础"}, {"id": "n3", "label": "频谱分析", "group": "应用"}], "edges": [{"source": "n1", "target": "n2", "label": "变换"}, {"source": "n2", "target": "n3", "label": "支撑"}]}}
+    finish_reason: stop
+    usage: { prompt_tokens: 900, completion_tokens: 700 }
+  # Turn 32-37（zz-book.e2e ②）：编译六个块，调用序 = 章节序 × plan 序（compile.py
+  # 是串行的）；每步 delay_ms 一小段，让「编译中」看板有可观察的窗口
+  # 32 ch-1 text（纯 Markdown，别整段包围栏）
+  - chunks:
+      - |
+        # 时域与频域
+
+        傅里叶变换把时域信号分解为频域分量：时域看的是每个时刻振幅多大，频域看的是每个频率分量占多少。
+
+        - 时域：横轴时间，纵轴振幅
+        - 频域：横轴频率，纵轴分量大小
+
+        两者描述的是同一段信号，只是换了一组坐标。
+    finish_reason: stop
+    delay_ms: 400
+    usage: { prompt_tokens: 200, completion_tokens: 150 }
+  # 33 ch-1 quiz（严格 JSON；answer_key 必须落在选项 key 里）
+  - chunks:
+      - '{"stem": "频谱图的横轴通常表示什么？", "options": [{"key": "A", "text": "频率"}, {"key": "B", "text": "时间"}, {"key": "C", "text": "振幅"}, {"key": "D", "text": "采样点数"}], "answer_key": ["A"], "explanation": "频谱图的横轴是频率，纵轴才是各个频率分量的幅度。"}'
+    finish_reason: stop
+    delay_ms: 400
+    usage: { prompt_tokens: 200, completion_tokens: 120 }
+  # 34 ch-1 figure（第一条围栏要是 mermaid；标签别带 []{}()| 这些禁字符）
+  - chunks:
+      - |
+        # 从时域到频域
+
+        同一段信号在两组坐标里怎么看，一张图说清：
+
+        ```mermaid
+        graph LR
+          A[时域波形] --> B[傅里叶变换]
+          B --> C[频谱图]
+        ```
+    finish_reason: stop
+    delay_ms: 400
+    usage: { prompt_tokens: 200, completion_tokens: 160 }
+  # 35 ch-2 text
+  - chunks:
+      - |
+        # 频谱能做什么
+
+        滤波、降噪、压缩，这些操作在频域里都是同一句话：把不想要的频率分量压低，把想要的留住。
+    finish_reason: stop
+    delay_ms: 400
+    usage: { prompt_tokens: 200, completion_tokens: 120 }
+  # 36 ch-2 flashcard（严格 JSON）
+  - chunks:
+      - '{"cards": [{"front": "滤波", "back": "在频域里压低不想要的频率分量，留下想要的。"}, {"front": "带宽", "back": "一段频率的范围，比如电话语音大约 300 到 3400 赫兹。"}]}'
+    finish_reason: stop
+    delay_ms: 400
+    usage: { prompt_tokens: 200, completion_tokens: 140 }
+  # 37 ch-3 text
+  - chunks:
+      - |
+        # 从傅里叶到今天
+
+        1822 年傅里叶在研究热传导时提出用三角级数表示温度分布，一开始并不被同行接受；后来这套方法被用到信号处理上，1965 年的快速傅里叶变换（FFT）把计算量从平方级降到对数级，频谱分析才真正走进日常。
+    finish_reason: stop
+    delay_ms: 400
+    usage: { prompt_tokens: 200, completion_tokens: 160 }
+  # Turn 38-39（zz-book.e2e ③）：页聊天——先检索（rag 一步工具），再给出带出处的回答。
+  # kb_name 必须是测试①建的库名；引用面板显示的就是命中文档的文件名
+  - tool_calls:
+      - {
+          id: rag-1,
+          name: rag,
+          arguments: '{"query": "时域和频域是什么关系", "kb_name": "傅里叶素材库"}',
+        }
+    finish_reason: tool_calls
+    usage: { prompt_tokens: 700, completion_tokens: 40 }
+  - chunks:
+      [
+        "时域和频域是同一段信号的两种看法：时域横轴是时间，频域横轴是频率；傅里叶变换就是两组坐标之间的那趟车。",
+      ]
+    finish_reason: stop
+    usage: { prompt_tokens: 800, completion_tokens: 60 }
