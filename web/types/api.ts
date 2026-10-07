@@ -800,3 +800,246 @@ export interface CoWriterRejectResponse {
 }
 
 export type CoWriterResolveResponse = CoWriterAcceptResponse | CoWriterRejectResponse;
+
+// ---- Book 活书引擎（§7.14，对应 nnnu/api/routers/book.py） ----
+
+/** 五个书状态（键与后端 book/models.BOOK_STATUSES 同一张表）。 */
+export type BookStatus = "draft" | "compiling" | "paused" | "ready" | "error";
+
+/** 块状态：待生成 / 生成中 / 成稿 / 失败（失败不炸整书）。 */
+export type BlockStatus = "pending" | "compiling" | "done" | "error";
+
+/** 十二类块（键与后端 BLOCK_TYPES、prompts/book.yaml 三处同表）。 */
+export type BlockType =
+  | "text"
+  | "callout"
+  | "quiz"
+  | "flashcard"
+  | "timeline"
+  | "code"
+  | "figure"
+  | "interactive_html"
+  | "animation"
+  | "concept_graph"
+  | "deep_dive"
+  | "note";
+
+/** 题库来源的口径（后端 validate_sources 白名单）。 */
+export type BookQuestionFilter = "all" | "wrong" | "ids";
+
+/** 建书时的素材选择（形状与后端 validate_sources 一致）。 */
+export interface BookSources {
+  kbs: string[];
+  notebooks: string[];
+  sessions: string[];
+  questions: { filter: BookQuestionFilter; ids: string[] } | null;
+}
+
+export interface BookSourceRef {
+  kind: "kb" | "notebook" | "question" | "session";
+  ref: string;
+  label: string;
+}
+
+/** 块计划一条：类型 + 聚焦点（编译按它逐块生成）。 */
+export interface BookBlockPlan {
+  type: string;
+  focus: string;
+}
+
+export interface BookChapter {
+  key: string;
+  title: string;
+  summary: string;
+  objectives: string[];
+  content_type: string;
+  blocks_plan: BookBlockPlan[];
+  source_refs: BookSourceRef[];
+}
+
+export interface BookConceptGraph {
+  nodes: { id: string; label: string; group: string }[];
+  edges: { source: string; target: string; label: string }[];
+}
+
+/** books.spine 列的完整形状（章节树 + 概念图 + 编译参数）。 */
+export interface BookSpine {
+  chapters: BookChapter[];
+  concept_graph: BookConceptGraph;
+  language: string;
+  material_chars: number;
+}
+
+export interface Book {
+  id: string;
+  title: string;
+  sources: BookSources;
+  spine: BookSpine;
+  status: BookStatus;
+  fingerprints: Record<string, unknown>;
+  error: string;
+  created_at: number;
+  updated_at: number;
+}
+
+/** 整书进度读数（后端 progress.py 现算；completion 是 0~1）。 */
+export interface BookProgress {
+  pages: number;
+  visited: number;
+  bookmarked: number;
+  completed: number;
+  completion: number;
+  quizzes: { total: number; answered: number; correct: number };
+  weak_chapters: {
+    chapter_key: string;
+    page_id: string;
+    answered: number;
+    correct: number;
+    accuracy: number;
+  }[];
+}
+
+/** 每章一行的估算（cost 单位随价格表；未知模型 priced=false，只报 token）。 */
+export interface BookEstimateChapter {
+  key: string;
+  title: string;
+  blocks: number;
+  input_tokens: number;
+  output_tokens: number;
+  tokens: number;
+  cost: number;
+  seconds: number;
+}
+
+export interface BookEstimate {
+  model: string;
+  priced: boolean;
+  basis: { material_chars: number; chars_per_token: number; prompt_overhead_chars: number };
+  chapters: BookEstimateChapter[];
+  totals: {
+    chapters: number;
+    blocks: number;
+    input_tokens: number;
+    output_tokens: number;
+    tokens: number;
+    cost: number;
+    seconds: number;
+  };
+}
+
+/** 列表端点每条 = 书 + 章数 + 问题清单 + 进度摘要。 */
+export interface BookSummary extends Book {
+  chapter_count: number;
+  issues: string[];
+  progress: BookProgress;
+}
+
+/** 页的看板口径摘要（GET 详情用；payload 走页详情端点）。 */
+export interface BookPageMeta {
+  id: string;
+  chapter_key: string;
+  page_no: number;
+  visited: boolean;
+  bookmarked: boolean;
+  block_count: number;
+  blocks_done: number;
+  blocks_error: number;
+  blocks: { id: string; type: string; status: BlockStatus }[];
+}
+
+/** 源漂移报告：added=快照后新增、changed=内容变了、missing=没了。 */
+export interface BookHealth {
+  status: "ok" | "drift";
+  drift: { change: "added" | "changed" | "missing"; ref: string; label: string }[];
+  counts: { added: number; changed: number; missing: number };
+}
+
+/** GET /books/{id}：前端轮询的主数据源。 */
+export interface BookDetail extends Book {
+  issues: string[];
+  estimate: BookEstimate;
+  pages: BookPageMeta[];
+  progress: BookProgress;
+  health: BookHealth | null;
+}
+
+/** 页内一个类型化块（payload 形状按 type 定，见后端 models.validate_block_payload）。 */
+export interface BookBlock {
+  id: string;
+  type: string;
+  status: BlockStatus;
+  title: string;
+  focus: string;
+  payload: Record<string, unknown>;
+  source_refs: BookSourceRef[];
+  error: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface BookPageMessage {
+  id: string;
+  page_id: string;
+  role: "user" | "assistant";
+  content_md: string;
+  citations: CitationSource[];
+  created_at: number;
+}
+
+/** 每块最近一次测验作答（页详情带回；刷新/翻页回来还要显示答没答对）。 */
+export interface BookAttempt {
+  block_id: string;
+  answer: string[];
+  correct: boolean;
+}
+
+/** GET /books/{id}/pages/{pid}（阅读器用）：块含 payload + 页聊天历史 + 最近作答。 */
+export interface BookPageDetail {
+  id: string;
+  book_id: string;
+  chapter_key: string;
+  page_no: number;
+  visited: boolean;
+  bookmarked: boolean;
+  updated_at: number;
+  chapter: BookChapter;
+  blocks: BookBlock[];
+  messages: BookPageMessage[];
+  attempts: BookAttempt[];
+}
+
+/** 块编辑六种操作共用的请求体（各 op 用得到的字段见后端校验）。 */
+export interface BookBlockEditBody {
+  op: "move" | "update" | "delete" | "insert" | "regenerate" | "retype";
+  block_id?: string;
+  type?: string;
+  payload?: Record<string, unknown>;
+  focus?: string;
+  direction?: "up" | "down";
+  after_block_id?: string;
+}
+
+/** 块编辑的两种响应：常规回全量块数组；animation 再生 202 回 started。 */
+export type BookBlocksResponse = { blocks: BookBlock[] } | { started: true; block_id: string };
+
+export interface BookChatResponse {
+  answer: string;
+  citations: CitationSource[];
+  message_id: string;
+  degraded: string | null;
+  model: string;
+}
+
+export interface BookAttemptResponse {
+  correct: boolean;
+  explanation: string;
+  attempt_id: string;
+}
+
+export interface BookCompileResponse {
+  started: boolean;
+}
+
+export interface BookPauseResponse {
+  paused: boolean;
+}

@@ -34,7 +34,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/", key: "nav.home", icon: Home, enabled: true },
-  { href: "/book", key: "nav.book", icon: BookOpen },
+  { href: "/book", key: "nav.book", icon: BookOpen, enabled: true },
   { href: "/co-writer", key: "nav.coWriter", icon: PenLine, enabled: true },
   { href: "/knowledge", key: "nav.knowledge", icon: Database, enabled: true },
   { href: "/learning", key: "nav.learning", icon: GraduationCap, enabled: true },
