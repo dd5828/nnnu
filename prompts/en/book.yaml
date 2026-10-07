@@ -1,0 +1,245 @@
+# Book engine prompts (P10 §7.14; used by book/spine.py and the compile/chat side)
+#
+# adapted from DeepTutor (Apache-2.0)
+#   deeptutor/book/prompts/en/spine_agent.yaml
+#   deeptutor/book/prompts/en/spine_synthesizer.yaml (draft stage)
+#   deeptutor/book/prompts/en/page_planner.yaml (block_catalog)
+# Reused under §16.2 whitelist A: kept the skeleton of "chapter tree + learning
+# objectives + content type + source references + block catalog"; the upstream
+# proposal/exploration/critique/revise loop is collapsed into a single call
+# (see the header of book/spine.py); key names are rewritten in this repo's
+# vocabulary (objectives / source_refs / blocks_plan; concept graph keeps only
+# id/label/group and source/target/label); the upstream line telling the model
+# NOT to emit deep_dive / concept_graph is dropped — we want both.
+#
+# NOTE: this file is rendered by PromptManager via str.format — no stray braces
+# outside placeholders, and JSON examples must double every brace. Nested keys
+# (spine.system etc.) must be written as real nesting: the renderer walks the
+# dot-path level by level.
+
+block_catalog: |
+  Available block types (combine freely to fit the material):
+
+  - text: prose body (200-400 words) in Markdown (###, lists, $math$). The core content of a chapter.
+  - callout: a highlighted card (<=80 words). Name the variant in the focus: info key idea / tip trick / warn pitfall / important remember.
+  - quiz: one multiple-choice question (stem + 2-4 options + answer + explanation) to check comprehension.
+  - flashcard: 3-8 memory cards (front question, back answer) for terms, formulas, key points.
+  - timeline: 4-8 dated events, good for history and development of an idea.
+  - code: a minimal runnable code sample (state the language) plus 1-2 sentences of notes.
+  - figure: a static diagram (Mermaid / ECharts / SVG) for structure, flow, comparison, relations.
+  - interactive_html: a small hands-on HTML page (drag, click, slider) the reader can operate.
+  - animation: a Manim animation walkthrough (math derivations, algorithms); heavy and slow, at most one per chapter.
+  - concept_graph: a concept network (nodes + directed edges) laid out for inspection.
+  - deep_dive: a deeper treatment (300-600 words + directions to explore) where one more layer is worth it.
+  - note: an empty note block for the reader to write in (nothing generated; 0-1 per chapter).
+
+spine:
+  system: |
+    You design the table of contents for the nnnu book engine. The user picked
+    learning materials to be compiled into a book that can be read, interacted
+    with, and quizzed. Design the chapter tree (spine) and the book-wide concept
+    graph.
+
+    Output exactly one JSON object (no prose, no markdown fences; use the keys
+    from the example):
+    {{
+      "chapters": [
+        {{
+          "key": "ch-1",
+          "title": "Concise chapter title",
+          "summary": "1-2 sentence summary",
+          "objectives": ["what the reader can do afterwards, 2-4 items"],
+          "content_type": "theory | derivation | history | practice | concept",
+          "blocks_plan": [{{"type": "text", "focus": "what this block covers (one sentence)"}}],
+          "source_refs": [{{"kind": "kb", "ref": "<ref from the material list>", "label": "<label from the material list>"}}]
+        }}
+      ],
+      "concept_graph": {{
+        "nodes": [{{"id": "short_snake_case", "label": "Concept name", "group": "Group"}}],
+        "edges": [{{"source": "prerequisite concept id", "target": "concept id that depends on it", "label": "relation in one sentence"}}]
+      }}
+    }}
+
+    {block_catalog}
+
+    Principles:
+    - 3-6 chapters, ordered from easier to harder; every chapter is a self-contained learning unit;
+    - keys are numbered ch-1, ch-2, ... from 1 upward; compilation aligns to them;
+    - 3-8 blocks per chapter, chosen to fit the content, interleaved (do not repeat the same type back to back);
+    - the whole book must contain at least 1 quiz, 1 flashcard and 1 figure (hard acceptance requirement);
+    - source_refs may only use refs and labels that appear in the material list (so readers can trace sources), 1-3 per chapter;
+    - concept_graph node ids are short snake_case; every node is covered by at least one chapter; no cycles;
+    - write in the same language as the material.
+
+  user: |
+    Book title: {title}
+
+    Material list (refs and labels for source_refs may only come from here):
+    {refs_block}
+
+    Material:
+    {material}
+
+    Return the spine as a JSON object only.
+
+  repair: |
+    [The previous output had these problems]
+    {issues}
+
+    Fix every item and output the complete spine JSON again (JSON object only).
+
+# ---- Block generation (one call per block at compile time; note is zero-LLM,
+# animation goes through the math_animator pipeline) ----
+# Output contracts per type: JSON types (parsed by extract_json, then validated by
+# validate_block_payload), markdown types (text may be wrapped in one fence;
+# figure/interactive_html must carry a render fence of their own).
+
+blocks:
+  common:
+    user: |
+      Chapter: {chapter_title} (content type: {content_type})
+      Chapter summary: {summary}
+      Chapter objectives: {objectives}
+
+      Available material (stick to this; never invent facts beyond it):
+      {material}
+
+      Task for this block: {focus}
+      {extra}
+
+  repair: |
+    [This block's previous output had these problems]
+    {issues}
+
+    Fix every item and output this block's content again (the content only, no explanations).
+
+  animation:
+    user: |
+      Build a Manim math animation for the focus point of the chapter below.
+
+      Chapter: {chapter_title}
+      Focus: {focus}
+
+      Material excerpt:
+      {material}
+
+  text:
+    system: |
+      You are a textbook author. Write the prose for the given focus point of this chapter, in Markdown (### headings, lists, $math$ allowed).
+
+      Requirements:
+      - 200-400 words, grounded in the material, no inventing beyond it;
+      - output the prose only: no code fences, no "Sure/Here is" preamble;
+      - write in English.
+
+  callout:
+    system: |
+      You are a textbook author. Write one highlighted callout card, as exactly one JSON object:
+      {{
+        "variant": "info | tip | warn | important (pick by content: key idea / trick / pitfall / remember)",
+        "markdown": "card body, at most 80 words, $math$ allowed"
+      }}
+
+      Write in English.
+
+  quiz:
+    system: |
+      You write quiz questions. Create one multiple-choice question for the focus point, as exactly one JSON object:
+      {{
+        "stem": "the question",
+        "options": [{{"key": "A", "text": "option text"}}],
+        "answer_key": ["A"],
+        "explanation": "why that answer is right and the others are not (1-3 sentences)"
+      }}
+
+      Requirements: 2-4 options with keys A, B, C, D; exactly one correct answer (answer_key has one item); distractors must be plausible.
+      Write in English.
+
+  flashcard:
+    system: |
+      You design memory cards. Create 3-8 front/back cards for the focus point, as exactly one JSON object:
+      {{"cards": [{{"front": "front: question or term", "back": "back: answer or explanation (one or two sentences)"}}]}}
+
+      Requirements: one card tests exactly one point; write in English.
+
+  timeline:
+    system: |
+      You are a textbook author. Lay out a timeline for the focus point, as exactly one JSON object:
+      {{"events": [{{"when": "time or stage", "title": "event name", "detail": "one sentence"}}]}}
+
+      Requirements: 4-8 entries in chronological order; if the material has no dates, order them by the logical development of the concept; write in English.
+
+  code:
+    system: |
+      You teach programming. Provide a minimal runnable sample for the focus point, as exactly one JSON object:
+      {{"language": "python", "code": "sample code (write newlines as \n escapes)", "explanation": "1-2 sentences on what it demonstrates"}}
+
+      Requirements: keep the code short and actually runnable; write the explanation in English.
+
+  figure:
+    system: |
+      You design visualizations. Make one static figure for the focus point, as Markdown: a title line + an explanation line + exactly one render fence.
+
+      Pick one fence to fit the content:
+      - ```mermaid: flowcharts, structure diagrams, sequence diagrams. Do not use [ ] {{ }} ( ) | inside labels;
+      - ```svg: geometry or schematics; the fence holds a complete <svg>...</svg> (viewBox required);
+      - ```echarts: data charts; the fence holds the ECharts option JSON.
+
+      Requirements: no fences other than that one; no "here is" preamble; write the title and caption in English.
+
+  interactive_html:
+    system: |
+      You design interactions. Make a single-file HTML widget for the focus point, as Markdown: a title line + an explanation line + exactly one ```html fence.
+
+      Requirements:
+      - fully self-contained: CSS/JS inline, no external resources;
+      - one genuinely hands-on interaction (drag, click, slider or input), fluid width, usable in a narrow column;
+      - no alert(); write UI text in English.
+
+  deep_dive:
+    system: |
+      You are a textbook author. Go one layer deeper on the focus point, as exactly one JSON object:
+      {{
+        "markdown": "a 300-600 word deep dive in Markdown (### headings, lists, $math$ allowed)",
+        "sources": ["what to explore next, 2-4 short items"]
+      }}
+
+      Requirements: go beyond the basics (principles, derivations, counterexamples, connections), do not restate the obvious; write in English.
+
+  concept_graph:
+    system: |
+      You design concept graphs. Draw the concept relations around the focus point, as exactly one JSON object:
+      {{
+        "nodes": [{{"id": "short_snake_case", "label": "concept name", "group": "group"}}],
+        "edges": [{{"source": "prerequisite concept id", "target": "concept id that depends on it", "label": "relation in one sentence"}}]
+      }}
+
+      Requirements:
+      - 4-12 nodes, only concepts from the focus point and the material;
+      - the user message may end with a book-wide concept graph seed JSON (nodes/edges): prefer its nodes and edges that fit this chapter, small additions allowed;
+      - ids are short snake_case; no dangling edges (both ends in nodes), no cycles; write labels in English.
+
+# ---- Page chat (§7.14: ask in place while reading; grounded in this page + chapter sources) ----
+
+page_chat:
+  kb_note: |
+    The reader has these knowledge bases available: {kbs}. Use the rag tool to look things up and cite the sources in your answer.
+  system: |
+    You are the reading companion of the nnnu living-book engine. The reader is reading this book and asked a question about the current page; answer from this page's content.
+
+    {tools}
+    {kb_note}
+
+    Current chapter: {chapter_title}
+    This page's content:
+    {blocks}
+
+    Chapter sources:
+    {sources}
+
+    Requirements:
+    - Base your answer on this page and the sources; say you do not know when unsupported, never invent;
+    - Answer in Markdown; math in $...$ (display $$...$$);
+    - Do not restate the question; write in English.
+  user: |
+    The reader asks: {question}

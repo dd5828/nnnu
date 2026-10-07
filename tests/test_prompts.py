@@ -1,9 +1,11 @@
 """提示词加载器：语言回退、占位符渲染、中英一致性校验。"""
 
+import re
 from pathlib import Path
 
 import pytest
 
+from nnnu.book.models import BLOCK_TYPES
 from nnnu.services.i18n.prompts import PromptManager
 
 FIXTURES = Path(__file__).parent / "fixtures" / "prompts"
@@ -98,3 +100,67 @@ def test_repo_co_writer_keys_match_between_languages(repo_prompts):
                 kbs="B",
             )
             assert rendered, (lang, key)
+
+
+def test_repo_book_keys_match_between_languages(repo_prompts):
+    """真实 prompts/ 里的 book.yaml：中英键集合一致，且每条模板渲染后没有任何残留
+    占位符、双花括号也都被吃掉了——book.yaml 的 JSON 示例必须写成 {{ }}，否则
+    str.format 抛错时 render 只会静默返回原文，这里就是那条防线。
+    """
+    manager = PromptManager(prompts_root=REPO_PROMPTS)
+    assert [issue for issue in manager.check_parity() if issue.startswith("book")] == []
+    leftover = re.compile(r"\{[a-zA-Z_][a-zA-Z0-9_.]*\}")
+    # 有 system 提示词的块型：animation 走 math_animator 的提示词、note 零 LLM
+    system_types = [item for item in BLOCK_TYPES if item not in ("animation", "note")]
+    for lang in ("zh", "en"):
+        catalog = manager.render("book", lang, "block_catalog")
+        assert "flashcard" in catalog
+        rendered_map = {
+            "block_catalog": catalog,
+            "spine.system": manager.render("book", lang, "spine.system", block_catalog=catalog),
+            "spine.user": manager.render(
+                "book", lang, "spine.user", title="T", refs_block="R", material="M"
+            ),
+            "spine.repair": manager.render("book", lang, "spine.repair", issues="I"),
+            "blocks.common.user": manager.render(
+                "book",
+                lang,
+                "blocks.common.user",
+                chapter_title="T",
+                content_type="theory",
+                summary="S",
+                objectives="O",
+                material="M",
+                focus="F",
+                extra="",
+            ),
+            "blocks.repair": manager.render("book", lang, "blocks.repair", issues="I"),
+            "blocks.animation.user": manager.render(
+                "book", lang, "blocks.animation.user", chapter_title="T", focus="F", material="M"
+            ),
+            "page_chat.kb_note": manager.render("book", lang, "page_chat.kb_note", kbs="K"),
+            "page_chat.system": manager.render(
+                "book",
+                lang,
+                "page_chat.system",
+                tools="T",
+                kb_note="K",
+                chapter_title="C",
+                blocks="B",
+                sources="S",
+            ),
+            "page_chat.user": manager.render("book", lang, "page_chat.user", question="Q"),
+        }
+        for block_type in system_types:
+            rendered_map[f"blocks.{block_type}.system"] = manager.render(
+                "book", lang, f"blocks.{block_type}.system"
+            )
+        for key, rendered in rendered_map.items():
+            assert rendered, (lang, key)
+            assert "{{" not in rendered and "}}" not in rendered, (lang, key)
+            assert not leftover.search(rendered), (lang, key)
+        # 块目录真的注入进了 system（渲染失败返回原文时这里会是空的）
+        assert "flashcard" in rendered_map["spine.system"]
+        # 各块系统提示词真认得自己的产出契约
+        assert "JSON" in rendered_map["blocks.quiz.system"]
+        assert "mermaid" in rendered_map["blocks.figure.system"]
