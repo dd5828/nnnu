@@ -86,9 +86,15 @@ async def test_kb_selection_is_sticky_per_session(client):
     assert detail.json()["kb_ids"] == ["kb-1", "kb-2"]
 
     # 显式空列表 = 用户点掉了全部芯片（全量替换成空，而不是"什么都不改"）
-    again = await client.post(
-        "/api/v1/chat", json={"session_id": "sess-kb", "message": "再问", "kb_ids": []}
-    )
+    # 消息数到 2 不等于回合跑完：占位行是 regenerate 一发出就落库的，回合本体还在后台。
+    # 这会话正忙时再发就吃 409（设计如此），所以等它腾出手——轮询到 200 为止。
+    for _ in range(50):
+        again = await client.post(
+            "/api/v1/chat", json={"session_id": "sess-kb", "message": "再问", "kb_ids": []}
+        )
+        if again.status_code == 200:
+            break
+        await asyncio.sleep(0.05)
     assert again.status_code == 200
     detail = await client.get("/api/v1/sessions/sess-kb")
     assert detail.json()["kb_ids"] == []

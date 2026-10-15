@@ -6,7 +6,7 @@
 
 import { execSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -217,6 +217,54 @@ writeFileSync(
     2
   )
 );
+
+// 1g) 目录（§7.16/§7.17/§7.18）：整份搬进 E2E home，再往里追加两条 E2E 专用条目。
+//     为什么要加条目：ffmpeg 这类本机不一定装，「装它 → 对话里跑它」就断言不了。
+//     e2epy 的程序就是 E2E 用的解释器：探得到、装得上、跑得动、写得出文件。
+//     为什么必须整份搬而不是只放 cli_apps.json：catalogs 根一旦存在，技能市场与
+//     MCP 目录也都从这儿找，漏掉哪份哪块的界面就空了。
+const cliCatalogPath = path.join(E2E_HOME, "catalogs", "cli_apps.json");
+cpSync(path.join(REPO, "catalogs"), path.join(E2E_HOME, "catalogs"), { recursive: true });
+const cliCatalog = JSON.parse(readFileSync(cliCatalogPath, "utf8"));
+cliCatalog.apps.push({
+  id: "e2epy",
+  name: "E2E Python",
+  description: {
+    zh: "E2E 专用：拿解释器真跑一段 Python，验证「装上 → 对话里跑 → 落文件」这条链。",
+    en: "E2E only: runs Python with the interpreter to verify install → run in chat → file lands.",
+  },
+  category: "testing",
+  entry_point: PYTHON,
+  argv_template: ["-c", "{code}"],
+  params_schema: {
+    type: "object",
+    properties: { code: { type: "string", description: "要执行的代码 (code to run)" } },
+    required: ["code"],
+  },
+  guide: {
+    zh: "参数用法：在 code 里给一段 Python。例：print('hi')，或用 pathlib 往当前目录写文件。",
+    en: "Usage: pass Python source in code. Example: print('hi'), or write a file with pathlib.",
+  },
+  install: { kind: "preinstalled", target: "python" },
+  platform: "any",
+  network: false,
+});
+cliCatalog.apps.push({
+  id: "e2missing",
+  name: "E2E Missing",
+  description: {
+    zh: "E2E 专用：一件永远找不到的程序，用来验失败提示。",
+    en: "E2E only: a program that never exists.",
+  },
+  category: "testing",
+  entry_point: "nnnu-e2e-no-such-program",
+  argv_template: [],
+  params_schema: { type: "object", properties: {} },
+  guide: { zh: "用不到（它跑不起来）", en: "unused (it never runs)" },
+  install: { kind: "preinstalled", target: "nnnu-e2e-no-such-program" },
+  platform: "any",
+});
+writeFileSync(cliCatalogPath, `${JSON.stringify(cliCatalog, null, 2)}\n`);
 
 // 2) 样例 PDF（附件引用场景用；输出到本目录 .artifacts/）
 execSync(

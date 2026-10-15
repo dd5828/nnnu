@@ -602,3 +602,24 @@ steps:
       ]
     finish_reason: stop
     usage: { prompt_tokens: 800, completion_tokens: 60 }
+  # Turn 40-41（zzz-extensions.e2e ①）：命令行应用——先列清单（list_cli_apps），再真跑一次
+  # （run_cli_app）。e2epy 是 start-backend.mjs 往 E2E 目录里追加的那件「程序=解释器」的
+  # 应用；code 里写出的 e2e-cli.txt 落在 E2E home 的沙箱工作区，用例直接读盘断言。
+  - tool_calls:
+      - { id: cli-list-1, name: list_cli_apps, arguments: "{}" }
+    finish_reason: tool_calls
+    usage: { prompt_tokens: 300, completion_tokens: 30 }
+  - chunks: ["清单里有一件 e2epy：它就是测试用的解释器，能直接跑一段 Python。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 400, completion_tokens: 40 }
+  - tool_calls:
+      - {
+          id: cli-run-1,
+          name: run_cli_app,
+          arguments: '{"app": "e2epy", "args": {"code": "from pathlib import Path; Path(\"e2e-cli.txt\").write_text(\"cli-marker-ok\"); print(\"wrote e2e-cli.txt\")"}}',
+        }
+    finish_reason: tool_calls
+    usage: { prompt_tokens: 400, completion_tokens: 60 }
+  - chunks: ["跑完了：标记写进 e2e-cli.txt 了。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 500, completion_tokens: 30 }
