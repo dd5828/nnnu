@@ -41,6 +41,9 @@ TRUNCATED_FINISH_REASONS = {"length", "max_tokens", "max_output_tokens"}
 # 不能退化成一段 JSON 文本），但 imagegen 的 data URI 动辄几百 KB——超限的整块丢掉，
 # 界面退回只显示 summary（与「detail 不落库」的老行为一致）。
 TOOL_TRACE_DETAIL_LIMIT = 8 * 1024
+# 工具进度单行上限（§7.17）：进度是贴在工具卡上的一行字，不是正文——服务器发来的
+# 长消息不该把卡撑成一屏（前端还要在卡片里渲染它）。
+TOOL_PROGRESS_MAX_CHARS = 300
 
 
 def _trace_detail(detail: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -397,14 +400,30 @@ async def run_agent_loop(
                     call_id = call.id or f"call-{tool_rounds}-{index}"
                     args = _json_or_none(call.arguments) or {}
                     await bus.emit_tool_call(tool_name=call.name, args=args, call_id=call_id)
+
+                    async def _progress(text: str, _call_id: str = call_id) -> None:
+                        """工具中途报进度 → 贴回它自己那张卡（§7.17）。
+
+                        call_id 用默认参钉住：闭包在批内每次迭代复用，晚绑定会把
+                        一批里后一个工具的进度全挂到最后一个 id 上。
+                        """
+                        await bus.emit_tool_progress(
+                            call_id=_call_id, text=str(text)[:TOOL_PROGRESS_MAX_CHARS]
+                        )
+
                     tool_ctx = ToolContext(
                         turn_id=bus.turn_id,
                         session_id=bus.session_id or "",
                         language=ctx.language,
                         config=ctx.config,
                         # cost_tracker 注入：工具内次级 LLM 调用（brainstorm/reason 等）
-                        # 的用量并入本回合成本（§6.9）
-                        metadata={**ctx.metadata, "cost_tracker": ctx.cost},
+                        # 的用量并入本回合成本（§6.9）；progress_fn 是工具往卡上报
+                        # 进度的唯一通道（MCP 的 notifications/progress）
+                        metadata={
+                            **ctx.metadata,
+                            "cost_tracker": ctx.cost,
+                            "progress_fn": _progress,
+                        },
                         args=args,
                     )
                     result = await deps.tools.run(call.name, tool_ctx)

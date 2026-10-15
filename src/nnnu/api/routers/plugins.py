@@ -30,6 +30,20 @@ async def _availability(name: str) -> bool:
             return bool(await get_skill_service().enabled_names())
         except RuntimeError:
             return False
+    if name in ("list_cli_apps", "run_cli_app"):
+        # 命令行应用两件是 CONTEXT_GATED：装了至少一件才挂得上（§7.18）
+        from nnnu.services.cli_apps.service import get_cli_app_service
+
+        try:
+            return bool(get_cli_app_service().installed_ids())
+        except Exception:  # 目录读不出来时如实报「此刻干不了活」
+            return False
+    if name.startswith("mcp_"):
+        # MCP 工具（§7.17）：只有连接活着才有适配器。断连的服务器在注册表里已经
+        # 没有它的工具，但配置里可能还列着——按「此刻能不能真干活」的口径报 false。
+        from nnnu.services.mcp.manager import get_mcp_manager
+
+        return any(adapter.definition.name == name for adapter in get_mcp_manager().tools())
     return True
 
 
@@ -45,12 +59,15 @@ async def list_plugins(lang: str = "zh") -> dict:
     tools: list[dict] = []
     for definition in tool_registry.definitions():
         item = definition.model_dump()
-        item["description"] = (
-            prompts.render("chat", lang, f"tool_descriptions.{definition.name}")
-            or definition.description
-        )
+        # 先问键在不在：MCP 工具的描述由服务器给，chat.yaml 里没有它的键——
+        # 不问就渲染会把「键缺失」告警刷满日志（描述本身照样要下发）
+        desc_key = f"tool_descriptions.{definition.name}"
+        if prompts.has_key("chat", lang, desc_key):
+            item["description"] = prompts.render("chat", lang, desc_key) or definition.description
         # 没写成本提示的工具（值是 None）不查键，免得每次调用都刷「键缺失」告警
-        if definition.cost_hint:
+        if definition.cost_hint and prompts.has_key(
+            "chat", lang, f"tool_cost_hints.{definition.name}"
+        ):
             item["cost_hint"] = (
                 prompts.render("chat", lang, f"tool_cost_hints.{definition.name}") or None
             )

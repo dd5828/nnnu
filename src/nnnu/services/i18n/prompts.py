@@ -93,6 +93,16 @@ class PromptManager:
         logger.warning("提示词键缺失: %s/%s %s", prompt, lang, key)
         return ""
 
+    def has_key(self, prompt: str, lang: str, key: str) -> bool:
+        """这个键在某条回退链上有没有**模板**（渲染前先问，别让缺键刷告警）。
+
+        给的是「不存在的键」用——如 MCP 工具的描述来自服务器、压根没写进 chat.yaml，
+        直接 render 会在每次挂载时打一行「提示词键缺失」，把真问题的信号淹掉。
+        """
+        return any(
+            self._lookup(prompt, code, key) is not None for code in self._fallback_chain(lang)
+        )
+
     def _lookup(self, name: str, lang: str, key: str) -> str | None:
         node: Any = self._load_file(name, lang)
         for part in key.split("."):

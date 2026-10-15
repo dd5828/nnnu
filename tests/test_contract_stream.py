@@ -23,6 +23,7 @@ TS_TYPE_NAMES = {
     "thinking_done": "ThinkingDonePayload",
     "tool_call": "ToolCallPayload",
     "tool_result": "ToolResultPayload",
+    "tool_progress": "ToolProgressPayload",
     "citation": "CitationPayload",
     "ask_user": "AskUserPayload",
     "ask_user_reply": "AskUserReplyPayload",

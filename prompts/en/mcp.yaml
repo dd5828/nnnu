@@ -1,0 +1,17 @@
+# What MCP tools tell the model in a conversation (§7.17).
+# Placeholders are passed by services/mcp/tools.py::_render; literal braces need {{ }}.
+
+# The server is not connected (dropped, failed to start, still retrying) — say why
+connect_failed: "(MCP server \"{server}\" is not connected: {error})"
+
+# A call (or a connect) ran past its timeout
+connect_timeout: "(the call on MCP server \"{server}\" did not return within {seconds}s and was abandoned)"
+
+# The server is waiting for a person to authorize it — not a failure
+needs_auth: "(MCP server \"{server}\" is not authorized yet; ask the user to finish authorization on the Skills → MCP page, then retry)"
+
+# The call itself failed (isError, transport hiccup, protocol error)
+tool_failed: "(MCP tool {tool} failed: {error})"
+
+# Output was too long and got truncated
+truncated: "\n\n(output truncated to {limit} characters)"

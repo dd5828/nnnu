@@ -1134,3 +1134,180 @@ export interface SkillHubDetail extends SkillHubEntry {
   gate: GateReport;
   installed?: boolean;
 }
+
+// ── MCP（§7.17）──────────────────────────────────────────────────────────
+// 明文密钥永远不出后端：回显的只有 secret_fields 里的掩码（set/masked/pending）。
+
+export type McpStatus = "connected" | "connecting" | "error" | "needs_auth" | "disabled";
+
+export interface McpSecretField {
+  set: boolean;
+  masked: string | null;
+  pending: boolean;
+}
+
+/** 凭据说明：哪个密钥进哪个头（catalog_entry 装来的服务器由目录预填）。 */
+export interface McpCredential {
+  kind: "apikey" | "oauth";
+  header: string;
+  value_template: string;
+  secret_names: string[];
+}
+
+export interface McpToolRow {
+  name: string; // 服务器认的名字
+  wrapped: string; // 线上名 mcp_<server>_<tool>（没连上过时为空串）
+  description: string;
+  enabled: boolean;
+}
+
+export interface McpServer {
+  id: string;
+  name: string;
+  transport: string; // stdio | sse | streamable_http
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  url: string;
+  headers: Record<string, string>;
+  credential: McpCredential | null;
+  enabled: boolean;
+  disabled_tools: string[];
+  connect_timeout_s: number;
+  tool_timeout_s: number;
+  catalog_entry: string;
+  secret_fields: Record<string, McpSecretField>;
+  oauth: { authorized: boolean; scope: string } | null;
+  tools: McpToolRow[];
+  status: McpStatus;
+  error: string;
+}
+
+/** 目录条目里的凭据字段（target=header 进请求头，target=query 进 URL 查询串）。 */
+export interface McpCatalogField {
+  key: string;
+  label: Record<string, string>;
+  target: "header" | "query";
+  name: string;
+  value_template: string;
+  placeholder: string;
+  required?: boolean;
+}
+
+export interface McpCatalogEntry {
+  id: string;
+  name: string;
+  display_name: string;
+  description: Record<string, string>;
+  transport: string;
+  url?: string;
+  command?: string;
+  args?: string[];
+  requires?: Record<string, string>;
+  fields: McpCatalogField[];
+  homepage?: string;
+  self_service?: boolean;
+}
+
+/** 测试连接的结果（失败也是一条能读的原因，不是异常）。 */
+export interface McpProbeResult {
+  ok: boolean;
+  status: McpStatus;
+  tools: { name: string; wrapped: string; description: string }[];
+  error: string;
+}
+
+/** 新建/修改的请求体：只传要改的字段；secrets 是仅入参的明文（空串 = 删掉该字段）。 */
+export interface McpServerInput {
+  id?: string;
+  name?: string;
+  transport?: string;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  url?: string;
+  headers?: Record<string, string>;
+  credential?: McpCredential;
+  enabled?: boolean;
+  disabled_tools?: string[];
+  connect_timeout_s?: number;
+  tool_timeout_s?: number;
+  catalog_entry?: string;
+  secrets?: Record<string, string>;
+}
+
+// ── CLI 应用（§7.18）────────────────────────────────────────────────────
+// 「装没装」由后端按「程序此刻找不找得到」判定（installed/program_path），
+// 不是按记录：用户手删了 venv、PATH 换了版本，界面要如实反映。
+
+export interface CliAppParam {
+  type?: string;
+  description?: string;
+  items?: { type?: string };
+}
+
+/** 一条目录条目/一件应用的完整视图（list 与 detail 同一形状）。 */
+export interface CliApp {
+  id: string;
+  name: string;
+  description: Record<string, string>;
+  category: string;
+  entry_point: string;
+  cmd: string;
+  argv_template: string[];
+  params_schema: { type?: string; properties?: Record<string, CliAppParam>; required?: string[] };
+  guide: Record<string, string>;
+  guide_url: string;
+  install: {
+    kind: "preinstalled" | "pip" | "npm" | "bundled";
+    target: string;
+    package_manager: string;
+  };
+  version: string;
+  requires: Record<string, string>;
+  homepage: string;
+  platform: string;
+  default_timeout_s: number;
+  network: boolean;
+  origin: "catalog" | "local";
+  source_url: string;
+  // 运行时判定
+  installed: boolean;
+  program_path: string;
+  platform_supported: boolean;
+  installed_at: number | null;
+  install_log?: string;
+}
+
+/** 目录来源（署名与收录口径，页脚显示）。 */
+export interface CliAppCatalogMeta {
+  version?: number;
+  note?: string;
+  source?: string;
+  commit?: string;
+  commit_date?: string;
+  imported?: number;
+  filtered?: string;
+}
+
+export interface CliAppsResponse {
+  apps: CliApp[];
+  total: number;
+  installed_count: number;
+  catalog: CliAppCatalogMeta;
+}
+
+export interface CliAppInstallResult {
+  ok: boolean;
+  kind: string;
+  message: string;
+  program: string;
+  log_path: string;
+  duration_s: number;
+}
+
+export interface CliAppInstallResponse {
+  app_id: string;
+  result: CliAppInstallResult;
+  app: CliApp | null;
+}

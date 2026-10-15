@@ -1,0 +1,231 @@
+{
+  "_comment": "内置 MCP 服务器目录（§7.17）。自研条目，只写公开的官方地址与安装方式，不含任何凭据——需要密钥的条目一律写 ${secret:<key>} 引用，用户填的值进 SecretsStore。fields[].target=header 时把 value_template 填进 headers[name]；target=query 时把 <name>=${secret:<key>} 追加到 url 查询串。",
+  "version": 1,
+  "entries": [
+    {
+      "id": "fetch",
+      "name": "Fetch",
+      "display_name": "网页抓取",
+      "description": {
+        "zh": "抓取网页并转成模型好读的文本，也能读本地文件路径。",
+        "en": "Fetch a URL and convert it to model-friendly text; can also read local files."
+      },
+      "transport": "stdio",
+      "command": "uvx",
+      "args": ["mcp-server-fetch"],
+      "requires": {
+        "zh": "需要本机装了 uv（uvx 随 uv 一起装）。",
+        "en": "Needs uv installed (uvx ships with uv)."
+      },
+      "fields": [],
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/fetch",
+      "self_service": true
+    },
+    {
+      "id": "memory",
+      "name": "Memory",
+      "display_name": "知识图谱记忆",
+      "description": {
+        "zh": "一层可反复读写的知识图谱记忆，适合让模型攒长期事实。",
+        "en": "A knowledge-graph memory the model can read and write across calls."
+      },
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "requires": {
+        "zh": "需要本机装了 Node.js（npx 随 Node 一起装）。",
+        "en": "Needs Node.js installed (npx ships with Node)."
+      },
+      "fields": [],
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/memory",
+      "self_service": true
+    },
+    {
+      "id": "sequential-thinking",
+      "name": "Sequential Thinking",
+      "display_name": "分步思考",
+      "description": {
+        "zh": "把一个问题拆成可回溯的思考步骤，适合复杂推理与方案拆解。",
+        "en": "Breaks a problem into revisable thinking steps for complex reasoning."
+      },
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+      "requires": {
+        "zh": "需要本机装了 Node.js。",
+        "en": "Needs Node.js installed."
+      },
+      "fields": [],
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking",
+      "self_service": true
+    },
+    {
+      "id": "time",
+      "name": "Time",
+      "display_name": "时间与时区",
+      "description": {
+        "zh": "查当前时间、做时区换算，省得模型自己猜日期。",
+        "en": "Current time and timezone conversion, so the model stops guessing dates."
+      },
+      "transport": "stdio",
+      "command": "uvx",
+      "args": ["mcp-server-time"],
+      "requires": {
+        "zh": "需要本机装了 uv。",
+        "en": "Needs uv installed."
+      },
+      "fields": [],
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/time",
+      "self_service": true
+    },
+    {
+      "id": "deepwiki",
+      "name": "DeepWiki",
+      "display_name": "仓库文档问答",
+      "description": {
+        "zh": "对着 GitHub 仓库的文档提问（DeepWiki 的公开 MCP，无需密钥）。",
+        "en": "Ask questions about a GitHub repository's docs (DeepWiki's public MCP, no key)."
+      },
+      "transport": "streamable_http",
+      "url": "https://mcp.deepwiki.com/mcp",
+      "requires": {
+        "zh": "需要能访问 deepwiki.com。",
+        "en": "Needs network access to deepwiki.com."
+      },
+      "fields": [],
+      "homepage": "https://deepwiki.com",
+      "self_service": true
+    },
+    {
+      "id": "context7",
+      "name": "Context7",
+      "display_name": "库文档检索",
+      "description": {
+        "zh": "按需拉取第三方库/框架的最新文档片段，写代码时少瞎编 API。",
+        "en": "Pulls up-to-date library and framework docs on demand so the model stops inventing APIs."
+      },
+      "transport": "streamable_http",
+      "url": "https://mcp.context7.com/mcp",
+      "requires": {
+        "zh": "不填密钥也能用（有频率限制）；有 API Key 更稳。",
+        "en": "Works without a key (rate-limited); an API key raises the limits."
+      },
+      "fields": [
+        {
+          "key": "api_key",
+          "label": { "zh": "Context7 API Key（可选）", "en": "Context7 API key (optional)" },
+          "target": "header",
+          "name": "CONTEXT7_API_KEY",
+          "value_template": "${secret:api_key}",
+          "placeholder": "c7-…",
+          "required": false
+        }
+      ],
+      "homepage": "https://context7.com",
+      "self_service": true
+    },
+    {
+      "id": "github",
+      "name": "GitHub",
+      "display_name": "GitHub 仓库",
+      "description": {
+        "zh": "读写仓库、Issue、PR（GitHub 官方远程 MCP）。",
+        "en": "Read and write repositories, issues and pull requests (GitHub's official remote MCP)."
+      },
+      "transport": "streamable_http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "requires": {
+        "zh": "需要一个有相应权限的 GitHub 个人访问令牌。",
+        "en": "Needs a GitHub personal access token with the scopes you want."
+      },
+      "fields": [
+        {
+          "key": "token",
+          "label": { "zh": "个人访问令牌", "en": "Personal access token" },
+          "target": "header",
+          "name": "Authorization",
+          "value_template": "Bearer ${secret:token}",
+          "placeholder": "github_pat_…",
+          "required": true
+        }
+      ],
+      "homepage": "https://github.com/github/github-mcp-server",
+      "self_service": true
+    },
+    {
+      "id": "tavily",
+      "name": "Tavily",
+      "display_name": "联网搜索",
+      "description": {
+        "zh": "面向 AI 的联网搜索接口：拿最新网页结论，比模型自己的记忆新。",
+        "en": "An AI-oriented web search: fresh results instead of the model's stale memory."
+      },
+      "transport": "streamable_http",
+      "url": "https://mcp.tavily.com/mcp/",
+      "requires": {
+        "zh": "需要 Tavily API Key（官网自助申请）。",
+        "en": "Needs a Tavily API key (self-service on their site)."
+      },
+      "fields": [
+        {
+          "key": "api_key",
+          "label": { "zh": "Tavily API Key", "en": "Tavily API key" },
+          "target": "query",
+          "name": "tavilyApiKey",
+          "value_template": "",
+          "placeholder": "tvly-…",
+          "required": true
+        }
+      ],
+      "homepage": "https://tavily.com",
+      "self_service": true
+    },
+    {
+      "id": "exa",
+      "name": "Exa",
+      "display_name": "语义搜索",
+      "description": {
+        "zh": "按语义而不是关键词检索网页，找「意思对」的资料来源。",
+        "en": "Semantic (not keyword) web search for sources that mean the right thing."
+      },
+      "transport": "streamable_http",
+      "url": "https://mcp.exa.ai/mcp",
+      "requires": {
+        "zh": "需要 Exa API Key。",
+        "en": "Needs an Exa API key."
+      },
+      "fields": [
+        {
+          "key": "api_key",
+          "label": { "zh": "Exa API Key", "en": "Exa API key" },
+          "target": "query",
+          "name": "exaApiKey",
+          "value_template": "",
+          "placeholder": "…",
+          "required": true
+        }
+      ],
+      "homepage": "https://exa.ai",
+      "self_service": true
+    },
+    {
+      "id": "playwright",
+      "name": "Playwright",
+      "display_name": "浏览器操作",
+      "description": {
+        "zh": "开一个真浏览器点页面、填表单、读渲染后的内容。",
+        "en": "Drive a real browser: click, fill forms, read rendered pages."
+      },
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"],
+      "requires": {
+        "zh": "需要本机装了 Node.js；首次运行会下载浏览器内核（较大）。",
+        "en": "Needs Node.js; the first run downloads a browser build (large)."
+      },
+      "fields": [],
+      "homepage": "https://github.com/microsoft/playwright-mcp",
+      "self_service": true
+    }
+  ]
+}

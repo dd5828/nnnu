@@ -57,6 +57,9 @@ export interface UiToolCall {
   ok: boolean | null; // null = 执行中
   summary: string;
   detail: Record<string, unknown> | null; // 结构化展示数据（如 imagegen 的 data URI）
+  /** 执行中滚动的进度（§6.1 tool_progress，目前只有 MCP 工具报）：只在实时回合里活着，
+   *  不落库——它是「正在干什么」，不是结果，刷新后还挂着一句两小时前的进度反而更糊涂。 */
+  progress: string;
 }
 
 export interface UiMessage {
@@ -235,6 +238,7 @@ function toUiMessages(raw: RawMessage[]): UiMessage[] {
         summary: String(call.summary ?? ""),
         // 小结构 detail 也落库（答题结果卡刷新后仍是卡）；超限的没落，用 null 兜住
         detail: (call.detail as Record<string, unknown>) ?? null,
+        progress: "", // 进度不落库：历史消息里没这回事
       })),
       citations: message.citations ?? [],
       cost: message.cost ?? null,
@@ -373,7 +377,19 @@ function bindSocket(
             ok: null,
             summary: "",
             detail: null,
+            progress: "",
           };
+          set(() => ({ active: next }));
+        }
+        break;
+      }
+      case "tool_progress": {
+        // 覆盖不追加：进度是「现在到哪儿了」，攒起来会越滚越长，卡片上只剩噪音
+        const callId = String(payload.call_id ?? "");
+        const call = turn?.toolCalls[callId];
+        if (turn && env.turn_id === turn.turnId && call) {
+          const next = { ...turn, toolCalls: { ...turn.toolCalls } };
+          next.toolCalls[callId] = { ...call, progress: String(payload.text ?? "") };
           set(() => ({ active: next }));
         }
         break;

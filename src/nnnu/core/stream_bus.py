@@ -169,6 +169,9 @@ class StreamBus:
             usage=usage,
         )
 
+    async def emit_tool_progress(self, *, call_id: str, text: str) -> StreamEvent:
+        return await self.emit(StreamEventType.TOOL_PROGRESS, call_id=call_id, text=text)
+
     async def emit_citation(self, *, sources: list[dict]) -> StreamEvent:
         return await self.emit(StreamEventType.CITATION, sources=sources)
 

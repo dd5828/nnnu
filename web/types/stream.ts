@@ -15,6 +15,7 @@ export type StreamEventType =
   | "thinking_done"
   | "tool_call"
   | "tool_result"
+  | "tool_progress"
   | "citation"
   | "ask_user"
   | "ask_user_reply"
@@ -73,6 +74,13 @@ export interface ToolResultPayload {
   summary: string;
   detail: Record<string, unknown> | null;
   usage: Record<string, unknown> | null;
+}
+
+/** 工具执行中途的一行进度（§7.17 MCP 的 notifications/progress）：
+ *  按 call_id 贴到对应那张工具卡上，不改阶段、不是一次阶段切换。 */
+export interface ToolProgressPayload {
+  call_id: string;
+  text: string;
 }
 
 export interface CitationSource {

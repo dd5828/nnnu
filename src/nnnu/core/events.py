@@ -25,6 +25,7 @@ class StreamEventType(StrEnum):
     THINKING_DONE = "thinking_done"
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"
+    TOOL_PROGRESS = "tool_progress"
     CITATION = "citation"
     ASK_USER = "ask_user"
     ASK_USER_REPLY = "ask_user_reply"
@@ -77,6 +78,18 @@ class ToolResultPayload(BaseModel):
     summary: str
     detail: dict[str, Any] | None = None
     usage: dict[str, Any] | None = None
+
+
+class ToolProgressPayload(BaseModel):
+    """工具执行中途的一行进度（§7.17 MCP 的 notifications/progress）。
+
+    只挂 call_id + 一行文本：前端把文本贴在对应那张工具卡上，卡的身份仍是 call_id。
+    复用 status 事件是不行的——status 是「阶段」语义（StageBar 按阶段名点亮），
+    MCP 服务器的进度既不改变回合阶段，也不该被当成一次阶段切换。
+    """
+
+    call_id: str
+    text: str
 
 
 class CitationSource(BaseModel):
@@ -198,6 +211,7 @@ MODEL_BY_TYPE: dict[StreamEventType, type[BaseModel]] = {
     StreamEventType.THINKING_DONE: ThinkingDonePayload,
     StreamEventType.TOOL_CALL: ToolCallPayload,
     StreamEventType.TOOL_RESULT: ToolResultPayload,
+    StreamEventType.TOOL_PROGRESS: ToolProgressPayload,
     StreamEventType.CITATION: CitationPayload,
     StreamEventType.ASK_USER: AskUserPayload,
     StreamEventType.ASK_USER_REPLY: AskUserReplyPayload,

@@ -32,6 +32,7 @@ KNOWN_PREFIXES = (
     "blk",  # 页内一个类型化块（存在 book_pages.blocks 的 JSON 里，不单表）
     "bmsg",  # 书页聊天的一条消息（book_page_messages，§8.2 外）
     "bat",  # 书页测验的一次作答（book_attempts，§8.2 外）
+    "mcp",  # 一个 MCP 服务器配置（servers.json 里的键由用户起名，这个留作内部引用）
 )
 
 

@@ -25,6 +25,9 @@ dependencies = [
     "PyMuPDF>=1.28",  # §4 PDF 解析与页级引用（P2 附件页码定位）
     "python-multipart>=0.0.12",  # 附件上传 multipart 表单（FastAPI 依赖）
     "numpy>=1.26",  # §7.9 知识库向量索引与余弦检索
+    # §7.17 MCP 客户端（官方 SDK；白名单 B 的 manager/oauth/secrets 复制件就依它）。
+    # 2.x 的依赖明显更重，钉在 1.x；1.30.0 的传递依赖与上面这些没有冲突
+    "mcp>=1.26,<2",
 ]
 
 [project.optional-dependencies]

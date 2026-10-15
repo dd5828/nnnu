@@ -20,6 +20,14 @@ class ToolRegistry:
             logger.debug("工具 %s 重复注册，已替换", name)
         self._tools[name] = tool
 
+    def unregister(self, name: str) -> bool:
+        """注销工具；返回是否真存在（MCP 服务器断连/停用/删工具时用）。
+
+        名字是外部来源的（MCP 服务器的工具名），所以「撤销一个本来就没有的名字」
+        是正常情形而非错误：调用方按返回值决定要不要记日志。
+        """
+        return self._tools.pop(name, None) is not None
+
     def get(self, name: str) -> BaseTool | None:
         return self._tools.get(name)
 

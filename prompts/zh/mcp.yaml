@@ -1,0 +1,17 @@
+# MCP 工具在对话里对模型说的话（§7.17）。
+# 占位符由 services/mcp/tools.py 的 _render 传入；示例里的花括号要写 {{ }}。
+
+# 服务器当前没连上（断连、启动失败、还在重连）：把原因一并给出去
+connect_failed: "（MCP 服务器《{server}》当前没连上：{error}）"
+
+# 调用等超时（连接或工具调用）
+connect_timeout: "（MCP 服务器《{server}》上的调用超过 {seconds} 秒没有返回，已放弃）"
+
+# 服务器在等人授权：这不是故障，得让用户去点一下
+needs_auth: "（MCP 服务器《{server}》还没授权：请用户在「技能 → MCP」里完成授权后重试）"
+
+# 调用本身失败（服务器回 isError、传输抖动、协议错误）
+tool_failed: "（MCP 工具 {tool} 调用失败：{error}）"
+
+# 输出过长被截断
+truncated: "\n\n（输出过长，已截断到 {limit} 字）"

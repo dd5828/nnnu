@@ -68,6 +68,28 @@ class DetailTool(BaseTool):
 DETAIL_TOOLS = ToolSet({"detail_tool": DetailTool()})
 
 
+class ProgressTool(BaseTool):
+    """中途报进度的工具：进度要贴回自己那张卡（§7.17 MCP 的 notifications/progress）。"""
+
+    definition = ToolDefinition(
+        name="progress_tool",
+        description="先报两步进度再出结果",
+        parameters={
+            "type": "object",
+            "properties": {"text": {"type": "string"}},
+            "required": ["text"],
+        },
+        mount=ToolMount.ALWAYS,
+    )
+
+    async def run(self, ctx: ToolContext) -> ToolResult:
+        report = ctx.metadata.get("progress_fn")
+        if report is not None:
+            await report("第一步 (50%)")
+            await report("x" * 1000)  # 超长的要截断，事件流不是无底洞
+        return ToolResult(ok=True, output=str(ctx.args["text"]), detail={"note": "有进度"})
+
+
 def _ctx(**metadata):
     return UnifiedContext(
         session=SessionRef(id="sess-1"),
@@ -202,6 +224,55 @@ async def test_tool_trace_keeps_small_detail_and_drops_oversized():
     traces = [ToolTrace.model_validate(call) for call in outcome.tool_calls]
     assert traces[0].detail == {"cards": [{"answer": "B"}]}
     assert traces[1].detail is None
+
+
+async def test_tool_progress_events_carry_call_id_and_are_capped():
+    """工具的进度通知：带对 call_id、夹在 call 与 result 之间、超长截断。"""
+    from nnnu.core.agent_loop import TOOL_PROGRESS_MAX_CHARS
+
+    llm = ScriptedLLM(
+        [
+            ScriptedStep(
+                tool_calls=[
+                    LLMToolCall(id="c1", name="progress_tool", arguments='{"text": "甲"}'),
+                    LLMToolCall(id="c2", name="progress_tool", arguments='{"text": "乙"}'),
+                ],
+                finish_reason="tool_calls",
+            ),
+            ScriptedStep(chunks=["都跑完了"]),
+        ]
+    )
+    outcome, events = await _run_and_collect(
+        llm, deps_overrides={"tools": ToolSet({"progress_tool": ProgressTool()})}
+    )
+    assert outcome.final_text == "都跑完了"
+
+    progress = [e for e in events if e.type == StreamEventType.TOOL_PROGRESS]
+    assert [e.payload["call_id"] for e in progress] == ["c1", "c1", "c2", "c2"]
+    assert progress[0].payload["text"] == "第一步 (50%)"
+    assert len(progress[1].payload["text"]) == TOOL_PROGRESS_MAX_CHARS
+
+    # 顺序：进度属于某次调用，必须落在它的 tool_call 之后、tool_result 之前
+    kinds = [
+        e.type
+        for e in events
+        if e.type
+        in (
+            StreamEventType.TOOL_CALL,
+            StreamEventType.TOOL_PROGRESS,
+            StreamEventType.TOOL_RESULT,
+        )
+    ]
+    assert kinds == [
+        StreamEventType.TOOL_CALL,
+        StreamEventType.TOOL_PROGRESS,
+        StreamEventType.TOOL_PROGRESS,
+        StreamEventType.TOOL_RESULT,
+        StreamEventType.TOOL_CALL,
+        StreamEventType.TOOL_PROGRESS,
+        StreamEventType.TOOL_PROGRESS,
+        StreamEventType.TOOL_RESULT,
+    ]
 
 
 async def test_max_rounds_force_finish_then_error():

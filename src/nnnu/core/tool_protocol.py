@@ -12,7 +12,7 @@
 import logging
 from abc import ABC, abstractmethod
 from enum import StrEnum
-from typing import Any, ClassVar, Iterable
+from typing import Any, Iterable
 
 from pydantic import BaseModel, Field
 
@@ -66,7 +66,9 @@ class ToolContext(BaseModel):
 
 
 class BaseTool(ABC):
-    definition: ClassVar[ToolDefinition]
+    # 绝大多数工具的 definition 是类属性（写死在类体里）；MCP 适配器的那一份来自
+    # 远端服务器的工具清单，只能每个实例一份，所以这里声明成实例属性。
+    definition: ToolDefinition
 
     @abstractmethod
     async def run(self, ctx: ToolContext) -> ToolResult: ...
