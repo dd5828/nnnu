@@ -31,6 +31,25 @@ def repo_prompts(monkeypatch):
     monkeypatch.setattr(home, "get_prompts_root", lambda *args, **kwargs: REPO_PROMPTS)
 
 
+REPO_CATALOGS = Path(__file__).resolve().parents[1] / "catalogs"
+
+
+@pytest.fixture
+def repo_catalogs(monkeypatch):
+    """把内置目录根钉在仓库 catalogs/ 上（理由同 repo_prompts）。
+
+    非可编辑安装（CI、pip install）里 `parents[3]` 落到 site-packages，内置技能
+    目录会读成 0 条；钉住后断言不跟着装法变。注意 `services/skills/hub.py` 是
+    `from nnnu.runtime.home import get_catalogs_root` 的**直接引用**——只打 home
+    模块不起作用，得打 hub 上的那个名字。
+    """
+    from nnnu.runtime import home
+    from nnnu.services.skills import hub
+
+    monkeypatch.setattr(home, "get_catalogs_root", lambda *args, **kwargs: REPO_CATALOGS)
+    monkeypatch.setattr(hub, "get_catalogs_root", lambda *args, **kwargs: REPO_CATALOGS)
+
+
 @pytest.fixture
 async def client(tmp_home):
     from nnnu.api.main import create_app

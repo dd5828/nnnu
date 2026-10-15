@@ -33,3 +33,19 @@ def get_prompts_root(home: str | Path | None = None) -> Path:
     if repo_prompts.is_dir():
         return repo_prompts
     return home_prompts  # 目录不存在时由加载器降级处理
+
+
+def get_catalogs_root(home: str | Path | None = None) -> Path:
+    """catalogs 根目录：<home>/catalogs 存在则用之，否则回退仓库根 catalogs。
+
+    形态与 prompts 一致（仓库根、不放包内）：技能市场/CLI Apps/MCP 的内置
+    目录 JSON 都在这；P15 Docker 需 COPY 进镜像。
+    """
+    home_dir = get_runtime_home(home)
+    home_catalogs = home_dir / "catalogs"
+    if home_catalogs.is_dir():
+        return home_catalogs
+    repo_catalogs = Path(__file__).resolve().parents[3] / "catalogs"
+    if repo_catalogs.is_dir():
+        return repo_catalogs
+    return home_catalogs  # 目录不存在时由加载器降级处理

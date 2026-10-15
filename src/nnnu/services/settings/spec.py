@@ -2,7 +2,7 @@
 
 P0 最小集三区（appearance/network/system）；P2 加 models（§7.19 模型卡片）；
 P4 补 models 区的 embedding 三件套与 kb 区（切块/批量/解析引擎）；P8 加 memory 区
-（三层记忆的阈值/预算/体量，§7.10）。
+（三层记忆的阈值/预算/体量，§7.10）；P11 加 skills 区（技能市场远程目录 URL，§7.16）。
 每字段带类型、默认值、生效方式（instant|restart|reindex）与 i18n 键——表单自动
 渲染直接消费本表。secret 类型不进设置 JSON（§5 配置铁律：密钥只进
 user-secrets 目录），明文只在草稿提交时经服务层转运一次。
@@ -372,6 +372,20 @@ SPECS: dict[str, AreaSpec] = {
                 True,
                 "settings.memory.traceEnabled",
                 description_key="settings.memory.traceEnabledDesc",
+            ),
+        ),
+    ),
+    # §7.16 技能市场：可配置远程目录 URL（空 = 只用内置目录）。表单嵌在技能页的
+    # 市场标签里，不进设置页卡片清单（P11 登记）——它不是通用设置，改完只影响市场。
+    "skills": AreaSpec(
+        "skills",
+        (
+            SettingField(
+                "hub_url",
+                "string",
+                "",
+                "settings.skills.hubUrl",
+                description_key="settings.skills.hubUrlDesc",
             ),
         ),
     ),

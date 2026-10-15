@@ -38,7 +38,11 @@ from pathlib import Path
 #     必须有地方放，见 src/nnnu/book/storage.py）。相对 §8.2 字面的偏离：
 #     sources/spine 存 JSON 对象（不是 '[]'）、status 多一个 paused（§14 编译中断
 #     可续必须有它）、books 多 error/updated_at 两列（错误要落库给前端看）。
-SCHEMA_VERSION = "14"
+# v15：P11 技能系统（§7.16）——skills_meta 表（§8.2 原样：name/source/hub_ref/
+#     enabled/installed_at）。技能正文是 data/user/skills/<name>/ 目录下的
+#     SKILL.md（§8.1 目录已在），不在库里；MCP/CLI Apps 的配置也不在库（JSON
+#     文件，见 src/nnnu/services/{mcp,cli_apps}）。
+SCHEMA_VERSION = "15"
 
 MIGRATIONS: dict[str, list[str]] = {
     "2": [
@@ -357,6 +361,17 @@ MIGRATIONS: dict[str, list[str]] = {
         )""",
         "CREATE INDEX IF NOT EXISTS idx_book_attempts_page ON book_attempts(page_id, created_at)",
     ],
+    # §8.2 原样。技能正文/引用文件在磁盘（data/user/skills/<name>/），本表只管
+    # 元数据与启用态：本地自建与市场安装同表，source 区分（local|market）。
+    "15": [
+        """CREATE TABLE IF NOT EXISTS skills_meta (
+            name TEXT PRIMARY KEY,
+            source TEXT DEFAULT 'local',
+            hub_ref TEXT,
+            enabled INTEGER DEFAULT 1,
+            installed_at REAL
+        )""",
+    ],
 }
 
 # 每级迁移应落地的产物——启动自检清单（见 _verify）。
@@ -374,6 +389,7 @@ EXPECTED_TABLES: dict[str, tuple[str, ...]] = {
     "10": ("research_runs",),
     "13": ("co_writer_docs",),
     "14": ("books", "book_pages", "book_page_messages", "book_attempts"),
+    "15": ("skills_meta",),
 }
 
 EXPECTED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {

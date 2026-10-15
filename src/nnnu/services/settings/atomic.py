@@ -1,4 +1,4 @@
-"""JSON 原子写公共工具（§8.3）：settings 与 secrets 共用。
+"""原子写公共工具（§8.3）：settings、secrets 与技能目录共用。
 
 同目录临时文件 + fsync + Path.replace；Windows 下 PermissionError
 （杀软/句柄瞬锁）指数退避重试。
@@ -10,6 +10,28 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    """原子写文本文件（技能 SKILL.md/引用文件；重试策略同 atomic_write_json）。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    for attempt in range(3):
+        try:
+            fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name, suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+                    fh.write(text)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                Path(tmp_name).replace(path)
+            except BaseException:
+                Path(tmp_name).unlink(missing_ok=True)
+                raise
+            return
+        except PermissionError:
+            if attempt == 2:
+                raise
+            time.sleep(0.05 * (attempt + 1))
 
 
 def atomic_write_json(path: Path, data: dict[str, Any], *, chmod: int | None = None) -> None:

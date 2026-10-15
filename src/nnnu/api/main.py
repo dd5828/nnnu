@@ -29,6 +29,7 @@ from nnnu.api.routers import (
     research,
     sessions,
     settings,
+    skills,
     unified_ws,
 )
 from nnnu.runtime import bootstrap
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
         from nnnu.services.sessions.db import Database
         from nnnu.services.sessions.schema import db_path
         from nnnu.services.sessions.service import SessionManager
+        from nnnu.services.skills.service import SkillService, set_skill_service
 
         db = Database(db_path(runtime_home.get_data_root()))
         await db.connect()
@@ -115,6 +117,11 @@ def create_app() -> FastAPI:
         notebooks_service = NotebookService(db)
         set_notebook_service(notebooks_service)
         _app.state.notebooks = notebooks_service
+        # 技能（§7.16，schema v15）：skills_meta + data/user/skills/；单例给挂载门与
+        # read_skill 工具用，路由取 app.state
+        skills_service = SkillService(db)
+        set_skill_service(skills_service)
+        _app.state.skills = skills_service
         # Co-Writer（§7.13）：正文文件 + 元数据表（v13）；待确认编辑只在内存，
         # 单例给路由取用（其余子系统若要读文档走 get_co_writer_service）
         co_writer_service = CoWriterService(db, data_root=runtime_home.get_data_root())
@@ -210,6 +217,7 @@ def create_app() -> FastAPI:
         set_embedding_service(None)
         set_question_bank(None)
         set_notebook_service(None)
+        set_skill_service(None)
         set_co_writer_service(None)
         set_learning_service(None)
         set_research_service(None)
@@ -250,6 +258,7 @@ def create_app() -> FastAPI:
     app.include_router(attachments.router)
     app.include_router(knowledge.router)
     app.include_router(notebooks.router)
+    app.include_router(skills.router)
     app.include_router(co_writer.router)
     app.include_router(book.router)
     app.include_router(questions.router)
