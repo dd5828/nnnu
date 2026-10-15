@@ -1,10 +1,7 @@
 "use client";
 
 /**
- * 技能页（§7.16 / §7.17 / §7.18）：一页三标签——技能 / MCP / CLI 应用。
- *
- * MCP 与 CLI 两个标签在刀三、刀四补上（P11 分五刀实施），这一刀先把「技能」和
- * 「市场」交付，标签位先占好，免得回头再改导航结构。
+ * 技能页（§7.16 / §7.17 / §7.18）：一页四标签——技能 / 市场 / MCP / CLI 应用。
  *
  * `?tab=` 深链：从别处跳过来能直接落到某个标签，刷新也不丢。读了 useSearchParams，
  * 所以本体包在 Suspense 里（Next 16 的硬要求）。
@@ -13,6 +10,8 @@
 import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Sparkles } from "lucide-react";
+import CliAppsPanel from "@/components/cli-apps/CliAppsPanel";
+import McpPanel from "@/components/mcp/McpPanel";
 import SkillHub from "@/components/skills/SkillHub";
 import SkillPanel from "@/components/skills/SkillPanel";
 import { useI18n } from "@/hooks/useI18n";
@@ -20,6 +19,8 @@ import { useI18n } from "@/hooks/useI18n";
 const TABS = [
   { value: "skills", key: "skills.tabSkills" },
   { value: "hub", key: "skills.tabHub" },
+  { value: "mcp", key: "skills.tabMcp" },
+  { value: "cli", key: "skills.tabCli" },
 ] as const;
 
 type TabValue = (typeof TABS)[number]["value"];
@@ -80,7 +81,15 @@ function SkillsBoard() {
           ))}
         </div>
 
-        {tab === "skills" ? <SkillPanel /> : <SkillHub />}
+        {tab === "skills" ? (
+          <SkillPanel />
+        ) : tab === "hub" ? (
+          <SkillHub />
+        ) : tab === "mcp" ? (
+          <McpPanel />
+        ) : (
+          <CliAppsPanel />
+        )}
       </div>
     </main>
   );

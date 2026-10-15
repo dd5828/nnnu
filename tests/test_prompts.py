@@ -164,3 +164,39 @@ def test_repo_book_keys_match_between_languages(repo_prompts):
         # 各块系统提示词真认得自己的产出契约
         assert "JSON" in rendered_map["blocks.quiz.system"]
         assert "mermaid" in rendered_map["blocks.figure.system"]
+
+
+def test_repo_cli_apps_keys_match_between_languages(repo_prompts):
+    """真实 prompts/ 里的 cli_apps.yaml（§7.18）：中英键集合一致，每条模板都渲染得出
+    东西且没有残留占位符——runner 与 cli_app_tools 的输出全靠这几条（渲染失败会静默
+    返回原文，残留的 {app} 就这么漏到模型眼前）。
+    """
+    manager = PromptManager(prompts_root=REPO_PROMPTS)
+    assert [issue for issue in manager.check_parity() if issue.startswith("cli_apps")] == []
+    cases: dict[str, dict[str, str]] = {
+        "guide_header": {"app": "ffmpeg"},
+        "guide_seen": {"app": "ffmpeg"},
+        "not_installed": {"app": "ffmpeg", "program": "ffmpeg"},
+        "bad_args": {"error": "缺少必填参数：input"},
+        "run_failed": {"error": "退出码 1"},
+        "output_truncated": {},
+        "installed_header": {},
+        "search_header": {"query": "ff"},
+        "search_empty": {"query": "zz"},
+        "no_apps": {},
+        "app_line": {"name": "FFmpeg", "app": "ffmpeg", "status": "已装", "description": "转码"},
+        "installed_badge": {},
+        "available_badge": {},
+        "params_header": {},
+        "param_line": {"name": "input", "note": "必填", "description": "输入文件"},
+        "param_required": {},
+        "param_optional": {},
+        "list_hint": {},
+        "app_not_found": {"app": "x", "apps": "ffmpeg"},
+    }
+    leftover = re.compile(r"\{[a-zA-Z_][a-zA-Z0-9_.]*\}")
+    for lang in ("zh", "en"):
+        for key, values in cases.items():
+            rendered = manager.render("cli_apps", lang, key, **values)
+            assert rendered, (lang, key)
+            assert not leftover.search(rendered), (lang, key, rendered)

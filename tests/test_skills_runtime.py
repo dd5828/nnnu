@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from nnnu.capabilities._shared import MountedTools, mount_tools
+from nnnu.capabilities._shared import SKILL_TOOL_NAMES, MountedTools, mount_tools
 from nnnu.core.context import SessionRef, UnifiedContext
 from nnnu.core.tool_protocol import ToolContext
 from nnnu.services.i18n.prompts import PromptManager
@@ -114,7 +114,9 @@ async def test_mount_without_service_fails_closed(repo_prompts):
     ctx = _ctx()
     mounted = await mount_tools(ctx)
     assert "read_skill" not in mounted.tools
-    assert mounted.skills_note == "" and not ctx.tool_flags.context
+    # 只看技能这两个上下文条件：命令行应用的门（§7.18）是另一码事，本机 PATH 上有东西
+    # 就会命中，（跟技能服务装没装配无关）不能拿整个 context 集合当断言。
+    assert mounted.skills_note == "" and not (set(SKILL_TOOL_NAMES) & ctx.tool_flags.context)
 
 
 async def test_allowlist_without_skill_tool_drops_note(client, repo_prompts):

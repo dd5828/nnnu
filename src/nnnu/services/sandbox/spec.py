@@ -22,10 +22,15 @@ MAX_PER_MINUTE = 30
 
 @dataclass(slots=True)
 class ExecRequest:
-    """code（Python 源码）与 command（shell 命令）二选一。"""
+    """code（Python 源码）/ command（shell 命令）/ argv（直接 exec）三选一。
+
+    argv 是给「程序固定、参数由模型给」的场景用的（§7.18 命令行应用）：不过 shell，
+    参数里带空格、引号、`&&` 都只是参数本身；程序名写 argv[0]。
+    """
 
     code: str | None = None
     command: str | None = None
+    argv: list[str] | None = None
     timeout_s: float = DEFAULT_TIMEOUT_S
     allow_network: bool = False
     cwd_relative: str = ""  # 相对 data/workspace/ 的子目录

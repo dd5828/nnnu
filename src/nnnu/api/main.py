@@ -16,11 +16,13 @@ from nnnu.api.routers import (
     attachments,
     book,
     chat,
+    cli_apps,
     co_writer,
     cost,
     health,
     knowledge,
     learning,
+    mcp,
     memory,
     notebooks,
     plugins,
@@ -127,6 +129,18 @@ def create_app() -> FastAPI:
         co_writer_service = CoWriterService(db, data_root=runtime_home.get_data_root())
         set_co_writer_service(co_writer_service)
         _app.state.co_writer = co_writer_service
+        # MCP（§7.17）：连接外部 MCP 服务器并把它们的工具注册进工具表。`start()`
+        # 不等待连接——连服务器是网络动作，能磨掉整个连接超时，启动流程不陪它等
+        # （连上多少是多少，界面上能看状态、能重试）
+        from nnnu.services.mcp.manager import MCPConnectionManager, set_mcp_manager
+
+        mcp_manager = MCPConnectionManager()
+        set_mcp_manager(mcp_manager)
+        _app.state.mcp = mcp_manager
+        try:
+            await mcp_manager.start()
+        except Exception:  # 连不上不该拦住应用启动
+            logger.exception("MCP 管理器启动失败，继续启动")
         # 题库（§7.4）：单例给出题能力/工具用，app.state 给路由用；成本服务同理
         # （判分端点要写 usage_records，之前只塞进了 TurnRuntimeManager）
         questions_service = QuestionBankService(db)
@@ -208,6 +222,12 @@ def create_app() -> FastAPI:
         _app.state.book = book_service
         await book_service.recover_compile()
         yield
+        # MCP 先收：连接任务是外部进程/长连接的持有者，先断开再关库关日志
+        try:
+            await mcp_manager.shutdown()
+        except Exception:
+            logger.exception("MCP 关停失败")
+        set_mcp_manager(None)
         await book_service.shutdown()
         set_book_service(None)
         await memory_service.shutdown()
@@ -259,6 +279,8 @@ def create_app() -> FastAPI:
     app.include_router(knowledge.router)
     app.include_router(notebooks.router)
     app.include_router(skills.router)
+    app.include_router(mcp.router)
+    app.include_router(cli_apps.router)
     app.include_router(co_writer.router)
     app.include_router(book.router)
     app.include_router(questions.router)

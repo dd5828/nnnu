@@ -100,6 +100,8 @@ async def mount_tools(
     skill_lines = await _skill_note_lines()
     if skill_lines:
         ctx.tool_flags.context.update(SKILL_TOOL_NAMES)
+    if await _cli_app_gate():
+        ctx.tool_flags.context.update(CLI_APP_TOOL_NAMES)
     mounted = get_tool_registry().mounted(ctx.tool_flags)
     if allowlist is not None:
         allowed = set(allowlist)
@@ -107,10 +109,20 @@ async def mount_tools(
     # 本回合模型真能调的工具名：read_skill 输出末尾要如实附上（剧本点名了没挂的工具时用它兜底）
     ctx.metadata["mounted_tool_names"] = sorted(mounted)
     prompts = get_prompt_manager()
+
+    def _describe(name: str, fallback: str) -> str:
+        # 先问键在不在再渲染：MCP 工具的描述来自服务器、chat.yaml 里没有对应键，
+        # 闷头 render 会每回合每个工具刷一行「提示词键缺失」告警
+        key = f"tool_descriptions.{name}"
+        text = (
+            prompts.render("chat", ctx.language, key)
+            if prompts.has_key("chat", ctx.language, key)
+            else ""
+        )
+        return text or fallback
+
     descriptions = {
-        name: prompts.render("chat", ctx.language, f"tool_descriptions.{name}")
-        or tool.definition.description
-        for name, tool in mounted.items()
+        name: _describe(name, tool.definition.description) for name, tool in mounted.items()
     }
     kb_names, rag_kbs = resolve_kb_names(ctx)
     skills_note = ""
@@ -135,6 +147,23 @@ async def mount_tools(
 
 
 SKILL_TOOL_NAMES = ("read_skill", "load_tools")  # 技能两件的上下文条件（等于工具名）
+CLI_APP_TOOL_NAMES = ("list_cli_apps", "run_cli_app")  # 命令行应用两件（§7.18）
+
+
+async def _cli_app_gate() -> bool:
+    """装了至少一件命令行应用才开这门（§7.18）；任何失败都当没装（fail-closed）。
+
+    条件是「目录里至少有一件程序真的找得到」而不是「apps.json 里有记录」——理由同
+    install.is_installed：用户本机 PATH 上本来就有 ffmpeg 时，界面显示「已装」，
+    模型这边却拿不到 run_cli_app，是最难解释的一种不一致。
+    """
+    try:
+        from nnnu.services.cli_apps.service import get_cli_app_service
+
+        return bool(get_cli_app_service().installed_ids())
+    except Exception:
+        logger.warning("命令行应用清单读取失败，本回合不开这门", exc_info=True)
+        return False
 
 
 async def _skill_note_lines() -> list[str]:

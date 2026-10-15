@@ -71,12 +71,17 @@ def _audit(request: ExecRequest, result: ExecResult) -> None:
     """§11.6：沙箱执行落审计（越界/配额拒绝也算一次执行尝试）。"""
     from nnnu.services.audit import audit_log
 
-    is_code = request.code is not None
-    target = (request.code or request.command or "")[:AUDIT_TARGET_MAX_CHARS]
+    if request.code is not None:
+        kind, target = "code", request.code
+    elif request.argv:
+        # argv 记「程序 + 参数」全文：审计要的就是这次到底跑了什么
+        kind, target = "argv", " ".join(request.argv)
+    else:
+        kind, target = "command", request.command or ""
     audit_log(
         "sandbox_exec",
-        kind="code" if is_code else "command",
-        target=target,
+        kind=kind,
+        target=target[:AUDIT_TARGET_MAX_CHARS],
         cwd=request.cwd_relative,
         network=request.allow_network,
         ok=result.ok,
@@ -148,8 +153,8 @@ class SandboxService:
         self._recent_runs.append(time.monotonic())
 
     async def run(self, request: ExecRequest) -> ExecResult:
-        if request.code is None and request.command is None:
-            return ExecResult(ok=False, error="code 与 command 至少提供一个")
+        if request.code is None and request.command is None and not request.argv:
+            return ExecResult(ok=False, error="code、command、argv 必须提供一个")
         if not 0 < request.timeout_s <= MAX_TIMEOUT_S:
             request.timeout_s = DEFAULT_TIMEOUT_S
         # §11.2：网络默认关闭——调用方只能在用户开了总开关的前提下收紧，不能自行放开
@@ -183,6 +188,9 @@ class SandboxService:
             script = runs_dir / f"run_{int(started * 1000)}_{os.getpid()}.py"
             script.write_text(request.code, encoding="utf-8")
             program, arguments = sys.executable, ["-u", str(script)]
+        elif request.argv:
+            # 直 exec：argv[0] 是程序，其余原样作参数（不经 shell，不做任何拼接）
+            program, arguments = request.argv[0], list(request.argv[1:])
         else:
             program, arguments = request.command or "", []
             if os.name == "nt":

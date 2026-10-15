@@ -24,6 +24,8 @@ DATA_SUBDIRS: tuple[str, ...] = (
     "user/books",
     "user/co_writer",
     "user/skills",
+    "user/mcp",
+    "user/cli-apps",
     "user/knowledge",
     "user/renders",
     "user/uploads",
@@ -78,6 +80,7 @@ def register_builtins() -> None:
     from nnnu.tools.builtin.ask_user import AskUserTool
     from nnnu.tools.builtin.attachment_search import AttachmentSearchTool
     from nnnu.tools.builtin.brainstorm import BrainstormTool
+    from nnnu.tools.builtin.cli_app_tools import ListCliAppsTool, RunCliAppTool
     from nnnu.tools.builtin.code_execution import CodeExecutionTool
     from nnnu.tools.builtin.cron_tool import CronTool
     from nnnu.tools.builtin.exec_tool import ExecTool
@@ -133,6 +136,9 @@ def register_builtins() -> None:
     # 技能两件（§7.16）：有启用技能时才挂（CONTEXT_GATED 门键 skills，见 _shared.mount_tools）
     get_tool_registry().register(ReadSkillTool())
     get_tool_registry().register(LoadToolsTool())
+    # 命令行应用两件（§7.18）：装了至少一件才挂（CONTEXT_GATED 门键就是这两个名字）
+    get_tool_registry().register(ListCliAppsTool())
+    get_tool_registry().register(RunCliAppTool())
     # videogen 不注册：只有友好报错的桩（§7.2 未交付），挂上去等于给模型一个
     # 永远失败的工具，白烧一轮调用。VideoGenTool 类与 media.generate_video 桩
     # 保留，后续阶段接上真实端点时在这里加回 register(VideoGenTool())。

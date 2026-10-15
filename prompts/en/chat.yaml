@@ -49,6 +49,8 @@ tool_descriptions:
   list_notebook: "Browse notebooks: with no arguments, list all notebooks with their record counts; with notebook (name or id), list that notebook's records; with record_id, read one record in full. Use it for 'show my notes', 'that record in my notebook', or whenever you need to find an earlier record."
   read_skill: "Read the full script (SKILL.md body) of an enabled skill; long scripts are truncated and their reference files listed for on-demand reading via file. When a request matches a skill's 'when to use', read it first and then follow it; a tool named in the script can only be called if it is available this turn."
   load_tools: "List this session's tool catalog: tools actually callable this turn plus other installed-but-unmounted tools. Check it before calling a tool you are unsure about; never call tools outside it."
+  list_cli_apps: "Inspect command-line apps: with no argument, list installed apps and their parameter templates; with query, search the catalog (including apps that are not installed yet, so you can suggest installing one). Use it when you need to run a local program but are unsure whether it is installed or how its arguments work."
+  run_cli_app: "Run an installed command-line app (app is the id, args follow the parameter template from list_cli_apps). Use it for jobs whose deliverable is a file - transcoding, format conversion, frame extraction, PDF processing. If the app is not installed, tell the user to install it from the CLI apps page first. All paths are relative to the sandbox working directory (data/user/workspace)."
 # Cost/limit hints shown on tool cards (§7.2): the settings tool catalog picks them by language
 tool_cost_hints:
   web_search: "Web search (billed/latency per provider)"
@@ -72,3 +74,5 @@ tool_cost_hints:
   videogen: "Video generation (not supported yet; coming in a later stage)"
   read_memory: "Reads local memory (read-only; no extra calls)"
   write_memory: "Writes local memory (no extra calls; later consolidation may burn tokens)"
+  list_cli_apps: "Reads the local catalog and install records (read-only; no extra calls)"
+  run_cli_app: "Runs an installed program on this machine (sandbox timeout and output caps apply; long jobs are slow)"

@@ -1,0 +1,3442 @@
+{
+  "meta": {
+    "version": 1,
+    "note": "命令行应用目录（方案 §7.18）。install 只被解析不直接执行：plan_install 只认 pip/npm 且只许一个包。",
+    "source": "https://github.com/HKUDS/CLI-Anything",
+    "commit": "bc536c9bebb7c3d9f7bb2736a732609139c1acdb",
+    "commit_date": "2026-07-09",
+    "imported": 12,
+    "filtered": "上游 101 条里：brew/cargo/uv/curl/cd/python3/none 安装（不代劳）、macOS 专有、以及依赖本机预装 GUI 应用的封装未收录"
+  },
+  "apps": [
+    {
+      "id": "ffmpeg",
+      "name": "FFmpeg",
+      "description": {
+        "zh": "转码、剪切、抽音轨、改分辨率、压图都靠它；影音处理的万能工具",
+        "en": "Transcode, trim, extract audio, resize video; the general-purpose AV toolbox"
+      },
+      "category": "video",
+      "entry_point": "ffmpeg",
+      "cmd": "",
+      "argv_template": [
+        "-hide_banner",
+        "-y",
+        "-i",
+        "{input}",
+        "{args}",
+        "{output}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "输入文件 (input file)"
+          },
+          "output": {
+            "type": "string",
+            "description": "输出文件（扩展名决定格式） (output file, extension picks the format)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "input",
+          "output"
+        ]
+      },
+      "guide": {
+        "zh": "输出参数写在 -i 之后、输出文件之前（-vn 抽音频、-b:a 192k 定码率、-vf scale=640:-1 改分辨率）。例：把 in.mp4 转成 192k 的 mp3 → input=in.mp4, output=out.mp3, args=[\"-vn\",\"-b:a\",\"192k\"]。覆盖写（-y）已默认开；路径相对工作目录。",
+        "en": "Output options go after -i and before the output path (-vn for audio-only, -b:a 192k, -vf scale=640:-1). Example: in.mp4 → 192k mp3 = input=in.mp4, output=out.mp3, args=[\"-vn\",\"-b:a\",\"192k\"]. Overwrite is on (-y); paths are workspace-relative."
+      },
+      "guide_url": "https://ffmpeg.org",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://ffmpeg.org",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "ffprobe",
+      "name": "FFprobe",
+      "description": {
+        "zh": "看影音文件的真实参数（编码、时长、码率、分辨率），不看它就容易瞎猜",
+        "en": "Read the real properties of a media file (codec, duration, bitrate, resolution)"
+      },
+      "category": "video",
+      "entry_point": "ffprobe",
+      "cmd": "",
+      "argv_template": [
+        "-v",
+        "error",
+        "-print_format",
+        "json",
+        "{args}",
+        "{input}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "工作目录里的文件路径 file path (relative)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "input"
+        ]
+      },
+      "guide": {
+        "zh": "默认输出 JSON：format（容器、时长、码率）+ streams（每路的编码/宽高/采样率）。只看某几路可加 args=[\"-show_streams\"] 或 [\"-show_format\"]。",
+        "en": "Prints JSON by default: format (container, duration) plus one entry per stream. Narrow it with args=[\"-show_streams\"] or [\"-show_format\"]."
+      },
+      "guide_url": "https://ffmpeg.org",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://ffmpeg.org",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "sox",
+      "name": "SoX",
+      "description": {
+        "zh": "音频处理：格式转换、裁剪、拼接、降噪、变速变调",
+        "en": "Audio processing: convert, trim, concatenate, denoise, change speed/pitch"
+      },
+      "category": "audio",
+      "entry_point": "sox",
+      "cmd": "",
+      "argv_template": [
+        "{input}",
+        "{output}",
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "工作目录里的文件路径 file path (relative)"
+          },
+          "output": {
+            "type": "string",
+            "description": "输出文件 (output file)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "input",
+          "output"
+        ]
+      },
+      "guide": {
+        "zh": "效果链写在最后：trim 0 10（取前 10 秒）、speed 1.5、vol 0.8、norm、reverse。例：input=in.wav, output=out.mp3, args=[\"trim\",\"0\",\"10\"]。看支持的格式用 args=[\"--help\"] 不行，那会当效果名；直接跑 args=[\"-h\"] 也会报错，需要时改跑 ffprobe。",
+        "en": "Effects come last: trim 0 10, speed 1.5, vol 0.8, norm, reverse. Example: input=in.wav, output=out.mp3, args=[\"trim\",\"0\",\"10\"]."
+      },
+      "guide_url": "https://sox.sourceforge.net",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://sox.sourceforge.net",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "yt-dlp",
+      "name": "yt-dlp",
+      "description": {
+        "zh": "下载网络视频/音频（YouTube、B 站等），也能只抓字幕",
+        "en": "Download online video/audio (YouTube, Bilibili, ...), including subtitles"
+      },
+      "category": "video",
+      "entry_point": "yt-dlp",
+      "cmd": "",
+      "argv_template": [
+        "-o",
+        "{output}",
+        "{args}",
+        "{url}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "视频地址 (video URL)"
+          },
+          "output": {
+            "type": "string",
+            "description": "输出文件名模板 (output filename template)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "guide": {
+        "zh": "要联网：先在设置里打开「沙箱允许联网」，否则下载必然失败。args 常用：[\"-f\",\"bestaudio\",\"-x\",\"--audio-format\",\"mp3\"] 只取音频转 mp3；[\"--write-subs\",\"--skip-download\"] 只下字幕。output 不填时默认按标题命名输出到工作目录。",
+        "en": "Needs network: enable \"allow sandbox network\" in settings first. Useful args: [\"-f\",\"bestaudio\",\"-x\",\"--audio-format\",\"mp3\"], or [\"--write-subs\",\"--skip-download\"]."
+      },
+      "guide_url": "https://github.com/yt-dlp/yt-dlp",
+      "install": {
+        "kind": "pip",
+        "target": "yt-dlp",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://github.com/yt-dlp/yt-dlp",
+      "platform": "any",
+      "default_timeout_s": 300,
+      "network": true,
+      "source_url": ""
+    },
+    {
+      "id": "mediainfo",
+      "name": "MediaInfo",
+      "description": {
+        "zh": "一眼看全影音文件的编码信息（比 ffprobe 更适合直接给人看）",
+        "en": "Human-readable media info in one shot"
+      },
+      "category": "video",
+      "entry_point": "mediainfo",
+      "cmd": "",
+      "argv_template": [
+        "{args}",
+        "{input}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "工作目录里的文件路径 file path (relative)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "input"
+        ]
+      },
+      "guide": {
+        "zh": "加 args=[\"--Output=JSON\"] 拿结构化结果。",
+        "en": "Add args=[\"--Output=JSON\"] for structured output."
+      },
+      "guide_url": "https://mediaarea.net/MediaInfo",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://mediaarea.net/MediaInfo",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "magick",
+      "name": "ImageMagick",
+      "description": {
+        "zh": "图片批处理：缩放、裁剪、格式转换、加水印、拼图",
+        "en": "Image batch work: resize, crop, convert, watermark, montage"
+      },
+      "category": "image",
+      "entry_point": "magick",
+      "cmd": "",
+      "argv_template": [
+        "{input}",
+        "{args}",
+        "{output}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "工作目录里的文件路径 file path (relative)"
+          },
+          "output": {
+            "type": "string",
+            "description": "输出文件 (output file)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "input",
+          "output"
+        ]
+      },
+      "guide": {
+        "zh": "参数写在输入之后、输出之前：-resize 800x、-crop 100x100+10+10、-quality 80、-rotate 90、-strip。拼图用 args=[\"+append\"]（横向）或 [\"-append\"]。注意 ImageMagick 7 的命令是 magick（不是 convert）。",
+        "en": "Options go between input and output: -resize 800x, -crop, -quality 80, -rotate 90. IM7 uses `magick`, not `convert`."
+      },
+      "guide_url": "https://imagemagick.org",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://imagemagick.org",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "exiftool",
+      "name": "ExifTool",
+      "description": {
+        "zh": "读写图片/影音的元数据（拍摄时间、GPS、EXIF、封面）",
+        "en": "Read/write metadata (EXIF, GPS, timestamps) in images and media"
+      },
+      "category": "image",
+      "entry_point": "exiftool",
+      "cmd": "",
+      "argv_template": [
+        "-j",
+        "{args}",
+        "{input}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "工作目录里的文件路径 file path (relative)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "input"
+        ]
+      },
+      "guide": {
+        "zh": "默认加了 -j 输出 JSON。清空元数据：args=[\"-all=\",\"-overwrite_original\"]；改字段：args=[\"-Artist=名字\",\"-overwrite_original\"]。",
+        "en": "-j (JSON) is already on. Wipe metadata with args=[\"-all=\",\"-overwrite_original\"]; set fields with args=[\"-Artist=Name\",\"-overwrite_original\"]."
+      },
+      "guide_url": "https://exiftool.org",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://exiftool.org",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "pandoc",
+      "name": "Pandoc",
+      "description": {
+        "zh": "文档格式互转：Markdown / HTML / docx / PDF / epub / LaTeX",
+        "en": "Convert documents between Markdown, HTML, docx, PDF, epub, LaTeX"
+      },
+      "category": "office",
+      "entry_point": "pandoc",
+      "cmd": "",
+      "argv_template": [
+        "{input}",
+        "-o",
+        "{output}",
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "工作目录里的文件路径 file path (relative)"
+          },
+          "output": {
+            "type": "string",
+            "description": "输出文件（扩展名决定目标格式） (output file, extension picks the format)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "input",
+          "output"
+        ]
+      },
+      "guide": {
+        "zh": "常用 args：[\"--toc\"] 目录、[\"-s\"] 独立文档、[\"--reference-doc=模板.docx\"] 套模板。转 PDF 需要 LaTeX 引擎（本机没装就转 docx/html）。",
+        "en": "Common args: [\"--toc\"], [\"-s\"], [\"--reference-doc=template.docx\"]. PDF output needs a LaTeX engine installed."
+      },
+      "guide_url": "https://pandoc.org",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://pandoc.org",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "qpdf",
+      "name": "QPDF",
+      "description": {
+        "zh": "PDF 手术刀：解密、加密、拆页、合并、压缩对象流",
+        "en": "PDF surgery: decrypt, encrypt, split, merge, recompress"
+      },
+      "category": "office",
+      "entry_point": "qpdf",
+      "cmd": "",
+      "argv_template": [
+        "{args}",
+        "{input}",
+        "{output}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "工作目录里的文件路径 file path (relative)"
+          },
+          "output": {
+            "type": "string",
+            "description": "输出文件 (output file)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "input",
+          "output"
+        ]
+      },
+      "guide": {
+        "zh": "解密：args=[\"--decrypt\"]；合并：args=[\"--empty\",\"--pages\",\"a.pdf\",\"b.pdf\",\"--\"]；拆页：args=[\"--pages\",\".\",\"1-3\",\"--\"]。",
+        "en": "Decrypt: args=[\"--decrypt\"]. Merge: args=[\"--empty\",\"--pages\",\"a.pdf\",\"b.pdf\",\"--\"]. Split: args=[\"--pages\",\".\",\"1-3\",\"--\"]."
+      },
+      "guide_url": "https://qpdf.readthedocs.io",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://qpdf.readthedocs.io",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "ghostscript",
+      "name": "Ghostscript",
+      "description": {
+        "zh": "PDF/PS 处理：压体积、转图片、拼合、修字体",
+        "en": "PDF/PostScript work: shrink, rasterize, merge, fix fonts"
+      },
+      "category": "office",
+      "entry_point": "gs",
+      "cmd": "",
+      "argv_template": [
+        "-dNOPAUSE",
+        "-dBATCH",
+        "-sDEVICE=pdfwrite",
+        "-sOutputFile={output}",
+        "{args}",
+        "{input}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "工作目录里的文件路径 file path (relative)"
+          },
+          "output": {
+            "type": "string",
+            "description": "输出 PDF (output PDF)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "input",
+          "output"
+        ]
+      },
+      "guide": {
+        "zh": "压体积：args=[\"-dPDFSETTINGS=/ebook\"]（/screen 更狠、/printer 更清）。转图片要换 -sDEVICE（如 png16m）并改输出名。",
+        "en": "Shrink with args=[\"-dPDFSETTINGS=/ebook\"] (/screen smaller, /printer better). Rasterizing needs a different -sDEVICE."
+      },
+      "guide_url": "https://www.ghostscript.com",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://www.ghostscript.com",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "pdftoppm",
+      "name": "pdftoppm (poppler)",
+      "description": {
+        "zh": "PDF 转图片（每页一张），做 OCR 或预览图的第一步",
+        "en": "Render PDF pages to images, the usual first step for OCR or previews"
+      },
+      "category": "office",
+      "entry_point": "pdftoppm",
+      "cmd": "",
+      "argv_template": [
+        "{args}",
+        "{input}",
+        "{prefix}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "工作目录里的文件路径 file path (relative)"
+          },
+          "prefix": {
+            "type": "string",
+            "description": "输出文件名前缀（会生成 前缀-1.png…） (output prefix; writes prefix-1.png …)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "input",
+          "prefix"
+        ]
+      },
+      "guide": {
+        "zh": "args 里必须给分辨率与格式：[\"-r\",\"150\",\"-png\"]（还有 -jpeg / -tiff；-f 3 -l 5 只转 3~5 页）。",
+        "en": "Pass resolution and format in args: [\"-r\",\"150\",\"-png\"] (-jpeg/-tiff also; -f 3 -l 5 for a page range)."
+      },
+      "guide_url": "https://poppler.freedesktop.org",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://poppler.freedesktop.org",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "pdftotext",
+      "name": "pdftotext (poppler)",
+      "description": {
+        "zh": "把 PDF 抽成纯文本（比截图 OCR 便宜得多，先试它）",
+        "en": "Extract text from a PDF (much cheaper than OCR; try this first)"
+      },
+      "category": "office",
+      "entry_point": "pdftotext",
+      "cmd": "",
+      "argv_template": [
+        "-layout",
+        "{args}",
+        "{input}",
+        "{output}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "工作目录里的文件路径 file path (relative)"
+          },
+          "output": {
+            "type": "string",
+            "description": "输出的 txt (output txt)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "input",
+          "output"
+        ]
+      },
+      "guide": {
+        "zh": "默认带 -layout（尽量保留排版）。扫描件抽不出字是正常的，那要用 tesseract。",
+        "en": "-layout is on by default. Scanned PDFs come back empty by design; use tesseract for those."
+      },
+      "guide_url": "https://poppler.freedesktop.org",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://poppler.freedesktop.org",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "tesseract",
+      "name": "Tesseract OCR",
+      "description": {
+        "zh": "图片/扫描件文字识别，中英文都行",
+        "en": "OCR for images and scans, Chinese and English included"
+      },
+      "category": "office",
+      "entry_point": "tesseract",
+      "cmd": "",
+      "argv_template": [
+        "{input}",
+        "{output}",
+        "-l",
+        "{lang}",
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "工作目录里的文件路径 file path (relative)"
+          },
+          "output": {
+            "type": "string",
+            "description": "输出文件前缀（生成 前缀.txt） (output prefix; writes prefix.txt)"
+          },
+          "lang": {
+            "type": "string",
+            "description": "语言包，如 chi_sim+eng (language pack, e.g. chi_sim+eng)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "input",
+          "output"
+        ]
+      },
+      "guide": {
+        "zh": "lang 不填默认 eng；中文要 chi_sim（简体）、chi_tra（繁体），没装语言包会报错，先试 eng。输入可以是图片或单页 PDF 图。",
+        "en": "lang defaults to eng; Chinese needs chi_sim/chi_tra language data installed. Input is an image (or a rendered PDF page)."
+      },
+      "guide_url": "https://tesseract-ocr.github.io",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://tesseract-ocr.github.io",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "weasyprint",
+      "name": "WeasyPrint",
+      "description": {
+        "zh": "HTML/CSS 转 PDF（带样式、分页、页眉页脚）",
+        "en": "HTML/CSS to PDF with styles, page breaks, headers and footers"
+      },
+      "category": "office",
+      "entry_point": "weasyprint",
+      "cmd": "",
+      "argv_template": [
+        "{args}",
+        "{input}",
+        "{output}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "工作目录里的文件路径 file path (relative)"
+          },
+          "output": {
+            "type": "string",
+            "description": "输出 PDF (output PDF)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "input",
+          "output"
+        ]
+      },
+      "guide": {
+        "zh": "args 可加 [\"-s\",\"style.css\"] 指定样式表。比 pandoc 更适合排版讲究的网页→PDF。",
+        "en": "Add [\"-s\",\"style.css\"] for a stylesheet. Better than pandoc when the HTML/CSS layout matters."
+      },
+      "guide_url": "https://weasyprint.org",
+      "install": {
+        "kind": "pip",
+        "target": "weasyprint",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://weasyprint.org",
+      "platform": "any",
+      "default_timeout_s": 300,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "ocrmypdf",
+      "name": "OCRmyPDF",
+      "description": {
+        "zh": "给扫描 PDF 加一层可搜索的文字（原图不动）",
+        "en": "Add a searchable text layer to a scanned PDF without touching the image"
+      },
+      "category": "office",
+      "entry_point": "ocrmypdf",
+      "cmd": "",
+      "argv_template": [
+        "{args}",
+        "{input}",
+        "{output}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "工作目录里的文件路径 file path (relative)"
+          },
+          "output": {
+            "type": "string",
+            "description": "输出 PDF (output PDF)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "input",
+          "output"
+        ]
+      },
+      "guide": {
+        "zh": "中文加 args=[\"-l\",\"chi_sim+eng\"]；已带文字层的 PDF 要加 [\"--force-ocr\"]。依赖本机的 tesseract 与 ghostscript。",
+        "en": "Chinese: args=[\"-l\",\"chi_sim+eng\"]. PDFs that already have a text layer need [\"--force-ocr\"]. Requires tesseract and ghostscript."
+      },
+      "guide_url": "https://ocrmypdf.readthedocs.io",
+      "install": {
+        "kind": "pip",
+        "target": "ocrmypdf",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://ocrmypdf.readthedocs.io",
+      "platform": "any",
+      "default_timeout_s": 300,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "img2pdf",
+      "name": "img2pdf",
+      "description": {
+        "zh": "把多张图片无损拼成一个 PDF（不重新编码，体积小）",
+        "en": "Losslessly combine images into one PDF (no re-encoding)"
+      },
+      "category": "office",
+      "entry_point": "img2pdf",
+      "cmd": "",
+      "argv_template": [
+        "{inputs}",
+        "-o",
+        "{output}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "图片文件列表 (image files)"
+          },
+          "output": {
+            "type": "string",
+            "description": "输出 PDF (output PDF)"
+          }
+        },
+        "required": [
+          "inputs",
+          "output"
+        ]
+      },
+      "guide": {
+        "zh": "给一组图片就是一次拼合，顺序按数组顺序。",
+        "en": "The array order is the page order."
+      },
+      "guide_url": "https://gitlab.mister-muffin.de/josch/img2pdf",
+      "install": {
+        "kind": "pip",
+        "target": "img2pdf",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://gitlab.mister-muffin.de/josch/img2pdf",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "typst",
+      "name": "Typst",
+      "description": {
+        "zh": "新式排版语言，编译成 PDF（写报告/简历比 LaTeX 轻）",
+        "en": "Modern typesetting language that compiles to PDF"
+      },
+      "category": "office",
+      "entry_point": "typst",
+      "cmd": "",
+      "argv_template": [
+        "compile",
+        "{args}",
+        "{input}",
+        "{output}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "源文件 .typ (.typ source file)"
+          },
+          "output": {
+            "type": "string",
+            "description": "输出 PDF (output PDF)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "input",
+          "output"
+        ]
+      },
+      "guide": {
+        "zh": "看源文件里有没有 `#include`/`#import` 依赖；编译报错会原样返回，按行号改。",
+        "en": "Compile errors come back verbatim with line numbers."
+      },
+      "guide_url": "https://typst.app",
+      "install": {
+        "kind": "pip",
+        "target": "typst",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://typst.app",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "sqlite3",
+      "name": "SQLite",
+      "description": {
+        "zh": "本地数据库查询/建表/导入 CSV（单文件，最省事的结构化存储）",
+        "en": "Local database: query, create tables, import CSV"
+      },
+      "category": "database",
+      "entry_point": "sqlite3",
+      "cmd": "",
+      "argv_template": [
+        "{args}",
+        "{db}",
+        "{sql}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "sql": {
+            "type": "string",
+            "description": "要执行的 SQL (SQL to run)"
+          },
+          "db": {
+            "type": "string",
+            "description": "数据库文件（不填=内存库） (db file; omit for an in-memory db)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "sql"
+        ]
+      },
+      "guide": {
+        "zh": "例：建库并从 CSV 导入 → input 用 args=[\"-csv\"], sql=[\".import --skip 1 data.csv t\"]。查询给结构化输出用 args=[\"-json\"]（新版才支持；不支持就加 \".mode json\" 到 sql 里）。",
+        "en": "Example: args=[\"-json\"] for JSON output, or put \".mode json\" in the SQL. Use args=[\"-csv\"] with \".import data.csv t\" to load a CSV."
+      },
+      "guide_url": "https://sqlite.org",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://sqlite.org",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "duckdb",
+      "name": "DuckDB",
+      "description": {
+        "zh": "分析型数据库 CLI：直接查 CSV/Parquet/JSON，SQL 比 sqlite 强",
+        "en": "Analytical SQL CLI that queries CSV/Parquet/JSON directly"
+      },
+      "category": "database",
+      "entry_point": "duckdb",
+      "cmd": "",
+      "argv_template": [
+        "{db}",
+        "-c",
+        "{sql}",
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "sql": {
+            "type": "string",
+            "description": "要执行的 SQL (SQL to run)"
+          },
+          "db": {
+            "type": "string",
+            "description": "数据库文件（不填=内存库） (db file; omit for in-memory)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "sql"
+        ]
+      },
+      "guide": {
+        "zh": "能直接 `SELECT * FROM 'data.csv'`。输出 CSV 用 args=[\"-csv\"]，JSON 用 [\"-json\"]。",
+        "en": "You can run `SELECT * FROM 'data.csv'` directly. args=[\"-csv\"] or [\"-json\"] for machine-readable output."
+      },
+      "guide_url": "https://duckdb.org",
+      "install": {
+        "kind": "pip",
+        "target": "duckdb",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://duckdb.org",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "sqlite-utils",
+      "name": "sqlite-utils",
+      "description": {
+        "zh": "用一行命令把 CSV/JSON 塞进 SQLite 再查，免写 DDL",
+        "en": "Load CSV/JSON into SQLite in one line, no DDL needed"
+      },
+      "category": "database",
+      "entry_point": "sqlite-utils",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "常用：[\"insert\",\"db.db\",\"tbl\",\"data.csv\",\"--csv\",\"--detect-types\"]、[\"rows\",\"db.db\",\"select * from tbl limit 5\",\"--csv\"]、[\"tables\",\"db.db\"]。",
+        "en": "Examples: [\"insert\",\"db.db\",\"tbl\",\"data.csv\",\"--csv\",\"--detect-types\"], [\"rows\",\"db.db\",\"select * from tbl\",\"--csv\"], [\"tables\",\"db.db\"]."
+      },
+      "guide_url": "https://sqlite-utils.datasette.io",
+      "install": {
+        "kind": "pip",
+        "target": "sqlite-utils",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://sqlite-utils.datasette.io",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "jq",
+      "name": "jq",
+      "description": {
+        "zh": "命令行处理 JSON：取值、过滤、改结构、压平",
+        "en": "Slurp, filter, and reshape JSON on the command line"
+      },
+      "category": "data",
+      "entry_point": "jq",
+      "cmd": "",
+      "argv_template": [
+        "{args}",
+        "{filter}",
+        "{input}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "filter": {
+            "type": "string",
+            "description": "jq 表达式 (jq expression)"
+          },
+          "input": {
+            "type": "string",
+            "description": "输入 JSON 文件（不填=从标准输入，这里没输入就别留空） (input JSON file)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "filter"
+        ]
+      },
+      "guide": {
+        "zh": "常用 args：[\"-r\"] 裸字符串（不加会带引号）、[\"-c\"] 一行一条。表达式例：'.items[] | {id, name}'、'.[] | select(.n>10)'、'keys'。",
+        "en": "args: [\"-r\"] raw strings, [\"-c\"] compact. Expressions like '.items[] | {id, name}' or '.[] | select(.n>10)'."
+      },
+      "guide_url": "https://jqlang.github.io/jq",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://jqlang.github.io/jq",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "yq",
+      "name": "yq",
+      "description": {
+        "zh": "YAML/JSON/XML 互转与查询（没装就先用 python -c 顶一下）",
+        "en": "Query and convert YAML/JSON/XML"
+      },
+      "category": "data",
+      "entry_point": "yq",
+      "cmd": "",
+      "argv_template": [
+        "{args}",
+        "{filter}",
+        "{input}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "filter": {
+            "type": "string",
+            "description": "yq 表达式 (yq expression)"
+          },
+          "input": {
+            "type": "string",
+            "description": "工作目录里的文件路径 file path (relative)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "filter",
+          "input"
+        ]
+      },
+      "guide": {
+        "zh": "转 JSON：args=[\"-o=json\"]；转 YAML：[\"-o=yaml\"]。表达式语法同 jq。",
+        "en": "args=[\"-o=json\"] to convert to JSON, [\"-o=yaml\"] back. Expression syntax follows jq."
+      },
+      "guide_url": "https://github.com/mikefarah/yq",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://github.com/mikefarah/yq",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "csvkit",
+      "name": "csvkit",
+      "description": {
+        "zh": "CSV 工具箱（csvcut 取列、csvlook 表格化、csvstat 统计、csvsql 查询）",
+        "en": "CSV toolbox: csvcut, csvlook, csvstat, csvsql"
+      },
+      "category": "data",
+      "entry_point": "csvcut",
+      "cmd": "",
+      "argv_template": [
+        "{args}",
+        "{input}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "CSV 文件 (CSV file)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "input"
+        ]
+      },
+      "guide": {
+        "zh": "这条只跑 csvcut（按列名取列）：args=[\"-c\",\"name,age\"]。要别的子命令得在 PATH 上直接调 csvlook/csvstat/csvsql（它们和 csvcut 同一个包一起装好）。",
+        "en": "This entry runs csvcut: args=[\"-c\",\"name,age\"]. The sibling commands csvlook/csvstat/csvsql are installed alongside and can be called directly on PATH."
+      },
+      "guide_url": "https://csvkit.readthedocs.io",
+      "install": {
+        "kind": "pip",
+        "target": "csvkit",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://csvkit.readthedocs.io",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "ripgrep",
+      "name": "ripgrep",
+      "description": {
+        "zh": "极快的全文搜索（比 grep 好用：默认递归、跳过 .gitignore）",
+        "en": "Fast full-text search: recursive by default, respects .gitignore"
+      },
+      "category": "search",
+      "entry_point": "rg",
+      "cmd": "",
+      "argv_template": [
+        "{pattern}",
+        "{path}",
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "正则 (regex)"
+          },
+          "path": {
+            "type": "string",
+            "description": "搜索目录/文件（不填=当前目录） (path; omit for cwd)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "pattern"
+        ]
+      },
+      "guide": {
+        "zh": "常用 args：[\"-l\"] 只列文件名、[\"-i\"] 忽略大小写、[\"-n\"] 带行号、[\"-C\",\"2\"] 上下文、[\"--glob\",\"*.py\"]。",
+        "en": "args: [\"-l\"] files only, [\"-i\"] case-insensitive, [\"-n\"] line numbers, [\"-C\",\"2\"] context, [\"--glob\",\"*.py\"]."
+      },
+      "guide_url": "https://github.com/BurntSushi/ripgrep",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://github.com/BurntSushi/ripgrep",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "fd",
+      "name": "fd",
+      "description": {
+        "zh": "按文件名/扩展名找文件（find 的顺手替代）",
+        "en": "Find files by name or extension, a friendlier find"
+      },
+      "category": "search",
+      "entry_point": "fd",
+      "cmd": "",
+      "argv_template": [
+        "{pattern}",
+        "{path}",
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "名字或正则（不填=全部） (pattern; omit to match all)"
+          },
+          "path": {
+            "type": "string",
+            "description": "目录（不填=当前目录） (directory)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        }
+      },
+      "guide": {
+        "zh": "可用 args：[\"-e\",\"pdf\"] 按扩展名、[\"-t\",\"d\"] 只看目录、[\"-x\",\"命令\"] 对每个结果执行。",
+        "en": "args: [\"-e\",\"pdf\"], [\"-t\",\"d\"] directories only, [\"-x\",\"cmd\"] exec per hit."
+      },
+      "guide_url": "https://github.com/sharkdp/fd",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://github.com/sharkdp/fd",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "gnuplot",
+      "name": "Gnuplot",
+      "description": {
+        "zh": "命令行出图（PNG/SVG），适合把数据快速画出来",
+        "en": "Plot from the command line to PNG/SVG"
+      },
+      "category": "diagrams",
+      "entry_point": "gnuplot",
+      "cmd": "",
+      "argv_template": [
+        "-e",
+        "{expression}",
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "expression": {
+            "type": "string",
+            "description": "绘图脚本（分号分隔可写多句） (plot script; semicolons separate statements)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "expression"
+        ]
+      },
+      "guide": {
+        "zh": "例：expression=\"set terminal png size 800,600; set output 'plot.png'; plot 'data.csv' using 1:2 with lines\"。输出路径相对工作目录，记得写 set output。",
+        "en": "Example: \"set terminal png size 800,600; set output 'plot.png'; plot 'data.csv' using 1:2 with lines\". Remember the set output line."
+      },
+      "guide_url": "http://www.gnuplot.info",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "http://www.gnuplot.info",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "graphviz",
+      "name": "Graphviz",
+      "description": {
+        "zh": "DOT 描述 → 结构图（流程图、依赖图、概念图）",
+        "en": "Render DOT graphs to images"
+      },
+      "category": "diagrams",
+      "entry_point": "dot",
+      "cmd": "",
+      "argv_template": [
+        "-T{format}",
+        "-o",
+        "{output}",
+        "{input}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "DOT 文件 (DOT file)"
+          },
+          "output": {
+            "type": "string",
+            "description": "输出图片 (output image)"
+          },
+          "format": {
+            "type": "string",
+            "description": "格式：svg/png/pdf (format: svg/png/pdf)"
+          }
+        },
+        "required": [
+          "input",
+          "output",
+          "format"
+        ]
+      },
+      "guide": {
+        "zh": "格式必填（常用 svg，矢量放大不糊）。大图可以加 args 调布局，但模板没留位，先按默认 dot 布局。",
+        "en": "format is required (svg keeps its sharpness). Layout engines other than dot are not wired in this template."
+      },
+      "guide_url": "https://graphviz.org",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://graphviz.org",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "xmllint",
+      "name": "xmllint (libxml2)",
+      "description": {
+        "zh": "XML/HTML 校验与格式化",
+        "en": "Validate and pretty-print XML/HTML"
+      },
+      "category": "data",
+      "entry_point": "xmllint",
+      "cmd": "",
+      "argv_template": [
+        "{args}",
+        "{input}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "工作目录里的文件路径 file path (relative)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "input"
+        ]
+      },
+      "guide": {
+        "zh": "格式化：args=[\"--format\"]；取节点：args=[\"--xpath\",\"//title/text()\"]；HTML 用 args=[\"--html\",\"--format\"]。",
+        "en": "args=[\"--format\"] to pretty-print, [\"--xpath\",\"//title/text()\"] to extract, [\"--html\",\"--format\"] for HTML."
+      },
+      "guide_url": "https://gitlab.gnome.org/GNOME/libxml2",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://gitlab.gnome.org/GNOME/libxml2",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "p7zip",
+      "name": "7-Zip",
+      "description": {
+        "zh": "压包解包（zip/7z/tar/rar 解压都行），比 PowerShell 那套好使",
+        "en": "Create and extract archives (zip/7z/tar, and rar extraction)"
+      },
+      "category": "utility",
+      "entry_point": "7z",
+      "cmd": "",
+      "argv_template": [
+        "{action}",
+        "{output}",
+        "{inputs}",
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "动作：a=添加 x=解压（保留路径） e=解压（摊平） l=列表 t=测试 (action: a=add, x=extract, e=extract flat, l=list, t=test)"
+          },
+          "output": {
+            "type": "string",
+            "description": "压缩包路径（l/t 时就是被看的包） (archive path)"
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "要打包的文件（a 用；解压时不填） (files to add; omit when extracting)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "action",
+          "output"
+        ]
+      },
+      "guide": {
+        "zh": "例：打包 args=[\"a\",\"out.7z\",\"src\"] → action=a, output=out.7z, inputs=[\"src\"]；解压 action=x, output=in.zip, args=[\"-o.\"] 或 [\"-y\"]。",
+        "en": "Add: action=a, output=out.7z, inputs=[\"src\"]. Extract: action=x, output=in.zip, args=[\"-y\"]."
+      },
+      "guide_url": "https://www.7-zip.org",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://www.7-zip.org",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "shellcheck",
+      "name": "ShellCheck",
+      "description": {
+        "zh": "检查 shell 脚本的坑（引号、变量、危险命令）",
+        "en": "Static analysis for shell scripts"
+      },
+      "category": "devops",
+      "entry_point": "shellcheck",
+      "cmd": "",
+      "argv_template": [
+        "{args}",
+        "{scripts}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "scripts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "脚本文件列表 (script files)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "scripts"
+        ]
+      },
+      "guide": {
+        "zh": "输出格式可换：args=[\"-f\",\"json\"]、[\"-S\",\"warning\"] 只看警告以上。",
+        "en": "args=[\"-f\",\"json\"] for JSON, [\"-S\",\"warning\"] to filter by severity."
+      },
+      "guide_url": "https://www.shellcheck.net",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://www.shellcheck.net",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "git",
+      "name": "Git",
+      "description": {
+        "zh": "版本控制（工作目录是沙箱里的 workspace，不是项目仓库）",
+        "en": "Version control against the sandbox workspace"
+      },
+      "category": "devops",
+      "entry_point": "git",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "沙箱的工作目录是 data/user/workspace，只有用户放进去的文件，**不是代码仓库**。想建仓库：args=[\"init\"]，看状态 [\"status\",\"--short\"]。不要指望能 push（沙箱默认断网 + 没有凭据）。",
+        "en": "The sandbox cwd is data/user/workspace, which holds only user files — it is not this project's repo. Try [\"init\"] or [\"status\",\"--short\"]. Push will fail (no network, no credentials)."
+      },
+      "guide_url": "https://git-scm.com",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://git-scm.com",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "gh",
+      "name": "GitHub CLI",
+      "description": {
+        "zh": "GitHub 命令行（需要本机 gh auth login 过，且要联网）",
+        "en": "GitHub CLI (needs a prior `gh auth login` and network)"
+      },
+      "category": "devops",
+      "entry_point": "gh",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "没登录会直接报错——凭据不会进沙箱（环境变量白名单里没有 token）。需要联网的要在设置里开沙箱联网。",
+        "en": "Auth tokens are never passed into the sandbox, so a host-side `gh auth login` is required. Network must be enabled in settings."
+      },
+      "guide_url": "https://cli.github.com",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://cli.github.com",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": true,
+      "source_url": ""
+    },
+    {
+      "id": "docker",
+      "name": "Docker",
+      "description": {
+        "zh": "容器操作（要本机 Docker 守护进程在跑）",
+        "en": "Container operations (needs a running Docker daemon)"
+      },
+      "category": "devops",
+      "entry_point": "docker",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "拉镜像/构建要联网（设置里开沙箱联网）。常用：[\"ps\"]、[\"images\"]、[\"run\",\"--rm\",\"镜像\",...]。沙箱不转发 DOCKER_HOST 等变量，走默认本地 socket。",
+        "en": "Pulling and building need sandbox network. Common: [\"ps\"], [\"images\"], [\"run\",\"--rm\",\"image\",...]. DOCKER_HOST is not forwarded."
+      },
+      "guide_url": "https://docs.docker.com",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://docs.docker.com",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "kubectl",
+      "name": "kubectl",
+      "description": {
+        "zh": "Kubernetes 命令行（要本机 kubeconfig）",
+        "en": "Kubernetes CLI (needs a local kubeconfig)"
+      },
+      "category": "devops",
+      "entry_point": "kubectl",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "kubeconfig 在用户目录里、不在沙箱工作目录，读不到就会报连不上集群；能连上时也请只读为主。",
+        "en": "The kubeconfig lives outside the sandbox cwd, so cluster access often fails. Prefer read-only verbs when it does work."
+      },
+      "guide_url": "https://kubernetes.io/docs/reference/kubectl",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://kubernetes.io/docs/reference/kubectl",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "helm",
+      "name": "Helm",
+      "description": {
+        "zh": "Kubernetes 包管理",
+        "en": "Kubernetes package manager"
+      },
+      "category": "devops",
+      "entry_point": "helm",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "常用：[\"list\",\"-A\"]、[\"template\",\"chart\",\"-f\",\"values.yaml\"]（本地渲染不碰集群，最安全）。",
+        "en": "Useful: [\"list\",\"-A\"], or [\"template\",\"chart\",\"-f\",\"values.yaml\"] which renders locally without touching a cluster."
+      },
+      "guide_url": "https://helm.sh",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://helm.sh",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "terraform",
+      "name": "Terraform",
+      "description": {
+        "zh": "基础设施即代码（本机要有 provider 缓存，否则 init 要联网）",
+        "en": "Infrastructure as code (init needs network without a provider cache)"
+      },
+      "category": "devops",
+      "entry_point": "terraform",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "只读动作优先：[\"fmt\",\"-check\"]、[\"validate\"]、[\"plan\"]。apply/destroy 改真实资源，先让用户确认。",
+        "en": "Prefer [\"fmt\",\"-check\"], [\"validate\"], [\"plan\"]. apply/destroy touch real resources — get user confirmation first."
+      },
+      "guide_url": "https://www.terraform.io",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://www.terraform.io",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": true,
+      "source_url": ""
+    },
+    {
+      "id": "awscli",
+      "name": "AWS CLI",
+      "description": {
+        "zh": "AWS 命令行（凭据不进沙箱，多半连不上，谨慎用）",
+        "en": "AWS CLI (credentials are not passed into the sandbox)"
+      },
+      "category": "devops",
+      "entry_point": "aws",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "沙箱不转发 AWS_* 凭据，通常直接报 NoCredentials；本地有 IAM 角色/SSO 环境时才可能可用。",
+        "en": "AWS_* credentials are stripped, so this usually fails with NoCredentials unless the host has role/SSO-based auth."
+      },
+      "guide_url": "https://aws.amazon.com/cli",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://aws.amazon.com/cli",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": true,
+      "source_url": ""
+    },
+    {
+      "id": "curl",
+      "name": "curl",
+      "description": {
+        "zh": "抓网页/调接口/下载文件（要联网得先在设置里开沙箱联网）",
+        "en": "Fetch pages, call APIs, download files (needs sandbox network)"
+      },
+      "category": "network",
+      "entry_point": "curl",
+      "cmd": "",
+      "argv_template": [
+        "-sSL",
+        "{args}",
+        "{url}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "地址 (URL)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "guide": {
+        "zh": "默认 -sSL（静默 + 跟随跳转 + 失败报错）。存文件加 args=[\"-o\",\"out.html\"]；POST 用 args=[\"-X\",\"POST\",\"-H\",\"Content-Type: application/json\",\"-d\",\"{...}\"]。",
+        "en": "-sSL is on. Save with args=[\"-o\",\"out.html\"]; POST with [\"-X\",\"POST\",\"-H\",\"Content-Type: application/json\",\"-d\",\"{...}\"]."
+      },
+      "guide_url": "https://curl.se",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://curl.se",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": true,
+      "source_url": ""
+    },
+    {
+      "id": "node",
+      "name": "Node.js",
+      "description": {
+        "zh": "跑一段 JavaScript / 脚本文件",
+        "en": "Run JavaScript files or snippets"
+      },
+      "category": "devops",
+      "entry_point": "node",
+      "cmd": "",
+      "argv_template": [
+        "{script}",
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "script": {
+            "type": "string",
+            "description": "要跑的 .js/.mjs 文件 (the .js/.mjs file to run)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "script"
+        ]
+      },
+      "guide": {
+        "zh": "没有沙箱网络时 require('https') 之类会失败；纯计算脚本没问题。",
+        "en": "Network calls fail without sandbox network; pure computation is fine."
+      },
+      "guide_url": "https://nodejs.org",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://nodejs.org",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": true,
+      "source_url": ""
+    },
+    {
+      "id": "uv",
+      "name": "uv",
+      "description": {
+        "zh": "极快的 Python 包/解释器管理（uv run / uv pip / uv venv）",
+        "en": "Fast Python package and interpreter manager"
+      },
+      "category": "devops",
+      "entry_point": "uv",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "装包要联网：[\"pip\",\"install\",\"--system\",\"包名\"] 会更动它自己的环境，装到工作目录更稳：[\"pip\",\"install\",\"-t\",\"pylibs\",\"包名\"]。",
+        "en": "Installing needs network. Prefer [\"pip\",\"install\",\"-t\",\"pylibs\",\"pkg\"] to keep changes inside the workspace."
+      },
+      "guide_url": "https://docs.astral.sh/uv",
+      "install": {
+        "kind": "pip",
+        "target": "uv",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://docs.astral.sh/uv",
+      "platform": "any",
+      "default_timeout_s": 300,
+      "network": true,
+      "source_url": ""
+    },
+    {
+      "id": "ruff",
+      "name": "Ruff",
+      "description": {
+        "zh": "Python 代码检查与格式化（快得离谱）",
+        "en": "Blazing-fast Python linter and formatter"
+      },
+      "category": "devops",
+      "entry_point": "ruff",
+      "cmd": "",
+      "argv_template": [
+        "{subcommand}",
+        "{paths}",
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "subcommand": {
+            "type": "string",
+            "description": "check（检查）或 format（格式化） (check or format)"
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "文件或目录 (files or directories)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "paths"
+        ]
+      },
+      "guide": {
+        "zh": "自动改：check 加 args=[\"--fix\"]；只看不写用默认。输出机器可读：[\"--output-format\",\"json\"]。",
+        "en": "Fix with [\"--fix\"]; machine-readable output with [\"--output-format\",\"json\"]."
+      },
+      "guide_url": "https://docs.astral.sh/ruff",
+      "install": {
+        "kind": "pip",
+        "target": "ruff",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://docs.astral.sh/ruff",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "mypy",
+      "name": "mypy",
+      "description": {
+        "zh": "Python 静态类型检查",
+        "en": "Static type checker for Python"
+      },
+      "category": "devops",
+      "entry_point": "mypy",
+      "cmd": "",
+      "argv_template": [
+        "{paths}",
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "文件或目录 (files or directories)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "paths"
+        ]
+      },
+      "guide": {
+        "zh": "第三方库缺类型会让它刷屏，加 args=[\"--ignore-missing-imports\"] 能安静不少。",
+        "en": "Add [\"--ignore-missing-imports\"] to cut noise from untyped dependencies."
+      },
+      "guide_url": "https://mypy-lang.org",
+      "install": {
+        "kind": "pip",
+        "target": "mypy",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://mypy-lang.org",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "httpie",
+      "name": "HTTPie",
+      "description": {
+        "zh": "比 curl 好看的 HTTP 客户端（自动 JSON、彩色输出）",
+        "en": "A friendlier HTTP client with automatic JSON"
+      },
+      "category": "network",
+      "entry_point": "http",
+      "cmd": "",
+      "argv_template": [
+        "{method}",
+        "{url}",
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "地址 (URL)"
+          },
+          "method": {
+            "type": "string",
+            "description": "GET/POST/PUT/DELETE（不填=GET） (GET/POST/...; omit for GET)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "guide": {
+        "zh": "默认 JSON 输出。传字段用 key=value（字符串）或 key:=value（原始 JSON）；只看响应头 args=[\"--headers\",\"--body\"]。",
+        "en": "JSON by default. Fields use key=value (string) or key:=value (raw JSON). Use [\"--headers\",\"--body\"] to see both."
+      },
+      "guide_url": "https://httpie.io",
+      "install": {
+        "kind": "pip",
+        "target": "httpie",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://httpie.io",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": true,
+      "source_url": ""
+    },
+    {
+      "id": "playwright",
+      "name": "Playwright",
+      "description": {
+        "zh": "无头浏览器：网页截图、导出 PDF、抓渲染后的内容",
+        "en": "Headless browser: screenshots, PDF export, rendered HTML"
+      },
+      "category": "web",
+      "entry_point": "playwright",
+      "cmd": "",
+      "argv_template": [
+        "screenshot",
+        "{args}",
+        "{url}",
+        "{output}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "网页地址 (page URL)"
+          },
+          "output": {
+            "type": "string",
+            "description": "输出图片 (output image)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "url",
+          "output"
+        ]
+      },
+      "guide": {
+        "zh": "要联网才能打开网页。窗口大小用 args=[\"--viewport-size=1440,900\"]，整页用 [\"--full-page\"]。首次用需要下载浏览器内核：pip 包装好后再跑一次 `playwright install chromium`（这一步我们没代劳）。",
+        "en": "Needs network. args=[\"--viewport-size=1440,900\"] or [\"--full-page\"]. The browser binary is not downloaded automatically — run `playwright install chromium` first."
+      },
+      "guide_url": "https://playwright.dev/python",
+      "install": {
+        "kind": "pip",
+        "target": "playwright",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://playwright.dev/python",
+      "platform": "any",
+      "default_timeout_s": 300,
+      "network": true,
+      "source_url": ""
+    },
+    {
+      "id": "trafilatura",
+      "name": "Trafilatura",
+      "description": {
+        "zh": "网页正文提取（去掉导航广告，拿到干净文本/JSON）",
+        "en": "Web content extraction; strips nav and ads down to the article"
+      },
+      "category": "web",
+      "entry_point": "trafilatura",
+      "cmd": "",
+      "argv_template": [
+        "{args}",
+        "{url}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "网页地址 (page URL)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "guide": {
+        "zh": "要联网。要 JSON 加 args=[\"--json\"]；只取正文文本加 [\"--only-with-metadata\"] 之类按需。",
+        "en": "Needs network. args=[\"--json\"] for structured output."
+      },
+      "guide_url": "https://trafilatura.readthedocs.io",
+      "install": {
+        "kind": "pip",
+        "target": "trafilatura",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://trafilatura.readthedocs.io",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": true,
+      "source_url": ""
+    },
+    {
+      "id": "gallery-dl",
+      "name": "gallery-dl",
+      "description": {
+        "zh": "批量下载图站的图集（要联网）",
+        "en": "Bulk-download image galleries (needs network)"
+      },
+      "category": "image",
+      "entry_point": "gallery-dl",
+      "cmd": "",
+      "argv_template": [
+        "{args}",
+        "{url}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "图集地址 (gallery URL)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "guide": {
+        "zh": "存到指定目录用 args=[\"-d\",\"imgs\"]。只下前几张：[\"--range\",\"1-10\"]。",
+        "en": "Save into a directory with args=[\"-d\",\"imgs\"]; limit with [\"--range\",\"1-10\"]."
+      },
+      "guide_url": "https://github.com/mikf/gallery-dl",
+      "install": {
+        "kind": "pip",
+        "target": "gallery-dl",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://github.com/mikf/gallery-dl",
+      "platform": "any",
+      "default_timeout_s": 300,
+      "network": true,
+      "source_url": ""
+    },
+    {
+      "id": "fonttools",
+      "name": "fonttools",
+      "description": {
+        "zh": "字体子集化：只留用到的字，几 MB 的字库能瘦到几十 KB",
+        "en": "Font subsetting: keep only the glyphs you use"
+      },
+      "category": "utility",
+      "entry_point": "pyftsubset",
+      "cmd": "pyftsubset",
+      "argv_template": [
+        "{input}",
+        "--output-file={output}",
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "源字体文件 (source font file)"
+          },
+          "output": {
+            "type": "string",
+            "description": "输出字体 (output font)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "input",
+          "output"
+        ]
+      },
+      "guide": {
+        "zh": "留哪些字用 args=[\"--text=要用的字\"] 或 [\"--unicodes=U+4E00-9FFF\"]；网页用再加 [\"--flavor=woff2\"]。",
+        "en": "Keep glyphs with args=[\"--text=...\"] or [\"--unicodes=U+4E00-9FFF\"]; add [\"--flavor=woff2\"] for the web."
+      },
+      "guide_url": "https://fonttools.readthedocs.io",
+      "install": {
+        "kind": "pip",
+        "target": "fonttools",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://fonttools.readthedocs.io",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "libreoffice",
+      "name": "LibreOffice (headless)",
+      "description": {
+        "zh": "命令行转文档（docx/xlsx/pptx ↔ pdf/txt/html），Office 文件批量转换的正解",
+        "en": "Headless document conversion between Office formats and PDF"
+      },
+      "category": "office",
+      "entry_point": "soffice",
+      "cmd": "",
+      "argv_template": [
+        "--headless",
+        "--convert-to",
+        "{format}",
+        "--outdir",
+        "{outdir}",
+        "{input}",
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "工作目录里的文件路径 file path (relative)"
+          },
+          "format": {
+            "type": "string",
+            "description": "目标格式：pdf/txt/html/docx/xlsx (target format: pdf/txt/html/docx/xlsx)"
+          },
+          "outdir": {
+            "type": "string",
+            "description": "输出目录（当前目录填 .） (output directory; use . for cwd)"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "input",
+          "format",
+          "outdir"
+        ]
+      },
+      "guide": {
+        "zh": "一次只能转一个文件（重复调用即可）。同一时间只允许一个 LibreOffice 实例，别的程序占着时会静默失败——失败就先重试一次。",
+        "en": "One file per call. Only one LibreOffice instance can run at a time; a busy instance fails silently, so retry once."
+      },
+      "guide_url": "https://www.libreoffice.org",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://www.libreoffice.org",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "openssl",
+      "name": "OpenSSL",
+      "description": {
+        "zh": "哈希、编解码、自签证书、看证书内容",
+        "en": "Hashes, encodings, self-signed certs, cert inspection"
+      },
+      "category": "security",
+      "entry_point": "openssl",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "常用：[\"dgst\",\"-sha256\",\"file\"]、[\"base64\",\"-d\",\"-in\",\"a.b64\",\"-out\",\"a.bin\"]、[\"req\",\"-x509\",\"-newkey\",\"rsa:2048\",\"-keyout\",\"k.pem\",\"-out\",\"c.pem\",\"-days\",\"365\",\"-nodes\",\"-subj\",\"/CN=test\"]。",
+        "en": "Examples: [\"dgst\",\"-sha256\",\"file\"], [\"base64\",\"-d\",\"-in\",\"a.b64\",\"-out\",\"a.bin\"], [\"req\",\"-x509\",\"-newkey\",\"rsa:2048\",...]."
+      },
+      "guide_url": "https://www.openssl.org",
+      "install": {
+        "kind": "preinstalled",
+        "target": "",
+        "package_manager": ""
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": ""
+      },
+      "homepage": "https://www.openssl.org",
+      "platform": "any",
+      "default_timeout_s": 120,
+      "network": false,
+      "source_url": ""
+    },
+    {
+      "id": "sentry",
+      "name": "Sentry CLI",
+      "description": {
+        "zh": "Sentry CLI（发布、sourcemap、debug 文件上传）",
+        "en": "Sentry releases, sourcemaps and debug file uploads"
+      },
+      "category": "devops",
+      "entry_point": "sentry-cli",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "这是 Sentry CLI 的命令行工具（目录来自 CLI-Anything）。参数照它自己 `--help` 给的填（args 原样透传）：首次用可以先 args=[\"--help\"]。前提：Sentry account plus auth token/org/project access for most operations。",
+        "en": "CLI for Sentry CLI (catalog lineage: CLI-Anything). Pass its own flags through args; start with args=[\"--help\"]. Requires: Sentry account plus auth token/org/project access for most operations."
+      },
+      "guide_url": "https://docs.sentry.io/cli/",
+      "install": {
+        "kind": "npm",
+        "target": "@sentry/cli",
+        "package_manager": "npm"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": "Sentry account plus auth token/org/project access for most operations"
+      },
+      "homepage": "https://docs.sentry.io/cli/",
+      "platform": "any",
+      "default_timeout_s": 300,
+      "network": true,
+      "source_url": "https://github.com/getsentry/sentry-cli",
+      "upstream": {
+        "name": "sentry",
+        "version": "latest"
+      }
+    },
+    {
+      "id": "exa",
+      "name": "Exa",
+      "description": {
+        "zh": "Exa 网页搜索/正文抓取（要 API key 与联网）",
+        "en": "Exa AI web search and content extraction"
+      },
+      "category": "search",
+      "entry_point": "cli-anything-exa",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "这是 Exa 的命令行工具（目录来自 CLI-Anything）。参数照它自己 `--help` 给的填（args 原样透传）：首次用可以先 args=[\"--help\"]。前提：EXA_API_KEY (free tier at exa.ai)。",
+        "en": "CLI for Exa (catalog lineage: CLI-Anything). Pass its own flags through args; start with args=[\"--help\"]. Requires: EXA_API_KEY (free tier at exa.ai)."
+      },
+      "guide_url": "https://exa.ai",
+      "install": {
+        "kind": "pip",
+        "target": "git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=exa/agent-harness",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": "EXA_API_KEY (free tier at exa.ai)"
+      },
+      "homepage": "https://exa.ai",
+      "platform": "any",
+      "default_timeout_s": 300,
+      "network": true,
+      "source_url": "",
+      "upstream": {
+        "name": "exa",
+        "version": "1.0.0"
+      }
+    },
+    {
+      "id": "contentful",
+      "name": "Contentful CLI",
+      "description": {
+        "zh": "Contentful CMS 命令行（要登录）",
+        "en": "Contentful CMS CLI"
+      },
+      "category": "web",
+      "entry_point": "contentful",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "这是 Contentful CLI 的命令行工具（目录来自 CLI-Anything）。参数照它自己 `--help` 给的填（args 原样透传）：首次用可以先 args=[\"--help\"]。前提：Node.js LTS, Contentful account and space access。",
+        "en": "CLI for Contentful CLI (catalog lineage: CLI-Anything). Pass its own flags through args; start with args=[\"--help\"]. Requires: Node.js LTS, Contentful account and space access."
+      },
+      "guide_url": "https://www.contentful.com/",
+      "install": {
+        "kind": "npm",
+        "target": "contentful-cli",
+        "package_manager": "npm"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": "Node.js LTS, Contentful account and space access"
+      },
+      "homepage": "https://www.contentful.com/",
+      "platform": "any",
+      "default_timeout_s": 300,
+      "network": true,
+      "source_url": "https://github.com/contentful/contentful-cli",
+      "upstream": {
+        "name": "contentful",
+        "version": "latest"
+      }
+    },
+    {
+      "id": "sanity",
+      "name": "Sanity CLI",
+      "description": {
+        "zh": "Sanity CMS 项目管理（要登录）",
+        "en": "Sanity CMS project tooling"
+      },
+      "category": "web",
+      "entry_point": "sanity",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "这是 Sanity CLI 的命令行工具（目录来自 CLI-Anything）。参数照它自己 `--help` 给的填（args 原样透传）：首次用可以先 args=[\"--help\"]。前提：Node.js and npm, Sanity account/project access。",
+        "en": "CLI for Sanity CLI (catalog lineage: CLI-Anything). Pass its own flags through args; start with args=[\"--help\"]. Requires: Node.js and npm, Sanity account/project access."
+      },
+      "guide_url": "https://www.sanity.io/",
+      "install": {
+        "kind": "npm",
+        "target": "sanity",
+        "package_manager": "npm"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": "Node.js and npm, Sanity account/project access"
+      },
+      "homepage": "https://www.sanity.io/",
+      "platform": "any",
+      "default_timeout_s": 300,
+      "network": true,
+      "source_url": "https://github.com/sanity-io/sanity",
+      "upstream": {
+        "name": "sanity",
+        "version": "latest"
+      }
+    },
+    {
+      "id": "shopify",
+      "name": "Shopify CLI",
+      "description": {
+        "zh": "Shopify 应用/主题开发命令行（要登录）",
+        "en": "Shopify app and theme tooling"
+      },
+      "category": "web",
+      "entry_point": "shopify",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "这是 Shopify CLI 的命令行工具（目录来自 CLI-Anything）。参数照它自己 `--help` 给的填（args 原样透传）：首次用可以先 args=[\"--help\"]。前提：Node.js and npm, Shopify Partner/store access。",
+        "en": "CLI for Shopify CLI (catalog lineage: CLI-Anything). Pass its own flags through args; start with args=[\"--help\"]. Requires: Node.js and npm, Shopify Partner/store access."
+      },
+      "guide_url": "https://shopify.dev/docs/api/shopify-cli",
+      "install": {
+        "kind": "npm",
+        "target": "@shopify/cli",
+        "package_manager": "npm"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": "Node.js and npm, Shopify Partner/store access"
+      },
+      "homepage": "https://shopify.dev/docs/api/shopify-cli",
+      "platform": "any",
+      "default_timeout_s": 300,
+      "network": true,
+      "source_url": "https://github.com/Shopify/cli",
+      "upstream": {
+        "name": "shopify",
+        "version": "latest"
+      }
+    },
+    {
+      "id": "mailchimp",
+      "name": "Mailchimp",
+      "description": {
+        "zh": "Mailchimp 营销平台命令行（要 API key）",
+        "en": "Mailchimp API CLI"
+      },
+      "category": "web",
+      "entry_point": "cli-anything-mailchimp",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "这是 Mailchimp 的命令行工具（目录来自 CLI-Anything）。参数照它自己 `--help` 给的填（args 原样透传）：首次用可以先 args=[\"--help\"]。前提：MAILCHIMP_API_KEY。",
+        "en": "CLI for Mailchimp (catalog lineage: CLI-Anything). Pass its own flags through args; start with args=[\"--help\"]. Requires: MAILCHIMP_API_KEY."
+      },
+      "guide_url": "https://mailchimp.com/developer/marketing/",
+      "install": {
+        "kind": "pip",
+        "target": "git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=mailchimp/agent-harness",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": "MAILCHIMP_API_KEY"
+      },
+      "homepage": "https://mailchimp.com/developer/marketing/",
+      "platform": "any",
+      "default_timeout_s": 300,
+      "network": true,
+      "source_url": "",
+      "upstream": {
+        "name": "mailchimp",
+        "version": "0.1.0"
+      }
+    },
+    {
+      "id": "elevenlabs",
+      "name": "ElevenLabs CLI",
+      "description": {
+        "zh": "ElevenLabs 语音合成命令行（要 API key 与联网）",
+        "en": "ElevenLabs text-to-speech CLI"
+      },
+      "category": "audio",
+      "entry_point": "elevenlabs",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "这是 ElevenLabs CLI 的命令行工具（目录来自 CLI-Anything）。参数照它自己 `--help` 给的填（args 原样透传）：首次用可以先 args=[\"--help\"]。前提：Node.js and npm, ELEVENLABS_API_KEY or interactive login。",
+        "en": "CLI for ElevenLabs CLI (catalog lineage: CLI-Anything). Pass its own flags through args; start with args=[\"--help\"]. Requires: Node.js and npm, ELEVENLABS_API_KEY or interactive login."
+      },
+      "guide_url": "https://github.com/elevenlabs/cli",
+      "install": {
+        "kind": "npm",
+        "target": "@elevenlabs/cli",
+        "package_manager": "npm"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": "Node.js and npm, ELEVENLABS_API_KEY or interactive login"
+      },
+      "homepage": "https://github.com/elevenlabs/cli",
+      "platform": "any",
+      "default_timeout_s": 300,
+      "network": true,
+      "source_url": "https://github.com/elevenlabs/cli",
+      "upstream": {
+        "name": "elevenlabs",
+        "version": "latest"
+      }
+    },
+    {
+      "id": "minimax-cli",
+      "name": "MiniMax CLI",
+      "description": {
+        "zh": "MiniMax 大模型命令行（要 API key 与联网）",
+        "en": "MiniMax model CLI"
+      },
+      "category": "ai",
+      "entry_point": "minimax-cli",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "这是 MiniMax CLI 的命令行工具（目录来自 CLI-Anything）。参数照它自己 `--help` 给的填（args 原样透传）：首次用可以先 args=[\"--help\"]。前提：Node.js >= 16, MINIMAX_API_KEY。",
+        "en": "CLI for MiniMax CLI (catalog lineage: CLI-Anything). Pass its own flags through args; start with args=[\"--help\"]. Requires: Node.js >= 16, MINIMAX_API_KEY."
+      },
+      "guide_url": "https://platform.minimax.io",
+      "install": {
+        "kind": "npm",
+        "target": "minimax-cli",
+        "package_manager": "npm"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": "Node.js >= 16, MINIMAX_API_KEY"
+      },
+      "homepage": "https://platform.minimax.io",
+      "platform": "any",
+      "default_timeout_s": 300,
+      "network": true,
+      "source_url": "",
+      "upstream": {
+        "name": "minimax-cli",
+        "version": "latest"
+      }
+    },
+    {
+      "id": "pm2",
+      "name": "PM2",
+      "description": {
+        "zh": "Node 进程管理（本机要先有 pm2）",
+        "en": "Node process manager"
+      },
+      "category": "devops",
+      "entry_point": "cli-anything-pm2",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "这是 PM2 的命令行工具（目录来自 CLI-Anything）。参数照它自己 `--help` 给的填（args 原样透传）：首次用可以先 args=[\"--help\"]。前提：PM2 (npm install -g pm2)。",
+        "en": "CLI for PM2 (catalog lineage: CLI-Anything). Pass its own flags through args; start with args=[\"--help\"]. Requires: PM2 (npm install -g pm2)."
+      },
+      "guide_url": "https://pm2.keymetrics.io",
+      "install": {
+        "kind": "pip",
+        "target": "git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=pm2/agent-harness",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": "PM2 (npm install -g pm2)"
+      },
+      "homepage": "https://pm2.keymetrics.io",
+      "platform": "any",
+      "default_timeout_s": 300,
+      "network": true,
+      "source_url": "",
+      "upstream": {
+        "name": "pm2",
+        "version": "1.0.0"
+      }
+    },
+    {
+      "id": "hacker-feeds-cli",
+      "name": "Hacker Feeds CLI",
+      "description": {
+        "zh": "Hacker News 等资讯源拉取（要联网）",
+        "en": "Hacker News and friends, from the terminal"
+      },
+      "category": "search",
+      "entry_point": "cli-anything-hacker-feeds-cli",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "这是 Hacker Feeds CLI 的命令行工具（目录来自 CLI-Anything）。参数照它自己 `--help` 给的填（args 原样透传）：首次用可以先 args=[\"--help\"]。前提：Python 3.10+, Node.js (hf CLI)。",
+        "en": "CLI for Hacker Feeds CLI (catalog lineage: CLI-Anything). Pass its own flags through args; start with args=[\"--help\"]. Requires: Python 3.10+, Node.js (hf CLI)."
+      },
+      "guide_url": "https://github.com/collectivewinca/hacker-feeds-cli",
+      "install": {
+        "kind": "pip",
+        "target": "git+https://github.com/collectivewinca/hacker-feeds-cli.git",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": "Python 3.10+, Node.js (hf CLI)"
+      },
+      "homepage": "https://github.com/collectivewinca/hacker-feeds-cli",
+      "platform": "any",
+      "default_timeout_s": 300,
+      "network": true,
+      "source_url": "https://github.com/collectivewinca/hacker-feeds-cli",
+      "upstream": {
+        "name": "hacker-feeds-cli",
+        "version": "1.0.0"
+      }
+    },
+    {
+      "id": "n8n",
+      "name": "n8n",
+      "description": {
+        "zh": "n8n 自动化流程命令行（要本地或远程实例）",
+        "en": "n8n automation workflow CLI"
+      },
+      "category": "automation",
+      "entry_point": "cli-anything-n8n",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "这是 n8n 的命令行工具（目录来自 CLI-Anything）。参数照它自己 `--help` 给的填（args 原样透传）：首次用可以先 args=[\"--help\"]。前提：n8n >= 1.0.0。",
+        "en": "CLI for n8n (catalog lineage: CLI-Anything). Pass its own flags through args; start with args=[\"--help\"]. Requires: n8n >= 1.0.0."
+      },
+      "guide_url": "https://n8n.io",
+      "install": {
+        "kind": "pip",
+        "target": "git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=n8n/agent-harness",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": "n8n >= 1.0.0"
+      },
+      "homepage": "https://n8n.io",
+      "platform": "any",
+      "default_timeout_s": 300,
+      "network": true,
+      "source_url": "",
+      "upstream": {
+        "name": "n8n",
+        "version": "2.4.7"
+      }
+    },
+    {
+      "id": "wiremock",
+      "name": "WireMock",
+      "description": {
+        "zh": "WireMock 接口打桩（本机要能起服务）",
+        "en": "WireMock API stubbing"
+      },
+      "category": "testing",
+      "entry_point": "cli-anything-wiremock",
+      "cmd": "",
+      "argv_template": [
+        "{args}"
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "额外参数（一个元素一个词，原样附加）。extra arguments, one token per item"
+          }
+        },
+        "required": [
+          "args"
+        ]
+      },
+      "guide": {
+        "zh": "这是 WireMock 的命令行工具（目录来自 CLI-Anything）。参数照它自己 `--help` 给的填（args 原样透传）：首次用可以先 args=[\"--help\"]。前提：WireMock server running (java -jar wiremock-standalone.jar)。",
+        "en": "CLI for WireMock (catalog lineage: CLI-Anything). Pass its own flags through args; start with args=[\"--help\"]. Requires: WireMock server running (java -jar wiremock-standalone.jar)."
+      },
+      "guide_url": "https://wiremock.org",
+      "install": {
+        "kind": "pip",
+        "target": "git+https://github.com/HKUDS/CLI-Anything.git#subdirectory=wiremock/agent-harness",
+        "package_manager": "pip"
+      },
+      "version": "",
+      "requires": {
+        "zh": "",
+        "en": "WireMock server running (java -jar wiremock-standalone.jar)"
+      },
+      "homepage": "https://wiremock.org",
+      "platform": "any",
+      "default_timeout_s": 300,
+      "network": true,
+      "source_url": "",
+      "upstream": {
+        "name": "wiremock",
+        "version": "0.1.0"
+      }
+    }
+  ]
+}

@@ -1,5 +1,7 @@
 """沙箱与基础工具（§11.2 / §7.2）：超时、输出上限、目录穿越、环境白名单、文件工具。"""
 
+import sys
+
 import pytest
 
 from nnnu.core.tool_protocol import ToolContext
@@ -38,6 +40,33 @@ async def test_run_code_returns_stdout(tmp_home):
     assert result.ok is True
     assert result.stdout.strip() == "hello sandbox"
     assert result.exit_code == 0
+
+
+async def test_run_argv_executes_program_without_shell(tmp_home):
+    """argv 分支（§7.18 命令行应用走的这条路）：直 exec，参数原样传。
+
+    `a&&b` 在这里只是参数本身——要是走了 shell，`a` 和 `b` 会被当成两条命令，
+    输出就完全不同了。审计里也要留「argv」这个 kind。
+    """
+    result = await get_sandbox_service().run(
+        ExecRequest(
+            argv=[sys.executable, "-c", "import sys; print(sys.argv[1])", "a&&b"],
+            turn_id="turn-test",
+            session_id="sess-test",
+        )
+    )
+    assert result.ok is True
+    assert result.stdout.strip() == "a&&b"
+    entries = [e for e in read_audit() if e.get("action") == "sandbox_exec"]
+    assert len(entries) == 1
+    assert entries[0]["kind"] == "argv"
+    assert "a&&b" in entries[0]["target"]
+
+
+async def test_run_argv_missing_program_is_a_readable_failure(tmp_home):
+    result = await get_sandbox_service().run(ExecRequest(argv=["nnnu-no-such-program-xyz"]))
+    assert result.ok is False
+    assert "启动失败" in (result.error or "")
 
 
 async def test_run_code_nonzero_exit(tmp_home):
