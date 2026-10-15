@@ -231,7 +231,7 @@ async def _generate_animation(
         language=lang,
     )
     # 编译期不挂任何工具：材料已经在问题正文里，检索留着给页聊天（确定性优先）
-    mounted = mount_tools(unified, allowlist=())
+    mounted = await mount_tools(unified, allowlist=())
     bus = StreamBus(turn_id=new_id("turn"))
     try:
         model_config = resolve_model_config()

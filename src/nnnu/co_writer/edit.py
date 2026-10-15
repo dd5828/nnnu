@@ -37,7 +37,7 @@ from nnnu.services.sessions.models import Message
 EDIT_MAX_ROUNDS = 8  # 找回资料再动笔，八轮绰绰有余；防跑飞
 EDIT_MAX_OUTPUT_TOKENS = 4096  # 与 chat 同档；整段太长走循环自带的截断续写
 EDIT_TOKEN_BUDGET = 32000
-ALLOWED_TOOLS = ("rag", "web_search", "web_fetch")
+ALLOWED_TOOLS = ("rag", "web_search", "web_fetch", "read_skill", "load_tools")
 
 
 class CoWriterOutputError(LLMError):
@@ -110,7 +110,7 @@ async def run_edit(
         ),
         language=lang,
     )
-    mounted = mount_tools(unified, allowlist=ALLOWED_TOOLS)
+    mounted = await mount_tools(unified, allowlist=ALLOWED_TOOLS)
     unified.metadata["rag_kbs"] = mounted.rag_kbs
     degraded: str | None = None
     if kb_ids and not mounted.kb_names:
@@ -125,6 +125,8 @@ async def run_edit(
     system_prompt = prompts.render(
         "co_writer", lang, "system", tools=mounted.tool_lines(), kb_note=kb_note
     )
+    if mounted.skills_note:  # 启用技能清单接在尾部（§7.16）
+        system_prompt = f"{system_prompt}\n\n{mounted.skills_note}"
     blocks = [
         prompts.render(
             "co_writer",

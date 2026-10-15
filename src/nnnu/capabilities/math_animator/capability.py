@@ -79,7 +79,7 @@ class MathAnimatorCapability(BaseCapability):
             return
 
         # ---- 装配本回合的模型、挂载工具与用户消息 ----
-        mounted = mount_tools(ctx)
+        mounted = await mount_tools(ctx)
         ctx.metadata["rag_kbs"] = mounted.rag_kbs
         model_ref = ctx.model
         mc = resolve_model_config(

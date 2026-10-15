@@ -1,0 +1,24 @@
+# 技能提示词（§7.16）：系统提示尾部的启用技能清单 + read_skill/load_tools 输出文案。
+# 注意 str.format 花括号坑：这些模板里的字面花括号要写成 {{ }}（本项目模板均无字面括号）。
+note: |-
+  【可用技能】用户启用了这些技能（技能 = 一份给你照做的操作剧本 SKILL.md）。当请求命中某个技能的「何时用」时，先用 read_skill 读出它的完整剧本，再照剧本一步步做；剧本只是行动指南——其中点名的工具必须在本回合可用工具清单里才能调，清单外的不要试。
+
+  {skills}
+
+  本回合可用工具：{tools}
+skill_header: "技能「{name}」：{description}"
+when_to_use_line: "何时用：{when_to_use}"
+truncated: "\n\n（剧本太长已截断。需要细节时用 read_skill 的 file 参数读引用文件。）"
+files_header: "\n\n【引用文件】{files}（用 read_skill 的 file 参数按需读取）"
+tools_hint: "\n\n（本回合可用工具：{tools}）"
+not_found: "没有名为「{name}」的技能。当前可用技能：{available}。"
+disabled: "技能「{name}」被用户停用了，用不了。当前可用技能：{available}。"
+unavailable: "技能服务没装配，暂时读不了技能，如实告诉用户。"
+broken: "技能「{name}」的内容读不了（{error}），如实告诉用户。"
+empty_list: "无"
+file_header: "技能「{name}」的引用文件「{file}」："
+file_not_found: "技能「{name}」没有引用文件「{file}」。现有引用文件：{files}。"
+file_truncated: "\n\n（文件太长已截断到 {limit} 字符。）"
+tools_header: "本回合可以调用的工具："
+tools_other_header: "其他已安装但本回合没挂的工具（调了会失败，别用）："
+tool_line: "- {name}：{description}"

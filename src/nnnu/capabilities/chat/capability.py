@@ -49,7 +49,7 @@ class ChatCapability(BaseCapability):
         await bus.emit_status(stage="chat")
 
         # 1) 工具挂载与双语描述解析（描述键 → 实际文案）
-        mounted = mount_tools(ctx)
+        mounted = await mount_tools(ctx)
         prompts = get_prompt_manager()
         persona_text = ""
         if ctx.persona is not None:
@@ -75,6 +75,8 @@ class ChatCapability(BaseCapability):
             persona=persona_text,
             kb_note=kb_note,
         )
+        if mounted.skills_note:  # 启用技能清单接在尾部（§7.16；接在模板外免动既有占位符）
+            system_prompt = f"{system_prompt}\n\n{mounted.skills_note}"
 
         # 2) 模型解析（§7.19：settings > 请求覆盖 > env > 默认；附件注入需要 provider/model 判断视觉能力）
         model_ref = ctx.model

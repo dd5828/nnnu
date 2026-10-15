@@ -34,7 +34,7 @@ PAGE_CHAT_MAX_OUTPUT_TOKENS = 2048
 PAGE_CHAT_TOKEN_BUDGET = 16000
 PAGE_CHAT_HISTORY = 6  # 历史窗口：最近 3 轮往来（服务层截取）
 PAGE_CHAT_BLOCKS_CHARS = 8000  # 本页块正文进提示词的上限（动画源码很长，别整页塞）
-ALLOWED_TOOLS = ("rag", "web_fetch")
+ALLOWED_TOOLS = ("rag", "web_fetch", "read_skill", "load_tools")
 
 _NO_SOURCES = {"zh": "（这一章没有标注来源）", "en": "(no sources marked for this chapter)"}
 
@@ -101,7 +101,7 @@ async def run_page_chat(
         tool_flags=ToolMountFlags(context={"rag"} if kb_ids else set()),
         language=lang,
     )
-    mounted = mount_tools(unified, allowlist=ALLOWED_TOOLS)
+    mounted = await mount_tools(unified, allowlist=ALLOWED_TOOLS)
     unified.metadata["rag_kbs"] = mounted.rag_kbs
     degraded: str | None = None
     if kb_ids and not mounted.kb_names:
@@ -123,6 +123,8 @@ async def run_page_chat(
         blocks=_page_text(page.blocks, lang) or "（这一页还没有生成内容）",
         sources=_sources_text(chapter, lang),
     )
+    if mounted.skills_note:  # 启用技能清单接在尾部（§7.16）
+        system_prompt = f"{system_prompt}\n\n{mounted.skills_note}"
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     messages.extend(history)
     messages.append(

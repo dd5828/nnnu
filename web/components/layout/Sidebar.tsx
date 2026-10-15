@@ -42,7 +42,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/notebooks", key: "nav.notebooks", icon: NotebookPen, enabled: true },
   { href: "/questions", key: "nav.questions", icon: ListChecks, enabled: true },
   { href: "/research", key: "nav.research", icon: Telescope, enabled: true },
-  { href: "/skills", key: "nav.skills", icon: Sparkles },
+  { href: "/skills", key: "nav.skills", icon: Sparkles, enabled: true },
   { href: "/partners", key: "nav.partners", icon: MessageSquare },
   { href: "/agents", key: "nav.agents", icon: Bot },
   { href: "/playground", key: "nav.playground", icon: FlaskConical },

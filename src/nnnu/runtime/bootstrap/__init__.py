@@ -95,6 +95,7 @@ def register_builtins() -> None:
     from nnnu.tools.builtin.question_bank_tool import QuestionBankTool
     from nnnu.tools.builtin.rag_tool import RagSearchTool
     from nnnu.tools.builtin.reason import ReasonTool
+    from nnnu.tools.builtin.skill_tools import LoadToolsTool, ReadSkillTool
     from nnnu.tools.builtin.web_fetch import WebFetchTool
     from nnnu.tools.builtin.web_search import WebSearchTool
 
@@ -129,6 +130,9 @@ def register_builtins() -> None:
     # 笔记本两件（§7.15）：把内容存成记录、翻笔记本里的记录
     get_tool_registry().register(WriteNoteTool())
     get_tool_registry().register(ListNotebookTool())
+    # 技能两件（§7.16）：有启用技能时才挂（CONTEXT_GATED 门键 skills，见 _shared.mount_tools）
+    get_tool_registry().register(ReadSkillTool())
+    get_tool_registry().register(LoadToolsTool())
     # videogen 不注册：只有友好报错的桩（§7.2 未交付），挂上去等于给模型一个
     # 永远失败的工具，白烧一轮调用。VideoGenTool 类与 media.generate_video 桩
     # 保留，后续阶段接上真实端点时在这里加回 register(VideoGenTool())。

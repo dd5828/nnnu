@@ -1043,3 +1043,94 @@ export interface BookCompileResponse {
 export interface BookPauseResponse {
   paused: boolean;
 }
+
+// ---- 技能（§7.16，P11）----
+
+/** 技能列表项（磁盘 ∪ skills_meta 的对账视图）；missing = 库里有行但目录没了。 */
+export interface SkillSummary {
+  name: string;
+  description: string;
+  when_to_use: string;
+  source: string; // local | market
+  hub_ref: string | null;
+  enabled: boolean;
+  installed_at: number | null;
+  files_count: number;
+  missing: boolean;
+  broken: string | null;
+}
+
+export interface SkillFileInfo {
+  path: string;
+  size: number;
+}
+
+/** 安全门发现（§11.4）：severity 为 block 时市场安装会被拒绝。 */
+export interface GateFinding {
+  rule: string;
+  severity: "block" | "warn";
+  path: string;
+  excerpt: string;
+}
+
+export interface GateReport {
+  ok: boolean;
+  findings: GateFinding[];
+}
+
+/** 市场安装的来源快照（.provenance.json）；本地技能为 null。 */
+export interface SkillProvenance {
+  source?: string;
+  hub?: string;
+  slug?: string;
+  version?: string;
+  author?: string;
+  license?: string;
+  homepage?: string;
+  installed_at?: number;
+}
+
+export interface SkillDetail {
+  name: string;
+  description: string;
+  when_to_use: string;
+  source: string;
+  hub_ref: string | null;
+  enabled: boolean;
+  installed_at: number | null;
+  missing: boolean;
+  broken: string | null;
+  content: string;
+  files: SkillFileInfo[];
+  gate: GateReport | null;
+  provenance: SkillProvenance | null;
+}
+
+/** 市场条目卡片（README 式摘要；files 只给路径清单）。 */
+export interface SkillHubEntry {
+  slug: string;
+  name: string;
+  version: string;
+  author: string;
+  license: string;
+  source: string; // builtin | remote
+  homepage: string;
+  description: Record<string, string>;
+  when_to_use: Record<string, string>;
+  files: string[];
+  installed?: boolean;
+}
+
+export interface SkillHubResponse {
+  entries: SkillHubEntry[];
+  hub_url: string;
+  remote_ok: boolean;
+  remote_error: string | null;
+}
+
+/** 市场条目详情：多出安装前预扫描报告与真实技能名。 */
+export interface SkillHubDetail extends SkillHubEntry {
+  skill_name: string;
+  gate: GateReport;
+  installed?: boolean;
+}

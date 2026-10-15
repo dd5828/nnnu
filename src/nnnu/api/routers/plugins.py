@@ -12,8 +12,8 @@ from fastapi import APIRouter
 router = APIRouter()
 
 
-def _availability(name: str) -> bool:
-    """此刻这个工具能不能真干活（读配置判断，不查会话状态）。
+async def _availability(name: str) -> bool:
+    """此刻这个工具能不能真干活（读配置/库判断，不查会话状态）。
 
     videogen 不在此列：它压根不注册（见 bootstrap.register_builtins），
     挂上去只有友好报错、没有真生成（§7.2 未交付）。
@@ -22,6 +22,14 @@ def _availability(name: str) -> bool:
         from nnnu.services.media.service import image_generation_available
 
         return image_generation_available()
+    if name in ("read_skill", "load_tools"):
+        # 技能两件是 CONTEXT_GATED：有启用技能才挂得上（§7.16）
+        from nnnu.services.skills.service import get_skill_service
+
+        try:
+            return bool(await get_skill_service().enabled_names())
+        except RuntimeError:
+            return False
     return True
 
 
@@ -46,7 +54,7 @@ async def list_plugins(lang: str = "zh") -> dict:
             item["cost_hint"] = (
                 prompts.render("chat", lang, f"tool_cost_hints.{definition.name}") or None
             )
-        tools.append({"definition": item, "available": _availability(definition.name)})
+        tools.append({"definition": item, "available": await _availability(definition.name)})
 
     return {
         "tools": tools,

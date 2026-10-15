@@ -167,7 +167,7 @@ class MasteryCapability(BaseCapability):
             # 聊天驱动生成的路径第一回合就把会话绑上，后几轮才找得到它
             await service.bind_session(path.id, ctx.session.id)
 
-        mounted = mount_tools(ctx)
+        mounted = await mount_tools(ctx)
         ctx.metadata["rag_kbs"] = mounted.rag_kbs
         await bus.emit_status(
             stage="responding",

@@ -53,6 +53,8 @@ class MountedTools:
     descriptions: dict[str, str] = field(default_factory=dict)
     kb_names: list[str] = field(default_factory=list)
     rag_kbs: dict[str, str] = field(default_factory=dict)
+    # 启用技能清单（§7.16）：非空 = 本回合挂了 read_skill，调用方把它接在系统提示尾部
+    skills_note: str = ""
 
     def tool_lines(self) -> str:
         """给系统提示词用的「名字（说明）」清单。"""
@@ -68,6 +70,7 @@ class MountedTools:
             },
             kb_names=self.kb_names,
             rag_kbs=self.rag_kbs,
+            skills_note=self.skills_note,
         )
 
     def tool_set(self) -> ToolSet:
@@ -79,18 +82,30 @@ class MountedTools:
         )
 
 
-def mount_tools(ctx: UnifiedContext, *, allowlist: Collection[str] | None = None) -> MountedTools:
+async def mount_tools(
+    ctx: UnifiedContext, *, allowlist: Collection[str] | None = None
+) -> MountedTools:
     """按工具开关挂载工具（§6.3），可选白名单收窄（阶段能力按阶段取子集，见 filtered）。
 
     工具描述文案取 `prompts/{lang}/chat.yaml:tool_descriptions.<name>`——工具目录
     是全站共用的那一份，solve 不另抄一套（与提示词 YAML 的 `system` 各管各的）。
+
+    这里是异步的：启用技能清单要查库（skills_meta）。有启用技能就把 read_skill/
+    load_tools 两个上下文条件标成命中（它们都是 CONTEXT_GATED——context 集合存的是
+    工具名，见 orchestrator 的 context_flags），并把清单渲染进 MountedTools.skills_note；
+    技能服务没装配或查询失败一律当没有技能（fail-closed）。
     """
     from nnnu.runtime.registry.tool_registry import get_tool_registry
 
+    skill_lines = await _skill_note_lines()
+    if skill_lines:
+        ctx.tool_flags.context.update(SKILL_TOOL_NAMES)
     mounted = get_tool_registry().mounted(ctx.tool_flags)
     if allowlist is not None:
         allowed = set(allowlist)
         mounted = {name: tool for name, tool in mounted.items() if name in allowed}
+    # 本回合模型真能调的工具名：read_skill 输出末尾要如实附上（剧本点名了没挂的工具时用它兜底）
+    ctx.metadata["mounted_tool_names"] = sorted(mounted)
     prompts = get_prompt_manager()
     descriptions = {
         name: prompts.render("chat", ctx.language, f"tool_descriptions.{name}")
@@ -98,9 +113,52 @@ def mount_tools(ctx: UnifiedContext, *, allowlist: Collection[str] | None = None
         for name, tool in mounted.items()
     }
     kb_names, rag_kbs = resolve_kb_names(ctx)
+    skills_note = ""
+    if skill_lines and "read_skill" in mounted:
+        skills_note = (
+            prompts.render(
+                "skills",
+                ctx.language,
+                "note",
+                skills="\n".join(skill_lines),
+                tools=", ".join(sorted(mounted)),
+            )
+            or "\n".join(skill_lines)  # 提示词文件缺失也别把清单吞了
+        )
     return MountedTools(
-        tools=mounted, descriptions=descriptions, kb_names=kb_names, rag_kbs=rag_kbs
+        tools=mounted,
+        descriptions=descriptions,
+        kb_names=kb_names,
+        rag_kbs=rag_kbs,
+        skills_note=skills_note,
     )
+
+
+SKILL_TOOL_NAMES = ("read_skill", "load_tools")  # 技能两件的上下文条件（等于工具名）
+
+
+async def _skill_note_lines() -> list[str]:
+    """启用技能的单行清单（note_line 式样）；任何失败都返回空 = 不开技能门。"""
+    try:
+        from nnnu.services.skills.service import get_skill_service
+        from nnnu.services.skills.spec import SkillFrontmatter, note_line
+
+        payload = await get_skill_service().note_payload()
+    except RuntimeError:
+        return []  # 服务未装配（测试直跑等）：不当成错误
+    except Exception:
+        logger.warning("技能清单读取失败，本回合不开技能门", exc_info=True)
+        return []
+    return [
+        note_line(
+            SkillFrontmatter(
+                name=str(item["name"]),
+                description=str(item["description"]),
+                when_to_use=str(item.get("when_to_use") or ""),
+            )
+        )
+        for item in payload
+    ]
 
 
 def resolve_kb_names(ctx: UnifiedContext) -> tuple[list[str], dict[str, str]]:

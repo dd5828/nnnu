@@ -257,7 +257,7 @@ class DeepResearchCapability(BaseCapability):
         prompts = get_prompt_manager()
         lang = ctx.language
         spec = DEPTH_SPECS[depth]
-        mounted = mount_tools(ctx)
+        mounted = await mount_tools(ctx)
         ctx.metadata["rag_kbs"] = mounted.rag_kbs
         common = self._common(prompts, lang, ctx, mounted, depth, mode, spec)
         preamble = prompts.render("deep_research", lang, "system", **common)
@@ -348,7 +348,7 @@ class DeepResearchCapability(BaseCapability):
         prompts = get_prompt_manager()
         lang = ctx.language
         spec = run.spec
-        mounted = mount_tools(ctx)
+        mounted = await mount_tools(ctx)
         ctx.metadata["rag_kbs"] = mounted.rag_kbs
         common = self._common(prompts, lang, ctx, mounted, run.depth, run.mode, spec)
         preamble = prompts.render("deep_research", lang, "system", **common)

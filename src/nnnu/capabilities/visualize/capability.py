@@ -122,7 +122,7 @@ class VisualizeCapability(BaseCapability):
             return
         style_hint = str(ctx.config.get("style_hint") or "").strip()
 
-        mounted = mount_tools(ctx)
+        mounted = await mount_tools(ctx)
         ctx.metadata["rag_kbs"] = mounted.rag_kbs
         common: dict[str, Any] = {
             "language": {"zh": "中文", "en": "English"}.get(lang, lang),

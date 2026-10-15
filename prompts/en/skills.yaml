@@ -1,0 +1,25 @@
+# Skill prompts (§7.16): the enabled-skill list appended to system prompts plus the
+# read_skill/load_tools output strings. Mind the str.format brace trap: literal braces
+# in these templates must be doubled ({{ }}); none of the current strings need them.
+note: |-
+  [Available skills] The user has enabled these skills (a skill is a SKILL.md playbook written for you to follow). When the request matches a skill's "when to use", call read_skill first to load its full script, then follow it step by step. A script is guidance only: any tool it names must appear in this turn's available tools before you call it.
+
+  {skills}
+
+  Tools available this turn: {tools}
+skill_header: "Skill \"{name}\": {description}"
+when_to_use_line: "When to use: {when_to_use}"
+truncated: "\n\n(script truncated; use read_skill's file argument to read the reference files when you need details)"
+files_header: "\n\n[Reference files] {files} (read on demand via read_skill's file argument)"
+tools_hint: "\n\n(Tools available this turn: {tools})"
+not_found: "There is no skill named \"{name}\". Currently available skills: {available}."
+disabled: "Skill \"{name}\" is disabled by the user; do not use it. Currently available skills: {available}."
+unavailable: "The skill service is not wired up, so skills cannot be read right now; tell the user honestly."
+broken: "Skill \"{name}\" cannot be read ({error}); tell the user honestly."
+empty_list: "none"
+file_header: "Reference file \"{file}\" of skill \"{name}\":"
+file_not_found: "Skill \"{name}\" has no reference file \"{file}\". Existing reference files: {files}."
+file_truncated: "\n\n(file truncated to {limit} characters)"
+tools_header: "Tools you can call this turn:"
+tools_other_header: "Other installed tools not mounted this turn (calling them fails; do not use them):"
+tool_line: "- {name}: {description}"
