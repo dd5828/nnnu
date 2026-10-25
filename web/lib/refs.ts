@@ -1,5 +1,10 @@
 /** 对话引用（§7.1 一次性引用注入 / §7.21「+」引用菜单）的类型与编解码。
  *
+ * 三种引用：笔记本记录、题库题目（P9），以及导入的第三方 CLI 历史会话（§7.12）。
+ * 加第四种时下面**每一处联合与分支都要跟着动**（`RefEntry`/`PendingRef`/`refKey`/
+ * `WireRefs`/`toWireRefs`/`normalizeRefs`，还有 `citations.ts:refTarget` 与两个 chip
+ * 组件的图标分支）——漏一处就是「能选、发出去、回来不认」这类静默失效。
+ *
  * 三种形状各管一段路，别混：
  * - `PendingRef`：输入区「+」菜单挑出来的**待发**引用（本地态，带展示用 label）；
  * - wire 形状（`toWireRefs`）：随 WS 载荷发的 `refs`，后端 `TurnRefs` 只认 id
@@ -22,12 +27,15 @@ export type RefEntry =
       label: string;
       resolved: boolean;
     }
-  | { kind: "question"; question_id: string; label: string; resolved: boolean };
+  | { kind: "question"; question_id: string; label: string; resolved: boolean }
+  // 导入的第三方 CLI 历史会话（§7.12）：id 形如 imp-xxxxxxxx
+  | { kind: "agent_session"; agent_session_id: string; label: string; resolved: boolean };
 
 /** 待发引用（「+」菜单选出来的）：id 齐、label 给 chip 看。 */
 export type PendingRef =
   | { kind: "notebook_record"; notebook_id: string; record_id: string; label: string }
-  | { kind: "question"; question_id: string; label: string };
+  | { kind: "question"; question_id: string; label: string }
+  | { kind: "agent_session"; agent_session_id: string; label: string };
 
 /** 会话消息 metadata（后端 `Message.metadata` 是自由 dict，目前只有 refs 一种键）。 */
 export interface MessageMetadata {
@@ -39,24 +47,32 @@ export const EMPTY_REFS: RefEntry[] = [];
 
 /** 去重键：同类看 id、异类不同键（记录 nbr-1 与题目 q-1 永不相撞）。 */
 export function refKey(ref: PendingRef | RefEntry): string {
-  return ref.kind === "notebook_record"
-    ? `notebook_record:${ref.record_id}`
-    : `question:${ref.question_id}`;
+  if (ref.kind === "notebook_record") {
+    return `notebook_record:${ref.record_id}`;
+  }
+  if (ref.kind === "question") {
+    return `question:${ref.question_id}`;
+  }
+  return `agent_session:${ref.agent_session_id}`;
 }
 
 export interface WireRefs {
   notebooks: { notebook_id: string; record_id: string }[];
   questions: { question_id: string }[];
+  // 导入会话与「历史会话引用」同款：服务端 `TurnRefs.agent_sessions` 就是 id 字符串数组
+  agent_sessions: string[];
 }
 
 /** 待发引用 → WS 载荷的 `refs`：按类分组、只带 id（label 是本地展示用，不发）。 */
 export function toWireRefs(refs: PendingRef[]): WireRefs {
-  const wire: WireRefs = { notebooks: [], questions: [] };
+  const wire: WireRefs = { notebooks: [], questions: [], agent_sessions: [] };
   for (const ref of refs) {
     if (ref.kind === "notebook_record") {
       wire.notebooks.push({ notebook_id: ref.notebook_id, record_id: ref.record_id });
-    } else {
+    } else if (ref.kind === "question") {
       wire.questions.push({ question_id: ref.question_id });
+    } else {
+      wire.agent_sessions.push(ref.agent_session_id);
     }
   }
   return wire;
@@ -103,6 +119,17 @@ export function normalizeRefs(metadata: unknown): RefEntry[] {
       entry.question_id !== ""
     ) {
       entries.push({ kind: "question", question_id: entry.question_id, label, resolved });
+    } else if (
+      entry.kind === "agent_session" &&
+      typeof entry.agent_session_id === "string" &&
+      entry.agent_session_id !== ""
+    ) {
+      entries.push({
+        kind: "agent_session",
+        agent_session_id: entry.agent_session_id,
+        label,
+        resolved,
+      });
     }
   }
   return entries;

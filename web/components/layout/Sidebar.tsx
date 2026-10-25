@@ -44,7 +44,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/research", key: "nav.research", icon: Telescope, enabled: true },
   { href: "/skills", key: "nav.skills", icon: Sparkles, enabled: true },
   { href: "/partners", key: "nav.partners", icon: MessageSquare },
-  { href: "/agents", key: "nav.agents", icon: Bot },
+  { href: "/agents", key: "nav.agents", icon: Bot, enabled: true },
   { href: "/playground", key: "nav.playground", icon: FlaskConical },
   { href: "/settings", key: "nav.settings", icon: Settings, enabled: true },
 ];

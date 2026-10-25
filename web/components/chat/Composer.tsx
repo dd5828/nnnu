@@ -9,6 +9,7 @@ import CapabilitySelector from "@/components/chat/CapabilitySelector";
 import KnowledgeSelector from "@/components/chat/KnowledgeSelector";
 import MathAnimatorSettings from "@/components/chat/MathAnimatorSettings";
 import ModelSelector from "@/components/chat/ModelSelector";
+import AgentSelector from "@/components/chat/AgentSelector";
 import RefChips from "@/components/chat/RefChips";
 import ReferenceMenu from "@/components/chat/ReferenceMenu";
 import ResearchSettings from "@/components/chat/ResearchSettings";
@@ -179,6 +180,7 @@ export default function Composer() {
             <MathAnimatorSettings />
             <KnowledgeSelector />
             <ModelSelector />
+            <AgentSelector />
             <ReferenceMenu />
             <button
               type="button"

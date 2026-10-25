@@ -60,6 +60,28 @@ export interface UiToolCall {
   /** 执行中滚动的进度（§6.1 tool_progress，目前只有 MCP 工具报）：只在实时回合里活着，
    *  不落库——它是「正在干什么」，不是结果，刷新后还挂着一句两小时前的进度反而更糊涂。 */
   progress: string;
+  /** 子代理咨询的实时活动流（§7.12，`consult_subagent` 工具卡里展开看）：
+   *  同样是「过程」，落库的只有工具结果那一句，刷新后不留。 */
+  activity: UiSubagentLine[];
+}
+
+/** 活动流的「回合外交接」缓存：`done` 一到 `active` 就清空、消息从服务端重取（那边没有
+ *  活动流），不接一把的话，用户刚看着子代理跑完、主模型一收尾，卡里那段过程凭空就没了。
+ *  只活在客户端这一次页面生命周期里（刷新照旧只剩结论），键是 `call_id`——服务端生成、
+ *  全局唯一，所以不用按会话清。 */
+const subagentActivity = new Map<string, UiSubagentLine[]>();
+
+/** 子代理活动流的一行（§7.12 `subagent_event` 的载荷形状，逐字段对齐契约）。
+ *
+ * `block_id` 是身份：正文块会随增量反复到达，**同 id 覆盖写**（服务端发的是当前
+ * 全文快照，前端不再自己拼），不同 id 按到达顺序追加。 */
+export interface UiSubagentLine {
+  block_id: string;
+  kind: string; // block | thinking | tool | tool_result | status
+  text: string;
+  name: string;
+  args: Record<string, unknown> | null;
+  ok: boolean | null;
 }
 
 export interface UiMessage {
@@ -143,6 +165,8 @@ interface ChatState {
   animatorQuality: AnimatorQuality;
   /** 待发引用（§7.1「+」菜单挑的）：随下一条消息一次性注入，发完即清 */
   pendingRefs: PendingRef[];
+  /** 会话级子代理连接选择（§7.12 粘性）：null = 没选（后端按「唯一那条」自动挑） */
+  agentConnection: string | null;
 
   init: () => void;
   refreshSessions: () => Promise<void>;
@@ -152,6 +176,7 @@ interface ChatState {
   attachSession: (id: string) => void;
   setKbIds: (ids: string[]) => void;
   setModelRef: (ref: string | null) => void;
+  setAgentConnection: (id: string | null) => void;
   setCapability: (value: string) => void;
   setResearchDepth: (value: ResearchDepth) => void;
   setResearchMode: (value: ResearchMode) => void;
@@ -239,6 +264,8 @@ function toUiMessages(raw: RawMessage[]): UiMessage[] {
         // 小结构 detail 也落库（答题结果卡刷新后仍是卡）；超限的没落，用 null 兜住
         detail: (call.detail as Record<string, unknown>) ?? null,
         progress: "", // 进度不落库：历史消息里没这回事
+        // 活动流同理不落库，但本回合刚跑出来的那一份从缓存里接回来（见 subagentActivity）
+        activity: subagentActivity.get(String(call.call_id ?? "")) ?? [],
       })),
       citations: message.citations ?? [],
       cost: message.cost ?? null,
@@ -269,9 +296,9 @@ interface RawMessage {
   metadata?: unknown;
 }
 
-/** hydrateKb/hydrateModel/hydrateCapability：切会话时顺带水合库、模型与能力选择；
- * 回合结束的重取不带——用户可能刚改过选择，服务器那边还是本回合发过去的旧值，
- * 回灌会把用户的改动抹掉（能力尤其：mid-turn 改不了，但下一回合前改得动）。 */
+/** hydrateKb/hydrateModel/hydrateCapability/hydrateAgent：切会话时顺带水合库、模型、
+ * 能力与子代理连接选择；回合结束的重取不带——用户可能刚改过选择，服务器那边还是本回合
+ * 发过去的旧值，回灌会把用户的改动抹掉（能力尤其：mid-turn 改不了，但下一回合前改得动）。 */
 async function refreshMessages(
   set: (fn: (s: ChatState) => Partial<ChatState>) => void,
   sessionId: string,
@@ -279,7 +306,13 @@ async function refreshMessages(
     hydrateKb = false,
     hydrateModel = false,
     hydrateCapability = false,
-  }: { hydrateKb?: boolean; hydrateModel?: boolean; hydrateCapability?: boolean } = {}
+    hydrateAgent = false,
+  }: {
+    hydrateKb?: boolean;
+    hydrateModel?: boolean;
+    hydrateCapability?: boolean;
+    hydrateAgent?: boolean;
+  } = {}
 ): Promise<void> {
   try {
     const detail = await apiFetch<{
@@ -287,6 +320,7 @@ async function refreshMessages(
       kb_ids?: string[];
       model?: string | null;
       capability?: string;
+      agent_connection?: string | null;
     }>(`/api/v1/sessions/${sessionId}`);
     set((s) => ({
       // 按 id 复用没变的旧消息对象：终局重取时 memo 过的历史消息原地不动，
@@ -302,6 +336,8 @@ async function refreshMessages(
               : "chat",
           }
         : {}),
+      // 粘性选中的子代理连接可能在别处被删了：这里照实回填，选择器自己把悬空值显示成未选
+      ...(hydrateAgent ? { agentConnection: detail.agent_connection ?? null } : {}),
     }));
   } catch {
     // 会话已被删除等：保留本地视图
@@ -378,6 +414,7 @@ function bindSocket(
             summary: "",
             detail: null,
             progress: "",
+            activity: [],
           };
           set(() => ({ active: next }));
         }
@@ -390,6 +427,34 @@ function bindSocket(
         if (turn && env.turn_id === turn.turnId && call) {
           const next = { ...turn, toolCalls: { ...turn.toolCalls } };
           next.toolCalls[callId] = { ...call, progress: String(payload.text ?? "") };
+          set(() => ({ active: next }));
+        }
+        break;
+      }
+      case "subagent_event": {
+        // 子代理活动（§7.12）：挂在主回合上，按 call_id 归到那张工具卡里。
+        // 同 block_id = 同一块正文的新快照，**覆盖**不追加（服务端已累积全文，见
+        // subagents/claude_code.py 模块头）；新 id 才追加，顺序即到达顺序。
+        const callId = String(payload.call_id ?? "");
+        const call = turn?.toolCalls[callId];
+        if (turn && env.turn_id === turn.turnId && call) {
+          const line: UiSubagentLine = {
+            block_id: String(payload.block_id ?? ""),
+            kind: String(payload.kind ?? ""),
+            text: String(payload.text ?? ""),
+            name: String(payload.name ?? ""),
+            args: (payload.args as Record<string, unknown> | null) ?? null,
+            ok: typeof payload.ok === "boolean" ? payload.ok : null,
+          };
+          const index = call.activity.findIndex((item) => item.block_id === line.block_id);
+          const activity =
+            index >= 0
+              ? call.activity.map((item, at) => (at === index ? line : item))
+              : [...call.activity, line];
+          const next = { ...turn, toolCalls: { ...turn.toolCalls } };
+          next.toolCalls[callId] = { ...call, activity };
+          // 顺手存一份给回合结束后的那次重取用（见 subagentActivity 的注释）
+          subagentActivity.set(callId, activity);
           set(() => ({ active: next }));
         }
         break;
@@ -506,6 +571,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   visualizeRenderType: "auto",
   animatorQuality: "medium",
   pendingRefs: [],
+  agentConnection: null,
 
   init: () => {
     if (initialized) {
@@ -536,6 +602,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         hydrateKb: true,
         hydrateModel: true,
         hydrateCapability: true,
+        hydrateAgent: true,
       });
       // 上次刷新时回合还在跑：resume 从头上补发，聊天区接着流
       socket.resume(stored);
@@ -556,7 +623,14 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     });
     socket.setSession(session.id);
     // 能力选择不清：那是输入区里的一档「模式」，用户没换就一直是它（切已有会话才水合）
-    set(() => ({ sessionId: session.id, messages: [], active: null, kbIds: [], modelRef: null }));
+    set(() => ({
+      sessionId: session.id,
+      messages: [],
+      active: null,
+      kbIds: [],
+      modelRef: null,
+      agentConnection: null,
+    }));
     writeLastSession(session.id);
     await refreshSessions(set);
   },
@@ -594,6 +668,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       hydrateKb: true,
       hydrateModel: true,
       hydrateCapability: true,
+      hydrateAgent: true,
     });
   },
 
@@ -610,6 +685,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   setKbIds: (ids: string[]) => set(() => ({ kbIds: ids })),
 
   setModelRef: (ref: string | null) => set(() => ({ modelRef: ref })),
+
+  setAgentConnection: (id: string | null) => set(() => ({ agentConnection: id })),
 
   setCapability: (value: string) => set(() => ({ capability: value })),
 
@@ -650,7 +727,14 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     if (get().sessionId === id) {
       socket.setSession(null);
       writeLastSession(null);
-      set(() => ({ sessionId: null, messages: [], active: null, kbIds: [], modelRef: null }));
+      set(() => ({
+        sessionId: null,
+        messages: [],
+        active: null,
+        kbIds: [],
+        modelRef: null,
+        agentConnection: null,
+      }));
     }
     await refreshSessions(set);
   },
@@ -686,6 +770,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       kb_ids: get().kbIds,
       // 模型选择同款全量下发（§6.10 粘性）：null 也是明确意思——跟随设置默认
       model: get().modelRef,
+      // 子代理连接同款（§7.12 粘性）：null 也是明确意思——取消选中，由后端自动挑
+      agent_connection: get().agentConnection,
       // 能力同款（§6.4 粘性）：后端按请求里的值跑本回合并写回会话
       capability: get().capability,
       // 回合参数（§7.6）：档位/模式**只在研究能力下发**——config.mode 是各能力共用的键名，

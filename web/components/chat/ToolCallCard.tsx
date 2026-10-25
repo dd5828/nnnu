@@ -4,11 +4,16 @@
  *
  * MCP 工具额外两样：线上名 `mcp_<服务器>_<工具>` 是给模型看的，人看的是 detail 里的
  * `mcp:<服务器>:<工具>`（§7.17）；执行中还在滚进度（tool_progress），所以这儿显示的是
- * 进度而不是「执行中」四个字——等一个远端搜索的时候，这句是唯一能证明它没卡死的东西。 */
+ * 进度而不是「执行中」四个字——等一个远端搜索的时候，这句是唯一能证明它没卡死的东西。
+ *
+ * 子代理咨询（§7.12）另有一份实时活动流：CLI 在干什么由 `subagent_event` 一帧帧推来，
+ * 挂在展开区（见 SubagentActivity），摘要行也借进度那行显示最新一步。 */
 
-import { memo, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Loader2, Wrench, X } from "lucide-react";
+import SubagentActivity from "@/components/chat/SubagentActivity";
 import { useI18n } from "@/hooks/useI18n";
+import { argsLine } from "@/lib/agents";
 import type { UiToolCall } from "@/hooks/useChat";
 
 function ToolCallCard({ call }: { call: UiToolCall }) {
@@ -19,10 +24,27 @@ function ToolCallCard({ call }: { call: UiToolCall }) {
   const imageUrl = call.detail?.image_url;
   // MCP 适配器报的展示名（`mcp:<服务器>:<工具>`）：有就用它，线上名缩进详情里
   const display = typeof call.detail?.mcp_display === "string" ? call.detail.mcp_display : "";
+  const lastStep = call.activity.length > 0 ? call.activity[call.activity.length - 1] : null;
+  // 子代理一开口就替用户展开一次（实时活动是这张卡的全部看点，默认折叠等于没做），
+  // 但只自动展开一次：用户收起来了就尊重这个动作，后续帧不再弹开。
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (!autoOpened.current && call.activity.length > 0) {
+      autoOpened.current = true;
+      setOpen(true);
+    }
+  }, [call.activity.length]);
   return (
     // w-full 不能省：外层是 items-start 的列 flex，卡片宽度会被内容撑成 max-content，
     // 摘要一行不换行 → 卡片比聊天区还宽，整页就横着出一根滚动条
-    <div className="mb-2 w-full overflow-hidden rounded-lg border border-border/70 bg-surface text-sm">
+    <div
+      // 卡片自己也挂个 testid：一个会话里同一件工具会有好几张卡，E2E 要按名字+最后一张
+      // 定位当前这张（活动流、摘要都在卡里，靠全局 testid 会撞上前面几轮的卡）
+      data-testid="tool-card"
+      data-name={call.name}
+      data-call-id={call.call_id}
+      className="mb-2 w-full overflow-hidden rounded-lg border border-border/70 bg-surface text-sm"
+    >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -50,6 +72,18 @@ function ToolCallCard({ call }: { call: UiToolCall }) {
             {t("chat.toolProgress")}
             {" · "}
             {call.progress}
+          </span>
+        )}
+        {running && !call.progress && lastStep && (
+          // 子代理没走 tool_progress：摘要行借最新那一步当「正在干什么」
+          <span
+            data-testid="subagent-step"
+            className="min-w-0 flex-1 truncate text-left text-xs text-muted"
+          >
+            {lastStep.kind === "tool" ? lastStep.name : lastStep.text}
+            {lastStep.kind === "tool" && argsLine(lastStep.args)
+              ? ` ${argsLine(lastStep.args)}`
+              : ""}
           </span>
         )}
         {!running && call.summary && (
@@ -85,6 +119,7 @@ function ToolCallCard({ call }: { call: UiToolCall }) {
             // 模型看到的名字（mcp_<服务器>_<工具>）留在这儿：排障时空一格也对不上账
             <p className="font-mono text-[11px] text-muted">{call.name}</p>
           )}
+          {call.activity.length > 0 && <SubagentActivity lines={call.activity} running={running} />}
           <div className="text-xs text-muted">
             <span className="font-medium">{t("chat.toolArgs")}</span>
             <pre className="mt-0.5 max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono">

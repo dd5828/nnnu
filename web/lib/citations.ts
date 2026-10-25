@@ -85,6 +85,18 @@ export function refTarget(entry: RefEntry): RefTarget {
       label,
     };
   }
+  if (entry.kind === "agent_session") {
+    const label = entry.label || entry.agent_session_id;
+    if (!entry.resolved) {
+      return { kind: "text", label };
+    }
+    // 深链到子代理页的「历史导入」标签并展开那一条（`?tab=`/`?id=` 两端都认）
+    return {
+      kind: "internal",
+      href: `/agents?tab=imports&id=${encodeURIComponent(entry.agent_session_id)}`,
+      label,
+    };
+  }
   const label = entry.label || entry.question_id;
   if (!entry.resolved) {
     return { kind: "text", label };

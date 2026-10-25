@@ -16,6 +16,7 @@ export type StreamEventType =
   | "tool_call"
   | "tool_result"
   | "tool_progress"
+  | "subagent_event"
   | "citation"
   | "ask_user"
   | "ask_user_reply"
@@ -81,6 +82,19 @@ export interface ToolResultPayload {
 export interface ToolProgressPayload {
   call_id: string;
   text: string;
+}
+
+/** 子代理（外部 CLI）实时活动的一帧（§7.12）：挂主回合 turn_id、按 call_id
+ *  归到那张 consult_subagent 工具卡上；block_id 是这一帧的身份，同 id 的后一帧
+ *  覆盖前一帧（服务端已累积成全文快照，前端不做拼接）。 */
+export interface SubagentEventPayload {
+  call_id: string;
+  block_id: string;
+  kind: string;
+  text: string;
+  name: string;
+  args: Record<string, unknown> | null;
+  ok: boolean | null;
 }
 
 export interface CitationSource {

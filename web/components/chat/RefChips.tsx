@@ -3,7 +3,7 @@
 /** 输入区的待发引用 chips（§7.1）：「+」菜单选中的条目摆在这儿，发送前可逐个撤掉。
  *  发送动作在 store 的 send() 里统一清空（一次性语义），这里只管展示与移除。 */
 
-import { BookOpen, ListChecks, X } from "lucide-react";
+import { BookOpen, Bot, ListChecks, X } from "lucide-react";
 import { useChatStore } from "@/hooks/useChat";
 import { useI18n } from "@/hooks/useI18n";
 import { refKey } from "@/lib/refs";
@@ -27,6 +27,8 @@ export default function RefChips() {
         >
           {ref.kind === "notebook_record" ? (
             <BookOpen className="h-3 w-3 shrink-0 text-primary" />
+          ) : ref.kind === "agent_session" ? (
+            <Bot className="h-3 w-3 shrink-0 text-primary" />
           ) : (
             <ListChecks className="h-3 w-3 shrink-0 text-primary" />
           )}

@@ -161,4 +161,28 @@ describe("refTarget（用户消息的引用 chip 落点）", () => {
     };
     expect(refTarget(entry)).toEqual({ kind: "text", label: "nbr-9" });
   });
+
+  it("导入的历史会话 → 子代理页「历史导入」标签 ?id= 深链（§7.12）", () => {
+    const entry: RefEntry = {
+      kind: "agent_session",
+      agent_session_id: "imp-1a2b3c4d",
+      label: "昨天问过什么",
+      resolved: true,
+    };
+    expect(refTarget(entry)).toEqual({
+      kind: "internal",
+      href: "/agents?tab=imports&id=imp-1a2b3c4d",
+      label: "昨天问过什么",
+    });
+  });
+
+  it("导入会话没解析出来（正文没了）→ 纯文本，不造死链", () => {
+    const entry: RefEntry = {
+      kind: "agent_session",
+      agent_session_id: "imp-1a2b3c4d",
+      label: "",
+      resolved: false,
+    };
+    expect(refTarget(entry)).toEqual({ kind: "text", label: "imp-1a2b3c4d" });
+  });
 });

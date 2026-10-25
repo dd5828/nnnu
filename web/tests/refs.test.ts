@@ -18,17 +18,23 @@ const recordRef: PendingRef = {
   label: "速记 · 极限",
 };
 const questionRef: PendingRef = { kind: "question", question_id: "q-1", label: "下列极限…" };
+const agentRef: PendingRef = {
+  kind: "agent_session",
+  agent_session_id: "imp-1a2b3c4d",
+  label: "昨天问过什么",
+};
 
 describe("toWireRefs", () => {
   it("按类分组，只带后端认的 id 字段（label 是本地展示用，不发）", () => {
-    expect(toWireRefs([recordRef, questionRef])).toEqual({
+    expect(toWireRefs([recordRef, questionRef, agentRef])).toEqual({
       notebooks: [{ notebook_id: "nb-1", record_id: "nbr-1" }],
       questions: [{ question_id: "q-1" }],
+      agent_sessions: ["imp-1a2b3c4d"],
     });
   });
 
   it("空列表给空组：全量下发语义（不选引用也说得清楚）", () => {
-    expect(toWireRefs([])).toEqual({ notebooks: [], questions: [] });
+    expect(toWireRefs([])).toEqual({ notebooks: [], questions: [], agent_sessions: [] });
   });
 });
 
@@ -36,12 +42,15 @@ describe("refKey", () => {
   it("同类同 id 同键、异类不同键（去重与选中判断共用）", () => {
     expect(refKey(recordRef)).toBe(refKey({ ...recordRef }));
     expect(refKey(recordRef)).not.toBe(refKey(questionRef));
+    // 导入会话走自己的键前缀：id 跟记录/题目形态不同，撞不撞都得各归各的（§7.12）
+    expect(refKey(agentRef)).toBe("agent_session:imp-1a2b3c4d");
+    expect(refKey(agentRef)).not.toBe(refKey(questionRef));
   });
 });
 
 describe("toSnapshotEntries", () => {
   it("本地选的引用一律标已解析（乐观消息的 metadata 用）", () => {
-    expect(toSnapshotEntries([recordRef, questionRef])).toEqual([
+    expect(toSnapshotEntries([recordRef, questionRef, agentRef])).toEqual([
       {
         kind: "notebook_record",
         notebook_id: "nb-1",
@@ -50,6 +59,12 @@ describe("toSnapshotEntries", () => {
         resolved: true,
       },
       { kind: "question", question_id: "q-1", label: "下列极限…", resolved: true },
+      {
+        kind: "agent_session",
+        agent_session_id: "imp-1a2b3c4d",
+        label: "昨天问过什么",
+        resolved: true,
+      },
     ]);
   });
 });
@@ -88,6 +103,30 @@ describe("normalizeRefs（服务器 metadata 宽容解析）", () => {
       normalizeRefs({ refs: [{ kind: "notebook_record", record_id: "nbr-9", resolved: false }] })
     ).toEqual([
       { kind: "notebook_record", notebook_id: "", record_id: "nbr-9", label: "", resolved: false },
+    ]);
+  });
+
+  it("导入会话条目照收，缺 id 的照样跳过（§7.12）", () => {
+    const raw = {
+      refs: [
+        {
+          kind: "agent_session",
+          agent_session_id: "imp-1a2b3c4d",
+          label: "昨天问过什么",
+          resolved: true,
+        },
+        { kind: "agent_session", label: "缺 id" },
+        { kind: "session", session_id: "s-1", label: "本应用的历史会话", resolved: true },
+      ],
+    };
+    // `session`（本应用自己的历史会话）后端会写、前端不认：跳过而不是崩
+    expect(normalizeRefs(raw)).toEqual([
+      {
+        kind: "agent_session",
+        agent_session_id: "imp-1a2b3c4d",
+        label: "昨天问过什么",
+        resolved: true,
+      },
     ]);
   });
 

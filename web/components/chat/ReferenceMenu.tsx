@@ -1,25 +1,29 @@
 "use client";
 
-/** 「+」引用菜单（§7.1 / §7.21）：挑一条笔记本记录或一道题，随下一条消息一次性注入。
+/** 「+」引用菜单（§7.1 / §7.21）：挑一条笔记本记录、一道题，或一条导入的第三方
+ *  CLI 历史会话，随下一条消息一次性注入。
  *
- * 两个 tab：
+ * 三个 tab：
  * - 笔记本：先选本、再看记录（两跳，返回键回上一层）；
  * - 题库：直接列题，默认「错题」——验收主场景就是错题引用进去接着问，
- *   少点一步；切「全部」看全库。
+ *   少点一步；切「全部」看全库；
+ * - 子代理历史：搜已导入的 Claude Code 历史会话（§7.12），点一条引用进去
+ *   （正文不进载荷，服务端在发送时按 id 解析并注入转录）。
  *
  * 选中进 store 的 pendingRefs（Composer 上方的 chips），再点一次取消；发消息时
  * 随载荷下发并清空。查询复用题库/笔记本的既有 hooks（同一份 TanStack 缓存，
  * 和页面之间不重复拉）。 */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, Check, ChevronLeft, ListChecks, Loader2, Plus } from "lucide-react";
+import { BookOpen, Bot, Check, ChevronLeft, ListChecks, Loader2, Plus, Search } from "lucide-react";
 import { useChatStore } from "@/hooks/useChat";
+import { useAgentImports } from "@/hooks/useAgents";
 import { useI18n } from "@/hooks/useI18n";
 import { useNotebook, useNotebookList } from "@/hooks/useNotebooks";
 import { useQuestionList } from "@/hooks/useQuestions";
 import { questionRefLabel, refKey, type PendingRef } from "@/lib/refs";
 
-type Tab = "notebook" | "question";
+type Tab = "notebook" | "question" | "agent";
 
 export default function ReferenceMenu() {
   const { t } = useI18n();
@@ -30,6 +34,7 @@ export default function ReferenceMenu() {
   const [tab, setTab] = useState<Tab>("notebook");
   const [notebookId, setNotebookId] = useState<string | null>(null);
   const [wrongOnly, setWrongOnly] = useState(true);
+  const [agentQuery, setAgentQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
 
   const notebooks = useNotebookList();
@@ -38,6 +43,8 @@ export default function ReferenceMenu() {
     filter: wrongOnly ? "wrong" : "all",
     enabled: open && tab === "question",
   });
+  // 历史会话只在真的切到这个 tab 时才拉（菜单关着的时候一次请求都不发）
+  const agents = useAgentImports(agentQuery, { enabled: open && tab === "agent" });
 
   useEffect(() => {
     if (!open) {
@@ -104,7 +111,7 @@ export default function ReferenceMenu() {
           className="absolute bottom-full left-0 z-50 mb-1.5 w-[min(360px,calc(100vw-32px))] overflow-hidden rounded-xl border border-border bg-surface shadow-lg"
         >
           <div className="flex border-b border-border">
-            {(["notebook", "question"] as Tab[]).map((value) => (
+            {(["notebook", "question", "agent"] as Tab[]).map((value) => (
               <button
                 key={value}
                 type="button"
@@ -117,7 +124,13 @@ export default function ReferenceMenu() {
                     : "text-muted hover:bg-accent/40"
                 }`}
               >
-                {t(value === "notebook" ? "chat.refTabNotebook" : "chat.refTabQuestion")}
+                {t(
+                  value === "notebook"
+                    ? "chat.refTabNotebook"
+                    : value === "question"
+                      ? "chat.refTabQuestion"
+                      : "chat.refTabAgent"
+                )}
               </button>
             ))}
           </div>
@@ -201,6 +214,58 @@ export default function ReferenceMenu() {
                   )}
                 </>
               )
+            ) : tab === "agent" ? (
+              <>
+                <div className="px-2 pb-1.5 pt-1">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted" />
+                    <input
+                      data-testid="ref-agent-search"
+                      value={agentQuery}
+                      onChange={(event) => setAgentQuery(event.target.value)}
+                      placeholder={t("chat.refAgentSearchPlaceholder")}
+                      className="w-full rounded-lg border border-border bg-surface py-1 pl-7 pr-2 text-[11px] outline-none focus:border-primary"
+                    />
+                  </div>
+                </div>
+                {agents.isLoading ? (
+                  <div className="flex justify-center py-4">
+                    <Loader2 className="h-4 w-4 animate-spin text-muted" />
+                  </div>
+                ) : (agents.data?.sessions.length ?? 0) === 0 ? (
+                  <div className="px-3 py-2 text-[11px] text-muted">
+                    {agentQuery ? t("chat.refAgentEmpty") : t("chat.refAgentNoImports")}
+                  </div>
+                ) : (
+                  agents.data?.sessions.map((session) => {
+                    const label = session.title || t("agents.untitled");
+                    const ref: PendingRef = {
+                      kind: "agent_session",
+                      agent_session_id: session.id,
+                      label,
+                    };
+                    return (
+                      <button
+                        key={session.id}
+                        type="button"
+                        data-testid="ref-agent-session"
+                        data-id={session.id}
+                        onClick={() => toggle(ref)}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-accent"
+                      >
+                        <Bot className="h-3.5 w-3.5 shrink-0 text-muted" />
+                        <span className="min-w-0 flex-1 truncate">{label}</span>
+                        <span className="shrink-0 text-[10px] text-muted">
+                          {session.message_count}
+                        </span>
+                        {selectedKeys.has(refKey(ref)) && (
+                          <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
+                        )}
+                      </button>
+                    );
+                  })
+                )}
+              </>
             ) : (
               <>
                 <div className="flex items-center gap-1 px-2 pb-1">

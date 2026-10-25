@@ -7,17 +7,19 @@
  * → 灰置划线文本，不造死链。落点计算在 `lib/citations.ts:refTarget`（可单测）。 */
 
 import Link from "next/link";
-import { BookOpen, ListChecks } from "lucide-react";
+import { BookOpen, Bot, ListChecks } from "lucide-react";
 import { useI18n } from "@/hooks/useI18n";
 import { refTarget } from "@/lib/citations";
 import { refKey, type RefEntry } from "@/lib/refs";
 
 function RefIcon({ kind }: { kind: RefEntry["kind"] }) {
-  return kind === "notebook_record" ? (
-    <BookOpen className="h-3 w-3 shrink-0" />
-  ) : (
-    <ListChecks className="h-3 w-3 shrink-0" />
-  );
+  if (kind === "notebook_record") {
+    return <BookOpen className="h-3 w-3 shrink-0" />;
+  }
+  if (kind === "agent_session") {
+    return <Bot className="h-3 w-3 shrink-0" />;
+  }
+  return <ListChecks className="h-3 w-3 shrink-0" />;
 }
 
 export default function MessageRefs({ refs }: { refs: RefEntry[] }) {

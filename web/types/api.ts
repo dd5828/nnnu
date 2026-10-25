@@ -1311,3 +1311,111 @@ export interface CliAppInstallResponse {
   result: CliAppInstallResult;
   app: CliApp | null;
 }
+
+// ---- 子代理（§7.12）：连接配置 + 导入的历史会话 ----
+
+/** 连接清单 + 选项元信息（`GET /api/v1/agents`）。`supported=false` 的 kind 能建能探测，
+ *  咨询时后端会如实拒绝——界面上要把「能用」和「先记着」分开显示。 */
+export interface AgentKindMeta {
+  kind: string;
+  default_command: string[];
+  supported: boolean;
+}
+
+export interface AgentConnection {
+  id: string;
+  kind: string;
+  display_name: string;
+  label: string;
+  cwd: string;
+  model_override: string;
+  permission_mode: string;
+  command: string[];
+  created_at: number;
+  /** 实际启动命令（自定义优先，否则 kind 默认） */
+  argv: string[];
+  supported: boolean;
+}
+
+export interface AgentConnectionsResponse {
+  connections: AgentConnection[];
+  kinds: AgentKindMeta[];
+  permission_modes: string[];
+  /** 后端是否允许自定义启动命令（`NNNU_AGENTS_ALLOW_CUSTOM_COMMAND`，默认关） */
+  custom_command_allowed: boolean;
+}
+
+/** 探测结果（真跑了一次 `<程序> --version`，不是看文件在不在）。 */
+export interface AgentProbe {
+  connection_id: string;
+  available: boolean;
+  supported: boolean;
+  argv: string[];
+  detail: string;
+}
+
+export interface AgentConnectionResponse {
+  connection: AgentConnection;
+}
+
+export interface AgentProbeResponse {
+  probe: AgentProbe;
+}
+
+/** 一条导入的历史会话（元数据；正文另取）。 */
+export interface AgentImportSession {
+  id: string;
+  source: string;
+  source_id: string;
+  title: string;
+  cwd: string;
+  started_at: number | null;
+  ended_at: number | null;
+  message_count: number;
+  imported_at: number | null;
+  /** 扫描候选里才有：来源文件路径 / 项目目录名 / 是否已导入 / 来源又有新内容 */
+  path?: string;
+  project?: string;
+  imported?: boolean;
+  changed?: boolean;
+}
+
+export interface AgentImportListResponse {
+  sessions: AgentImportSession[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AgentImportScanResponse {
+  root: string;
+  roots: string[];
+  sessions: AgentImportSession[];
+  skipped: { path: string; reason: string }[];
+  truncated: boolean;
+  sources: string[];
+}
+
+export interface AgentImportMessage {
+  role: string;
+  text: string;
+  ts: number | null;
+}
+
+export interface AgentImportDetailResponse {
+  session: AgentImportSession;
+  messages: AgentImportMessage[];
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+}
+
+export interface AgentImportResult {
+  root: string;
+  imported: AgentImportSession[];
+  unchanged: string[];
+  errors: { id: string; reason: string }[];
+  skipped: { path: string; reason: string }[];
+  truncated: boolean;
+}
