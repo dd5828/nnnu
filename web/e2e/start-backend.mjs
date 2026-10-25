@@ -266,6 +266,106 @@ cliCatalog.apps.push({
 });
 writeFileSync(cliCatalogPath, `${JSON.stringify(cliCatalog, null, 2)}\n`);
 
+// 1h) 子代理（§7.12）：一条指向**假** Claude Code 的连接 + 一份可以导入的历史。
+//     为什么用假的：这条链要验的是「真起进程 → 逐行读 stream-json → 超时把整棵树杀干净」，
+//     而真 CLI 装没装、装得好不好全看跑测的机器（开发机上就躺着一个坏装：npm 包在、
+//     原生二进制没装）。假 CLI 覆盖的路径见 fixtures/fake_claude.py 的模块头。
+//     `NNNU_AGENTS_ALLOW_CUSTOM_COMMAND=1` 必须开：默认关着（那是 HTTP 上的一个任意
+//     代码执行面），不开就建不出指向假 CLI 的连接。
+const agentFixtures = path.join(E2E_HOME, "fixtures");
+const agentCwd = path.join(agentFixtures, "claude-cwd"); // 子代理的工作目录（cwd 要真存在）
+const claudeProjects = path.join(agentFixtures, "claude-projects"); // 历史导入的扫描根（夹具）
+const treePidFile = path.join(agentFixtures, "tree-child.pid"); // E2E:SLEEP 那趟的子进程 pid
+const fakeClaude = path.join(__dirname, "fixtures", "fake_claude.py");
+mkdirSync(path.join(claudeProjects, "e2e-project"), { recursive: true });
+mkdirSync(agentCwd, { recursive: true });
+mkdirSync(path.join(E2E_HOME, "data", "user", "agents"), { recursive: true });
+
+// 历史夹具：形状照 ~/.claude/projects/<项目目录>/<uuid>.jsonl，每行一个事件。
+// 里面混进了三样必须被跳过的东西——isSidechain（子代理内部往返）、isMeta（系统注入）、
+// 一行写一半的坏 JSON——可读消息因此只有 3 条；标题走 aiTitle（老版本没有它，退回首条用户消息）。
+const histStamp = (hoursAgo) =>
+  new Date(Date.now() - hoursAgo * 3600 * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+const historyLines = [
+  {
+    type: "user",
+    timestamp: histStamp(26),
+    cwd: "D:/work/dsp",
+    message: { role: "user", content: "昨天在折腾采样定理：为什么非得是 2 倍频？" },
+  },
+  {
+    type: "assistant",
+    timestamp: histStamp(25.9),
+    cwd: "D:/work/dsp",
+    message: {
+      role: "assistant",
+      content: [
+        { type: "text", text: "两倍频不是工程习惯，是奈奎斯特的结论：低于它，高频会被折回低频。" },
+        {
+          type: "tool_use",
+          id: "toolu_hist_1",
+          name: "Read",
+          input: { file_path: "dsp/notes.md" },
+        },
+      ],
+    },
+  },
+  {
+    type: "user",
+    isSidechain: true,
+    timestamp: histStamp(25.8),
+    message: { role: "user", content: "（这是子代理内部的往返，不该出现在导入结果里）" },
+  },
+  {
+    type: "assistant",
+    timestamp: histStamp(25.7),
+    cwd: "D:/work/dsp",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "补一句：混叠在频谱图上看得见——不想要的频率折进来了。" }],
+    },
+  },
+  '{"type": "assistant", "message": {',
+  {
+    type: "assistant",
+    isMeta: true,
+    aiTitle: "采样定理那点事",
+    timestamp: histStamp(25.6),
+    message: { role: "assistant", content: "（系统提示注入，不算对话）" },
+  },
+];
+writeFileSync(
+  path.join(claudeProjects, "e2e-project", "11111111-2222-3333-4444-555555555555.jsonl"),
+  `${historyLines
+    .map((line) => (typeof line === "string" ? line : JSON.stringify(line)))
+    .join("\n")}\n`
+);
+
+// 连接配置：一条指向假 CLI 的 claude_code 连接（界面上一进连接页就看得见它）。
+// command 覆盖只在这道环境门开着时被接受；探测会真跑一次 `--version`。
+const AGENT_ID = "ag-e2e0001";
+writeFileSync(
+  path.join(E2E_HOME, "data", "user", "agents", "connections.json"),
+  `${JSON.stringify(
+    {
+      connections: {
+        [AGENT_ID]: {
+          id: AGENT_ID,
+          kind: "claude_code",
+          display_name: "E2E 假 Claude",
+          cwd: agentCwd,
+          model_override: "e2e-model",
+          permission_mode: "bypassPermissions",
+          command: [PYTHON, fakeClaude],
+          created_at: 1758300000,
+        },
+      },
+    },
+    null,
+    2
+  )}\n`
+);
+
 // 2) 样例 PDF（附件引用场景用；输出到本目录 .artifacts/）
 execSync(
   `"${PYTHON}" ${path.join(__dirname, "fixtures", "make_pdf.py")} ${path.join(
@@ -289,6 +389,12 @@ const child = spawn(PYTHON, ["-m", "nnnu.api.run_server"], {
     NNNU_EMBEDDING_MOCK: "scripted",
     // 假渲染器：math_animator 场景要跑通六阶段流水线，但不装 manim/ffmpeg（P7 遗留）
     NNNU_MANIM_MOCK: "1",
+    // 子代理（§7.12，见 1h 步）：允许连接里自定义启动命令（假 CLI 靠它）、
+    // 历史导入的扫描根指向夹具目录（默认根是 ~/.claude/projects，夹具要排在它前面）、
+    // 树杀验证的子进程 pid 文件
+    NNNU_AGENTS_ALLOW_CUSTOM_COMMAND: "1",
+    NNNU_AGENTS_IMPORT_ROOTS: claudeProjects,
+    FAKE_CLAUDE_TREE_PID: treePidFile,
     PYTHONIOENCODING: "utf-8",
   },
 });

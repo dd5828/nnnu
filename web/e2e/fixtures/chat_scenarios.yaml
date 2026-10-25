@@ -623,3 +623,71 @@ steps:
   - chunks: ["跑完了：标记写进 e2e-cli.txt 了。"]
     finish_reason: stop
     usage: { prompt_tokens: 500, completion_tokens: 30 }
+  # Turn 42（zzzz-agents.e2e ②）：引用一条导入的第三方历史会话后追问——只回正文，
+  # 引用本身（chips、msg-ref、抄送转录）由前端与后端走路，不额外吃 LLM 步骤
+  - chunks: ["你昨天在琢磨采样定理的 2 倍频，顺手还看了一眼混叠在频谱图上的样子。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 400, completion_tokens: 40 }
+  # Turn 43-44（zzzz-agents.e2e ③-1）：子代理咨询的完整一趟——假 CLI 逐块推正文、报一次
+  # 工具调用与结果；task 不带记号就是默认那趟（见 fixtures/fake_claude.py）
+  - tool_calls:
+      - {
+          id: ag-happy-1,
+          name: consult_subagent,
+          arguments: '{"task": "在子代理的工作目录里写一个快排，文件名叫 e2e-quick-sort.py，写完解释一下思路。"}',
+        }
+    finish_reason: tool_calls
+    usage: { prompt_tokens: 300, completion_tokens: 40 }
+  - chunks: ["子代理写完了 e2e-quick-sort.py：原地分区，平均 O(n log n)。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 500, completion_tokens: 40 }
+  # Turn 45-46：同一个会话里再咨询一次——后端该带上 --resume <上一趟的 CLI 会话 id>
+  # （假 CLI 把它回声成状态行，用例断言的就是那一行）
+  - tool_calls:
+      - {
+          id: ag-resume-1,
+          name: consult_subagent,
+          arguments: '{"task": "接着刚才那个文件，给递归那行补一句复杂度注释。"}',
+        }
+    finish_reason: tool_calls
+    usage: { prompt_tokens: 300, completion_tokens: 40 }
+  - chunks: ["注释加上了，还是那套写法。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 500, completion_tokens: 30 }
+  # Turn 47-48：E2E:PLAIN——老版本 CLI 的兜底形状（只有完整块）+ 一行坏 JSON + stderr
+  - tool_calls:
+      - {
+          id: ag-plain-1,
+          name: consult_subagent,
+          arguments: '{"task": "读一下这个工程目录，说说结构（夹具模式：E2E:PLAIN）。"}',
+        }
+    finish_reason: tool_calls
+    usage: { prompt_tokens: 300, completion_tokens: 40 }
+  - chunks: ["它说这趟只有整条消息，没有逐块增量。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 500, completion_tokens: 30 }
+  # Turn 49-50：E2E:FAIL——半句结论 + 非 0 退出码（失败也要把已说的话带回来）
+  - tool_calls:
+      - {
+          id: ag-fail-1,
+          name: consult_subagent,
+          arguments: '{"task": "看一下工程目录能不能读（夹具模式：E2E:FAIL）。"}',
+        }
+    finish_reason: tool_calls
+    usage: { prompt_tokens: 300, completion_tokens: 40 }
+  - chunks: ["它没能读完那个目录，退出码是 1。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 500, completion_tokens: 30 }
+  # Turn 51-52：E2E:SLEEP——一直不返回，5 秒后被超时中止，连它自己起的子进程一起杀掉。
+  # 5 秒是给用例留的窗口：它要先看见那个子进程的 pid 文件、断言它还活着，再等它被杀掉
+  - tool_calls:
+      - {
+          id: ag-sleep-1,
+          name: consult_subagent,
+          arguments: '{"task": "一直别停，等我说停（夹具模式：E2E:SLEEP）。", "timeout_s": 5}',
+        }
+    finish_reason: tool_calls
+    usage: { prompt_tokens: 300, completion_tokens: 40 }
+  - chunks: ["它一直没返回，到时间就被我中止了。"]
+    finish_reason: stop
+    usage: { prompt_tokens: 500, completion_tokens: 30 }
