@@ -26,6 +26,8 @@ DATA_SUBDIRS: tuple[str, ...] = (
     "user/skills",
     "user/mcp",
     "user/cli-apps",
+    "user/agents",  # 子代理连接配置（§7.12）
+    "user/agents/imports",  # 导入的第三方 CLI 历史会话正文（每会话一个 jsonl）
     "user/knowledge",
     "user/renders",
     "user/uploads",
@@ -99,6 +101,7 @@ def register_builtins() -> None:
     from nnnu.tools.builtin.rag_tool import RagSearchTool
     from nnnu.tools.builtin.reason import ReasonTool
     from nnnu.tools.builtin.skill_tools import LoadToolsTool, ReadSkillTool
+    from nnnu.tools.builtin.subagent_tool import ConsultSubagentTool
     from nnnu.tools.builtin.web_fetch import WebFetchTool
     from nnnu.tools.builtin.web_search import WebSearchTool
 
@@ -139,6 +142,8 @@ def register_builtins() -> None:
     # 命令行应用两件（§7.18）：装了至少一件才挂（CONTEXT_GATED 门键就是这两个名字）
     get_tool_registry().register(ListCliAppsTool())
     get_tool_registry().register(RunCliAppTool())
+    # 子代理咨询（§7.12）：配了至少一条连接才挂（CONTEXT_GATED 门键 = 工具名）
+    get_tool_registry().register(ConsultSubagentTool())
     # videogen 不注册：只有友好报错的桩（§7.2 未交付），挂上去等于给模型一个
     # 永远失败的工具，白烧一轮调用。VideoGenTool 类与 media.generate_video 桩
     # 保留，后续阶段接上真实端点时在这里加回 register(VideoGenTool())。

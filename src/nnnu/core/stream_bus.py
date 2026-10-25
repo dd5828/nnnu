@@ -172,6 +172,29 @@ class StreamBus:
     async def emit_tool_progress(self, *, call_id: str, text: str) -> StreamEvent:
         return await self.emit(StreamEventType.TOOL_PROGRESS, call_id=call_id, text=text)
 
+    async def emit_subagent_event(
+        self,
+        *,
+        call_id: str,
+        block_id: str,
+        kind: str,
+        text: str = "",
+        name: str = "",
+        args: dict | None = None,
+        ok: bool | None = None,
+    ) -> StreamEvent:
+        """子代理活动的一帧（§7.12）：挂主回合、按 call_id 归到工具卡上。"""
+        return await self.emit(
+            StreamEventType.SUBAGENT_EVENT,
+            call_id=call_id,
+            block_id=block_id,
+            kind=kind,
+            text=text,
+            name=name,
+            args=args,
+            ok=ok,
+        )
+
     async def emit_citation(self, *, sources: list[dict]) -> StreamEvent:
         return await self.emit(StreamEventType.CITATION, sources=sources)
 

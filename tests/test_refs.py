@@ -2,6 +2,8 @@
 
 import asyncio
 
+import pytest
+
 from nnnu.services.llm.factory import install_scripted, uninstall_scripted
 from nnnu.services.llm.scripted import ScriptedLLM, ScriptedStep
 
@@ -328,3 +330,181 @@ async def test_deleted_ref_tolerated_on_regenerate(client):
         uninstall_scripted()
     assert "引用笔记本记录" not in _user_content(clients[-1])
     assert "马上没了" not in _user_content(clients[-1])
+
+
+# ---- 导入的第三方 CLI 历史会话（§7.12 刀三） ----
+
+
+@pytest.fixture
+async def imported_agent_session(client, tmp_home, monkeypatch):
+    """真扫真导一条假历史，返回它的 id（走 REST 那条路，顺带覆盖导入端到端）。"""
+    import json as _json
+
+    root = tmp_home / "claude-projects"
+    (root / "proj-yesterday").mkdir(parents=True)
+    lines = [
+        {
+            "type": "user",
+            "message": {"role": "user", "content": "我昨天问过什么"},
+            "timestamp": "2026-10-01T10:00:00.000Z",
+        },
+        {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "你问了快排的三路切分。"}],
+            },
+            "timestamp": "2026-10-01T10:00:05.000Z",
+            "aiTitle": "昨天问过什么",
+        },
+    ]
+    path = root / "proj-yesterday" / "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jsonl"
+    path.write_text(
+        "\n".join(_json.dumps(line, ensure_ascii=False) for line in lines) + "\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("NNNU_AGENTS_IMPORT_ROOTS", str(root))
+    response = await client.post("/api/v1/agents/imports", json={"root": str(root), "days": 0})
+    assert response.status_code == 200, response.text
+    return response.json()["imported"][0]["id"]
+
+
+async def test_agent_session_ref_injected_and_snapshot_persisted(client, imported_agent_session):
+    """导入会话当引用：转录注入 user 消息 + 快照随消息落库（前端 chip 靠它还原）。"""
+    captured: ScriptedLLM | None = None
+
+    def factory() -> ScriptedLLM:
+        nonlocal captured
+        captured = ScriptedLLM([ScriptedStep(chunks=["回答"])])
+        return captured
+
+    install_scripted(factory)
+    try:
+        chat = await client.post(
+            "/api/v1/chat",
+            json={
+                "session_id": "sess-imp-ref",
+                "message": "我昨天问过什么",
+                "refs": {"agent_sessions": [imported_agent_session]},
+            },
+        )
+    finally:
+        uninstall_scripted()
+    assert chat.status_code == 200
+    user_content = _user_content(captured)
+    assert "【引用 Claude Code 历史会话《昨天问过什么》】" in user_content
+    assert "你问了快排的三路切分。" in user_content
+
+    detail = (await client.get("/api/v1/sessions/sess-imp-ref")).json()
+    user_row = next(m for m in detail["messages"] if m["role"] == "user")
+    assert user_row["metadata"]["refs"] == [
+        {
+            "kind": "agent_session",
+            "agent_session_id": imported_agent_session,
+            "label": "昨天问过什么",
+            "resolved": True,
+        }
+    ]
+
+
+async def test_agent_session_ref_survives_regenerate(client, imported_agent_session):
+    """regenerate 从快照重建 TurnRefs 再活查重解析（引用类型漏建分支就会静默失效）。"""
+    clients: list[ScriptedLLM] = []
+
+    def factory() -> ScriptedLLM:
+        client_llm = ScriptedLLM([ScriptedStep(chunks=["回答"])])
+        clients.append(client_llm)
+        return client_llm
+
+    install_scripted(factory)
+    try:
+        chat = await client.post(
+            "/api/v1/chat",
+            json={
+                "session_id": "sess-imp-regen",
+                "message": "接着昨天说",
+                "refs": {"agent_sessions": [imported_agent_session]},
+            },
+        )
+        assert chat.status_code == 200
+        assert "【引用 Claude Code 历史会话《" in _user_content(clients[-1])
+
+        regen = await client.post("/api/v1/sessions/sess-imp-regen/regenerate")
+        assert regen.status_code == 200
+        for _ in range(50):
+            detail = (await client.get("/api/v1/sessions/sess-imp-regen")).json()
+            if len(detail["messages"]) == 2:
+                break
+            await asyncio.sleep(0.05)
+        else:
+            raise AssertionError("regenerate 回合未完成")
+    finally:
+        uninstall_scripted()
+    assert "【引用 Claude Code 历史会话《昨天问过什么》】" in _user_content(clients[-1])
+    assert "你问了快排的三路切分。" in _user_content(clients[-1])
+
+
+async def test_history_session_ref_survives_regenerate(client):
+    """同一处补掉的老缺口：会话引用以前在 regenerate 时被丢掉（request.refs 是空的）。"""
+    clients: list[ScriptedLLM] = []
+
+    def factory() -> ScriptedLLM:
+        client_llm = ScriptedLLM([ScriptedStep(chunks=["回答"])])
+        clients.append(client_llm)
+        return client_llm
+
+    install_scripted(factory)
+    try:
+        await client.post(
+            "/api/v1/chat", json={"session_id": "sess-regen-a", "message": "什么是矩阵？"}
+        )
+        chat = await client.post(
+            "/api/v1/chat",
+            json={
+                "session_id": "sess-regen-b",
+                "message": "接着昨天的说",
+                "refs": {"sessions": ["sess-regen-a"]},
+            },
+        )
+        assert chat.status_code == 200
+        assert "什么是矩阵？" in _user_content(clients[-1])
+
+        regen = await client.post("/api/v1/sessions/sess-regen-b/regenerate")
+        assert regen.status_code == 200
+        for _ in range(50):
+            detail = (await client.get("/api/v1/sessions/sess-regen-b")).json()
+            if len(detail["messages"]) == 2:
+                break
+            await asyncio.sleep(0.05)
+        else:
+            raise AssertionError("regenerate 回合未完成")
+    finally:
+        uninstall_scripted()
+    assert "【引用历史会话《" in _user_content(clients[-1])
+    assert "什么是矩阵？" in _user_content(clients[-1])
+
+
+async def test_missing_agent_session_ref_warns_but_completes(client):
+    captured: ScriptedLLM | None = None
+
+    def factory() -> ScriptedLLM:
+        nonlocal captured
+        captured = ScriptedLLM([ScriptedStep(chunks=["回答"])])
+        return captured
+
+    install_scripted(factory)
+    try:
+        chat = await client.post(
+            "/api/v1/chat",
+            json={
+                "session_id": "sess-imp-missing",
+                "message": "问题",
+                "refs": {"agent_sessions": ["imp-deadbeef"]},
+            },
+        )
+    finally:
+        uninstall_scripted()
+    assert chat.status_code == 200  # 宽容：查不到的引用不阻断回合
+    assert "引用 Claude Code 历史会话" not in _user_content(captured)
+    detail = (await client.get("/api/v1/sessions/sess-imp-missing")).json()
+    user_row = next(m for m in detail["messages"] if m["role"] == "user")
+    assert user_row["metadata"]["refs"][0]["resolved"] is False

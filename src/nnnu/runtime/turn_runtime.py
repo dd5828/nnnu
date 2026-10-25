@@ -21,7 +21,13 @@ from typing import Any, AsyncIterator
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from nnnu.core.context import Attachment, NotebookRef, QuestionRef, SessionRef
+from nnnu.core.context import (
+    AgentSessionRef,
+    Attachment,
+    NotebookRef,
+    QuestionRef,
+    SessionRef,
+)
 from nnnu.core.events import StreamEventType
 from nnnu.core.ids import new_id
 from nnnu.core.stream_bus import StreamBus
@@ -55,6 +61,8 @@ class TurnRefs(BaseModel):
     sessions: list[str] = field(default_factory=list)  # 引用会话 id
     notebooks: list[NotebookRef] = field(default_factory=list)  # 笔记本记录引用
     questions: list[QuestionRef] = field(default_factory=list)  # 题库题目引用
+    #: 导入的第三方 CLI 历史会话（§7.12）：id 形如 imp-xxxxxxxx
+    agent_sessions: list[str] = field(default_factory=list)
 
 
 class TurnRequest(BaseModel):
@@ -71,6 +79,8 @@ class TurnRequest(BaseModel):
     config: dict[str, Any] = field(default_factory=dict)
     language: str | None = None
     model: str | None = None
+    #: 子代理连接（§7.12 粘性）：null = 取消选择（回到「只有一条连接就自动选」）
+    agent_connection: str | None = None
     # 运行时内部标志：regenerate 复用原 user 消息，不重复落库（§6.8）
     persist_user_message: bool = True
 
@@ -116,6 +126,8 @@ class _TurnExecution:
     task: asyncio.Task | None = None
     session_id: str | None = None
     events: list[dict] = field(default_factory=list)  # wire 事件（含单调 seq）
+    #: 子代理活动帧在 events 里的槽位（(call_id, block_id) → 下标），同块只留最新一帧
+    subagent_slots: dict[tuple[str, str], int] = field(default_factory=dict)
     next_seq: int = 1
     subscribers: list[asyncio.Queue[dict | None]] = field(default_factory=list)
     awaiting_user_reply: bool = False
@@ -130,8 +142,12 @@ class _ResolvedRefs:
 
     notebook_refs: list[NotebookRef] = field(default_factory=list)
     question_refs: list[QuestionRef] = field(default_factory=list)
+    history_refs: list[SessionRef] = field(default_factory=list)
+    agent_session_refs: list[AgentSessionRef] = field(default_factory=list)
     notebook_payloads: list[dict[str, Any]] = field(default_factory=list)
     question_payloads: list[dict[str, Any]] = field(default_factory=list)
+    history_transcripts: list[dict[str, Any]] = field(default_factory=list)
+    agent_session_payloads: list[dict[str, Any]] = field(default_factory=list)
     snapshot: list[dict[str, Any]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
@@ -147,6 +163,16 @@ def _snapshot_entry(
         "notebook_id": notebook_id,
         "record_id": identifier,
         "label": "",
+        "resolved": resolved,
+    }
+
+
+def _agent_session_snapshot(identifier: str, label: str, resolved: bool) -> dict[str, Any]:
+    """导入会话的引用快照（前端 chip 与 regenerate 重建共用这一种形状）。"""
+    return {
+        "kind": "agent_session",
+        "agent_session_id": identifier,
+        "label": label,
         "resolved": resolved,
     }
 
@@ -363,6 +389,24 @@ class TurnRuntimeManager:
                 )
             request.model = ref
 
+    async def _apply_agent_selection(self, request: TurnRequest, session) -> None:
+        """子代理连接选择（§7.12 粘性）：显式带 agent_connection 的请求全量替换并落库
+        （null/空串 = 取消选择）；没带的（regenerate、cron 回合、老客户端）沿用会话里存的。
+
+        连接被删掉后这里不做存在性校验：值悬空时工具层会回退到「只有一条连接就自动选」，
+        报错也是工具在需要用到它的时候才报——粘性值不该把整条会话搞死（同 _apply_model_selection
+        放行未知模型名的理由）。
+        """
+        if "agent_connection" in request.model_fields_set:
+            value = (request.agent_connection or "").strip() or None
+            try:
+                await self._sessions.set_agent_connection(session.id, value)
+            except Exception:
+                logger.warning("子代理连接选择持久化失败 session=%s", session.id, exc_info=True)
+            request.agent_connection = value
+        else:
+            request.agent_connection = session.agent_connection
+
     async def _apply_capability_selection(self, request: TurnRequest, session) -> None:
         """能力选择（§6.4 粘性）：显式带 capability 的请求（前端每条消息都带）落库，切走再
         回来还是它；没带的（老客户端）沿用会话里存的。能力名合法性由编排器兜底——未知能力
@@ -395,6 +439,7 @@ class TurnRuntimeManager:
                 await self._apply_kb_selection(request, session)
                 await self._apply_model_selection(request, session)
                 await self._apply_capability_selection(request, session)
+                await self._apply_agent_selection(request, session)
                 # session 解析后重入日志上下文：后续日志带真实 session_id
                 with turn_log_context(execution.turn_id, session.id):
                     await self._run_turn_body(execution, request, session, relay)
@@ -445,37 +490,126 @@ class TurnRuntimeManager:
             user_message = await self._sessions.get_last_user_message(session.id)
             if user_message is None:
                 raise TurnRejected(f"会话 {session.id} 无用户消息可重新生成")
-            ref_state = await self._resolve_turn_refs(
-                self._refs_from_metadata(user_message.metadata)
-            )
+            # 重建出来的引用要**写回 request**：历史会话引用走的是 request.refs
+            # （_resolve_turn_refs 也读它），不回填的话「重新生成」会静默丢掉它们
+            request.refs = self._refs_from_metadata(user_message.metadata)
+            ref_state = await self._resolve_turn_refs(request.refs)
         session_messages = await self._sessions.list_messages(session.id)
 
         await execution.bus.emit_turn_start(capability=request.capability, model=request.model)
         for warning in ref_state.warnings:
             await execution.bus.emit_warning(message=warning)
-        history_refs, history_transcripts = await self._resolve_history_refs(request, execution.bus)
         ctx = build_unified_context(
             request,
             session,
             user_message,
             session_messages,
             language=request.language or session.language,
-            history_refs=history_refs,
+            history_refs=ref_state.history_refs,
             notebook_refs=ref_state.notebook_refs,
             question_refs=ref_state.question_refs,
+            agent_session_refs=ref_state.agent_session_refs,
         )
-        ctx.metadata["history_ref_transcripts"] = history_transcripts
+        ctx.metadata["history_ref_transcripts"] = ref_state.history_transcripts
+        ctx.metadata["agent_session_transcripts"] = ref_state.agent_session_payloads
         ctx.metadata["notebook_ref_payloads"] = ref_state.notebook_payloads
         ctx.metadata["question_ref_payloads"] = ref_state.question_payloads
         ctx.metadata["ask_user_fn"] = self._make_ask_user_fn(execution)
         await self._orchestrator.handle(ctx, execution.bus)
 
     async def _resolve_turn_refs(self, refs: TurnRefs) -> "_ResolvedRefs":
-        """笔记本记录/题目引用：解析一次（regenerate 也走这里，活查重解析）。"""
+        """四类一次性引用在这里解析一次（regenerate 也走这里，活查重解析）。
+
+        统一在**这一处**解析的理由不止省代码：快照要随用户消息一起落库，而消息在
+        引用解析之后立刻写；把某一类留在后面（早先会话引用就是这样）它就进不了快照，
+        「重新生成」时也就重建不出来，引用静默消失。
+        """
         state = _ResolvedRefs()
+        await self._resolve_session_refs(refs.sessions, state)
+        await self._resolve_agent_session_refs(refs.agent_sessions, state)
         await self._resolve_notebook_refs(refs.notebooks, state)
         await self._resolve_question_refs(refs.questions, state)
         return state
+
+    async def _resolve_session_refs(self, refs: list[str], state: "_ResolvedRefs") -> None:
+        """本应用自己的历史会话（P2）：转录装入 metadata 供能力注入。
+
+        引用的会话不存在 → warning 跳过，不阻断回合（宽容语义）。
+        """
+        for session_id in refs:
+            ref_session = await self._sessions.get_session(session_id)
+            if ref_session is None:
+                state.warnings.append(f"引用的会话 {session_id} 不存在，已忽略")
+                state.snapshot.append(
+                    {"kind": "session", "session_id": session_id, "label": "", "resolved": False}
+                )
+                continue
+            messages = await self._sessions.list_messages(session_id)
+            state.history_refs.append(SessionRef(id=ref_session.id, title=ref_session.title))
+            state.history_transcripts.append(
+                {
+                    "id": ref_session.id,
+                    "title": ref_session.title,
+                    "messages": [message.model_dump() for message in messages],
+                }
+            )
+            state.snapshot.append(
+                {
+                    "kind": "session",
+                    "session_id": ref_session.id,
+                    "label": ref_session.title,
+                    "resolved": True,
+                }
+            )
+
+    async def _resolve_agent_session_refs(self, refs: list[str], state: "_ResolvedRefs") -> None:
+        """导入的第三方 CLI 历史会话（§7.12）：读的是落盘的转录（分页读全量）。
+
+        查不到（被删了、id 形状不对）→ warning + resolved=false，不阻断回合。
+        转录读不出来（文件被手删了）同样按查不到处理：库里那行只是索引。
+        """
+        if not refs:
+            return
+        try:
+            from nnnu.services.agents.imports import (
+                MAX_PAGE,
+                AgentSessionNotFound,
+                get_agent_import_service,
+            )
+
+            service = get_agent_import_service()
+        except RuntimeError:
+            for session_id in refs:
+                state.snapshot.append(_agent_session_snapshot(session_id, "", False))
+            state.warnings.append("引用的导入会话不可用：子代理导入服务未装配")
+            return
+        for session_id in refs:
+            session = await service.get_session(session_id)
+            if session is None:
+                state.snapshot.append(_agent_session_snapshot(session_id, "", False))
+                state.warnings.append(f"引用的导入会话 {session_id} 不存在，已忽略")
+                continue
+            title = session.get("title", "")
+            try:
+                page = await service.read_transcript(session_id, limit=MAX_PAGE, offset=0)
+            except AgentSessionNotFound:
+                page = {"messages": [], "total": 0}
+            if not page.get("total"):
+                # 库里那行还在、正文文件没了（手删过 / 导一半中断）：索引不算数
+                state.snapshot.append(_agent_session_snapshot(session_id, title, False))
+                state.warnings.append(f"引用的导入会话 {session_id} 正文读不到了，已忽略")
+                continue
+            state.agent_session_refs.append(AgentSessionRef(id=session_id, title=title))
+            state.agent_session_payloads.append(
+                {
+                    "id": session_id,
+                    "source": session.get("source", ""),
+                    "title": title,
+                    "cwd": session.get("cwd", ""),
+                    "messages": page.get("messages", []),
+                }
+            )
+            state.snapshot.append(_agent_session_snapshot(session_id, title, True))
 
     async def _resolve_notebook_refs(self, refs: list[NotebookRef], state: "_ResolvedRefs") -> None:
         """记录按 record_id 全局查（不限定笔记本）——移动只改归属、id 不变，
@@ -569,55 +703,60 @@ class TurnRuntimeManager:
 
     @staticmethod
     def _refs_from_metadata(metadata: dict[str, Any]) -> TurnRefs:
-        """从 user 消息的引用快照重建 TurnRefs（regenerate 用；坏条目宽容跳过）。"""
+        """从 user 消息的引用快照重建 TurnRefs（regenerate 用；坏条目宽容跳过）。
+
+        每种引用类型在这里**必须有分支**：漏一种，那条引用在「重新生成」时就静默
+        失效（快照还在消息上、正文没进上下文），排查起来只能靠对着代码数分支。
+        """
         refs = TurnRefs()
         for entry in metadata.get("refs", []):
             if not isinstance(entry, dict):
                 continue
-            if entry.get("kind") == "notebook_record" and entry.get("record_id"):
+            kind = entry.get("kind")
+            if kind == "notebook_record" and entry.get("record_id"):
                 refs.notebooks.append(
                     NotebookRef(
                         notebook_id=str(entry.get("notebook_id") or ""),
                         record_id=str(entry["record_id"]),
                     )
                 )
-            elif entry.get("kind") == "question" and entry.get("question_id"):
+            elif kind == "question" and entry.get("question_id"):
                 refs.questions.append(QuestionRef(question_id=str(entry["question_id"])))
+            elif kind == "session" and entry.get("session_id"):
+                refs.sessions.append(str(entry["session_id"]))
+            elif kind == "agent_session" and entry.get("agent_session_id"):
+                refs.agent_sessions.append(str(entry["agent_session_id"]))
         return refs
-
-    async def _resolve_history_refs(
-        self, request: TurnRequest, bus: StreamBus
-    ) -> tuple[list[SessionRef], list[dict[str, Any]]]:
-        """一次性引用：历史会话转录装入 metadata 供能力注入（§7.1）。
-
-        引用的会话不存在 → warning 跳过，不阻断回合（宽容语义）。
-        """
-        transcripts: list[dict[str, Any]] = []
-        resolved: list[SessionRef] = []
-        for session_id in request.refs.sessions:
-            ref_session = await self._sessions.get_session(session_id)
-            if ref_session is None:
-                await bus.emit_warning(message=f"引用的会话 {session_id} 不存在，已忽略")
-                continue
-            messages = await self._sessions.list_messages(session_id)
-            resolved.append(SessionRef(id=ref_session.id, title=ref_session.title))
-            transcripts.append(
-                {
-                    "id": ref_session.id,
-                    "title": ref_session.title,
-                    "messages": [message.model_dump() for message in messages],
-                }
-            )
-        return resolved, transcripts
 
     async def _relay(self, execution: _TurnExecution) -> None:
         """bus → wire（补 seq）→ 缓冲 + 订阅者扇出。"""
         async for event in execution.bus.subscribe():
             wire = event.to_wire(seq=execution.next_seq)
             execution.next_seq += 1
-            execution.events.append(wire)
+            self._buffer(execution, wire)
             for queue in execution.subscribers:
                 queue.put_nowait(wire)
+
+    @staticmethod
+    def _buffer(execution: _TurnExecution, wire: dict) -> None:
+        """缓冲一帧；子代理活动的同一个块只留最新一帧（§7.12）。
+
+        活动流是「同一块被反复覆盖」的形态：一趟咨询几百上千帧，全留着的话断线重连
+        要重放几万个 dict。同一个块**只留最新那一帧**（带着它自己的 seq 占住原位）——
+        重连时按 seq 过滤就能拿到最新全文。代价是缓冲里同时活着的新旧帧不再严格
+        单调（新帧占了老位置），但块帧本来就是覆盖写、重复投递无害，客户端只认
+        「这块现在长什么样」。live 订阅者不受影响：它们各自早就拿到旧帧了。
+        """
+        if wire.get("type") == StreamEventType.SUBAGENT_EVENT.value:
+            payload = wire.get("payload") or {}
+            key = (str(payload.get("call_id") or ""), str(payload.get("block_id") or ""))
+            if all(key):
+                slot = execution.subagent_slots.get(key)
+                if slot is not None:
+                    execution.events[slot] = wire
+                    return
+                execution.subagent_slots[key] = len(execution.events)
+        execution.events.append(wire)
 
     async def _finalize_turn(
         self,

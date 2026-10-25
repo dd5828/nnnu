@@ -411,6 +411,22 @@ async def run_agent_loop(
                             call_id=_call_id, text=str(text)[:TOOL_PROGRESS_MAX_CHARS]
                         )
 
+                    async def _subagent(frame, _call_id: str = call_id) -> None:
+                        """子代理活动的一帧 → 贴回它自己那张卡（§7.12）。
+
+                        与 progress 分开是形状问题：活动流要块身份（覆盖写）与块正文，
+                        tool_progress 只有一行文本，撑不住。同样钉住 call_id。
+                        """
+                        await bus.emit_subagent_event(
+                            call_id=_call_id,
+                            block_id=frame.block_id,
+                            kind=frame.kind,
+                            text=frame.text,
+                            name=frame.name,
+                            args=frame.args,
+                            ok=frame.ok,
+                        )
+
                     tool_ctx = ToolContext(
                         turn_id=bus.turn_id,
                         session_id=bus.session_id or "",
@@ -423,6 +439,7 @@ async def run_agent_loop(
                             **ctx.metadata,
                             "cost_tracker": ctx.cost,
                             "progress_fn": _progress,
+                            "subagent_emit": _subagent,
                         },
                         args=args,
                     )

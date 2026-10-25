@@ -26,6 +26,7 @@ class StreamEventType(StrEnum):
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"
     TOOL_PROGRESS = "tool_progress"
+    SUBAGENT_EVENT = "subagent_event"
     CITATION = "citation"
     ASK_USER = "ask_user"
     ASK_USER_REPLY = "ask_user_reply"
@@ -90,6 +91,31 @@ class ToolProgressPayload(BaseModel):
 
     call_id: str
     text: str
+
+
+class SubagentEventPayload(BaseModel):
+    """子代理（外部 CLI）实时活动的一帧（§7.12）。
+
+    挂在**主回合**的 turn_id 上、按 `call_id` 归属到那张 consult_subagent 工具卡——
+    不另起一个 turn_id 是必须的：前端 ws 按 turn_id 重置 lastSeq（web/lib/ws.ts），
+    换 id 会把主回合的事件序号打乱。也不复用 content_delta/tool_progress：前者会被
+    拼进主模型正文，后者只有一行文本、装不下块正文与工具调用。
+
+    形状全扁平（无嵌套对象字段）：契约测试用非贪婪正则抽 TS 接口体，嵌套内联对象
+    会把抽取截断。
+
+    - `block_id` 是**一帧的身份**：同一块的增量在服务端累积成全文快照后按它覆盖写，
+      前端不做拼接（拼接收到的增量就要求客户端可信地补齐每一帧，做不到）；
+    - `kind` 取 block（正文/思考全文快照）、tool（一次工具调用）、tool_result、status。
+    """
+
+    call_id: str
+    block_id: str
+    kind: str
+    text: str = ""
+    name: str = ""
+    args: dict[str, Any] | None = None
+    ok: bool | None = None
 
 
 class CitationSource(BaseModel):
@@ -212,6 +238,7 @@ MODEL_BY_TYPE: dict[StreamEventType, type[BaseModel]] = {
     StreamEventType.TOOL_CALL: ToolCallPayload,
     StreamEventType.TOOL_RESULT: ToolResultPayload,
     StreamEventType.TOOL_PROGRESS: ToolProgressPayload,
+    StreamEventType.SUBAGENT_EVENT: SubagentEventPayload,
     StreamEventType.CITATION: CitationPayload,
     StreamEventType.ASK_USER: AskUserPayload,
     StreamEventType.ASK_USER_REPLY: AskUserReplyPayload,

@@ -642,3 +642,52 @@ def test_migrate_v8_to_v9_keeps_rows(tmp_home):
     indexes = _indexes(tmp_home, "learning_interactions")
     assert indexes["idx_learning_interactions_pending"] == (1, 1)  # 唯一 + 部分（只拦未决行）
     assert indexes["idx_learning_interactions_node"] == (0, 0)
+
+
+def test_migrate_v15_to_v16_keeps_rows(tmp_home):
+    # 模拟 P11 状态：v15 库里有会话与技能元数据。升到 v16 后两者都在、agent_sessions
+    # 表与 sessions.agent_connection 列就位——老会话这一列是 NULL（还没选过子代理），
+    # 所以读取端必须把 NULL 当「没选」而不是崩。
+    data = tmp_home / "data"
+    (data / "system").mkdir(parents=True)
+    _version_file(tmp_home).write_text("15\n", encoding="utf-8")
+    path = db_path(data)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    try:
+        for level in (str(v) for v in range(2, 16)):
+            for statement in MIGRATIONS[level]:
+                conn.execute(statement)
+        conn.execute(
+            "INSERT INTO sessions (id, title, created_at, updated_at) "
+            "VALUES ('s-v15', '老会话', 1.0, 1.0)"
+        )
+        conn.execute(
+            "INSERT INTO skills_meta (name, source, enabled) VALUES ('老技能', 'local', 1)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert migrate(data) == SCHEMA_VERSION
+    assert "agent_connection" in _columns(tmp_home, "sessions")
+    assert "agent_sessions" in _table_names(tmp_home)
+    conn = sqlite3.connect(path)
+    try:
+        kept = conn.execute("SELECT agent_connection FROM sessions WHERE id = 's-v15'").fetchone()
+        skill = conn.execute("SELECT name FROM skills_meta WHERE name = '老技能'").fetchone()
+        # 新表默认值就位：只给 id/title 就能插一条（导入的其余字段陆续补）
+        conn.execute(
+            "INSERT INTO agent_sessions (id, title) VALUES ('imp-0a1b2c3d', '导进来的会话')"
+        )
+        imported = conn.execute(
+            "SELECT source, source_id, message_count, digest, search_text FROM agent_sessions"
+        ).fetchone()
+        conn.commit()
+    finally:
+        conn.close()
+    assert kept == (None,)
+    assert skill == ("老技能",)
+    assert imported == ("claude_code", "", 0, "", "")
+    # 来源索引是普通索引（同一来源的会话成百上千条，不唯一）
+    assert _indexes(tmp_home, "agent_sessions")["idx_agent_sessions_source"] == (0, 0)

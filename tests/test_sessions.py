@@ -132,6 +132,17 @@ async def test_list_sessions_ordered_by_updated_at(manager):
     assert sessions[0].id == s2.id
 
 
+async def test_agent_connection_sticky(manager):
+    """子代理连接选择（§7.12 粘性）：写进去、读回来、能清掉。"""
+    session = await manager.ensure_session(None)
+    assert session.agent_connection is None
+    updated = await manager.set_agent_connection(session.id, "ag-0a1b2c3d")
+    assert updated.agent_connection == "ag-0a1b2c3d"
+    assert (await manager.get_session(session.id)).agent_connection == "ag-0a1b2c3d"
+    cleared = await manager.set_agent_connection(session.id, None)
+    assert cleared.agent_connection is None
+
+
 async def test_session_json_fields_roundtrip(manager):
     session = Session.new(kb_ids=["kb-1"], tool_overrides={"web_search": True}, model="m1")
     await manager._insert_session(session)

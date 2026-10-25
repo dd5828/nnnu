@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 
 from nnnu import __version__
 from nnnu.api.routers import (
+    agents,
     attachments,
     book,
     chat,
@@ -85,6 +86,8 @@ def create_app() -> FastAPI:
         from nnnu.runtime.registry.capability_registry import get_capability_registry
         from nnnu.runtime.registry.tool_registry import get_tool_registry
         from nnnu.runtime.turn_runtime import TurnRequest, TurnRuntimeManager
+        from nnnu.services.agents.imports import AgentImportService, set_agent_import_service
+        from nnnu.services.agents.service import AgentService, set_agent_service
         from nnnu.services.cost.service import CostService
         from nnnu.services.files.service import AttachmentsService
         from nnnu.services.learning.service import LearningService, set_learning_service
@@ -124,6 +127,17 @@ def create_app() -> FastAPI:
         skills_service = SkillService(db)
         set_skill_service(skills_service)
         _app.state.skills = skills_service
+        # 子代理（§7.12，schema v16）：连接配置在磁盘上（data/user/agents/），路由用它
+        # 做增删查探活；单例给 `consult_subagent` 的挂载门与咨询工具用——一条连接都没有
+        # 就不挂这个工具，别把「没配」变成模型每次都能看见的一个空工具
+        agents_service = AgentService()
+        set_agent_service(agents_service)
+        _app.state.agents = agents_service
+        # 导入的历史会话（§7.12 第三刀）：库里记元数据、正文在 user/agents/imports/；
+        # 它要一个 DB（连接配置那边不用库，这份用），所以是独立的一个服务
+        imports_service = AgentImportService(db)
+        set_agent_import_service(imports_service)
+        _app.state.agent_imports = imports_service
         # Co-Writer（§7.13）：正文文件 + 元数据表（v13）；待确认编辑只在内存，
         # 单例给路由取用（其余子系统若要读文档走 get_co_writer_service）
         co_writer_service = CoWriterService(db, data_root=runtime_home.get_data_root())
@@ -238,6 +252,8 @@ def create_app() -> FastAPI:
         set_question_bank(None)
         set_notebook_service(None)
         set_skill_service(None)
+        set_agent_service(None)
+        set_agent_import_service(None)
         set_co_writer_service(None)
         set_learning_service(None)
         set_research_service(None)
@@ -281,6 +297,7 @@ def create_app() -> FastAPI:
     app.include_router(skills.router)
     app.include_router(mcp.router)
     app.include_router(cli_apps.router)
+    app.include_router(agents.router)
     app.include_router(co_writer.router)
     app.include_router(book.router)
     app.include_router(questions.router)

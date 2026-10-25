@@ -16,6 +16,7 @@ import sys
 import time
 from pathlib import Path
 
+from nnnu.core.proc import kill_tree
 from nnnu.runtime import home
 from nnnu.services.sandbox.spec import (
     DEFAULT_TIMEOUT_S,
@@ -112,31 +113,6 @@ def _build_env(allow_network: bool, extra: dict[str, str]) -> dict[str, str]:
     return env
 
 
-async def _kill_tree(process: asyncio.subprocess.Process) -> None:
-    """杀整棵进程树：Windows 走 taskkill /T，POSIX 走进程组。"""
-    try:
-        if os.name == "nt":
-            await asyncio.create_subprocess_exec(
-                "taskkill",
-                "/F",
-                "/T",
-                "/PID",
-                str(process.pid),
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-        else:
-            killpg = getattr(os, "killpg", None)  # POSIX 专属，Windows 类型桩无此属性
-            getpgid = getattr(os, "getpgid", None)
-            if killpg is not None and getpgid is not None:
-                killpg(getpgid(process.pid), 9)
-    except (OSError, ProcessLookupError):
-        try:
-            process.kill()
-        except ProcessLookupError:
-            pass
-
-
 class SandboxService:
     """进程内单例：并发/速率配额 + 两种执行（Python 代码 / shell 命令）。"""
 
@@ -231,7 +207,7 @@ class SandboxService:
                 if total + len(chunk) > OUTPUT_LIMIT_BYTES:
                     truncated = True
                     # 输出超限：立刻杀进程（process.wait() 随即返回），不再读取
-                    await _kill_tree(process)
+                    await kill_tree(process)
                     return
                 total += len(chunk)
                 parts.append(chunk)
@@ -258,7 +234,7 @@ class SandboxService:
             exit_code = None
         finally:
             if process.returncode is None:
-                await _kill_tree(process)
+                await kill_tree(process)
 
         duration = time.monotonic() - started
         stdout = b"".join(stdout_parts).decode("utf-8", errors="replace")

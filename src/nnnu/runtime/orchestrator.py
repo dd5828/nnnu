@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from nnnu.core.context import (
+    AgentSessionRef,
     KbRef,
     ModelRef,
     NotebookRef,
@@ -139,6 +140,7 @@ def build_unified_context(
     history_refs: list[SessionRef] | None = None,
     notebook_refs: list[NotebookRef] | None = None,
     question_refs: list[QuestionRef] | None = None,
+    agent_session_refs: list[AgentSessionRef] | None = None,
 ) -> UnifiedContext:
     """粘性（模型/persona/kb/语言取会话）vs 一次性（refs 仅当回合）——纯函数。
 
@@ -185,6 +187,7 @@ def build_unified_context(
         history_refs=history_refs or [],
         notebook_refs=notebook_refs or [],
         question_refs=question_refs or [],
+        agent_session_refs=agent_session_refs or [],
         kb_refs=[KbRef(kb_id=kb_id) for kb_id in request.kb_ids],
         tool_flags=ToolMountFlags(
             context=context_flags,
@@ -199,5 +202,10 @@ def build_unified_context(
         ),
         language=language,
         model=model_ref,
-        metadata={"session_messages": session_messages},
+        metadata={
+            "session_messages": session_messages,
+            # §7.12 粘性选中项：显式请求带的已由传输层合并过（request.agent_connection），
+            # consult_subagent 从这里取「本会话用哪条连接」（空串 = 没选，工具自己兜底）
+            "agent_connection": request.agent_connection or "",
+        },
     )

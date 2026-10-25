@@ -40,6 +40,13 @@ class QuestionRef(BaseModel):
     question_id: str
 
 
+class AgentSessionRef(BaseModel):
+    """导入的第三方 CLI 历史会话引用（§7.12）：id 是 `imp-xxxxxxxx`，标题给人看。"""
+
+    id: str
+    title: str = ""
+
+
 class PersonaRef(BaseModel):
     id: str
     description: str | None = None
@@ -62,6 +69,7 @@ class UnifiedContext(BaseModel):
     notebook_refs: list[NotebookRef] = Field(default_factory=list)
     history_refs: list[SessionRef] = Field(default_factory=list)
     question_refs: list[QuestionRef] = Field(default_factory=list)
+    agent_session_refs: list[AgentSessionRef] = Field(default_factory=list)
     tool_flags: ToolMountFlags = Field(default_factory=ToolMountFlags)
     config: dict[str, Any] = Field(default_factory=dict)  # 能力配置（用户设置 + 请求覆盖）
     persona: PersonaRef | None = None

@@ -102,6 +102,8 @@ async def mount_tools(
         ctx.tool_flags.context.update(SKILL_TOOL_NAMES)
     if await _cli_app_gate():
         ctx.tool_flags.context.update(CLI_APP_TOOL_NAMES)
+    if _agent_gate():
+        ctx.tool_flags.context.update(AGENT_TOOL_NAMES)
     mounted = get_tool_registry().mounted(ctx.tool_flags)
     if allowlist is not None:
         allowed = set(allowlist)
@@ -148,6 +150,22 @@ async def mount_tools(
 
 SKILL_TOOL_NAMES = ("read_skill", "load_tools")  # 技能两件的上下文条件（等于工具名）
 CLI_APP_TOOL_NAMES = ("list_cli_apps", "run_cli_app")  # 命令行应用两件（§7.18）
+AGENT_TOOL_NAMES = ("consult_subagent",)  # 子代理咨询（§7.12）
+
+
+def _agent_gate() -> bool:
+    """配了至少一条子代理连接才开这门（§7.12）；没装配/读配置失败一律当没配（fail-closed）。
+
+    门只保证「有东西可调」，不等于用户同意：真要关，走设置里的工具禁用线
+    （consult_subagent 是普通上下文门控工具，suppressed 优先）。
+    """
+    try:
+        from nnnu.services.agents.service import get_agent_service
+
+        return get_agent_service().count() > 0
+    except Exception:
+        logger.warning("子代理连接配置读取失败，本回合不开这门", exc_info=True)
+        return False
 
 
 async def _cli_app_gate() -> bool:
@@ -311,10 +329,14 @@ async def build_user_message(
     content_text = ctx.message.content
     # 首回合记忆摘录在最前（背景），附件与引用转录随后（本次请求的载荷）
     memory_note = memory_injection_note(ctx)
-    # 一次性引用：历史会话转录 + 笔记本记录/题目（§7.1；后两者共用一个总预算）
+    # 一次性引用：历史会话转录 + 导入的 CLI 历史会话（§7.12）+ 笔记本记录/题目
+    # （§7.1；笔记本与题目共用一个总预算，两类转录各自逐条封顶）
     ref_texts = [
         format_history_ref(ref, ctx.language)
         for ref in ctx.metadata.get("history_ref_transcripts", [])
+    ] + [
+        format_agent_session_ref(ref, ctx.language)
+        for ref in ctx.metadata.get("agent_session_transcripts", [])
     ]
     entity_texts = [
         format_notebook_ref(payload, ctx.language)
@@ -529,6 +551,43 @@ def format_history_ref(ref: dict[str, Any], lang: str) -> str:
             lines.append("…" if lang == "zh" else "...")
             break
         line = f"{role_labels[role]}：{str(message['content'])[:HISTORY_REF_MESSAGE_MAX_CHARS]}"
+        lines.append(line[:budget])
+        budget -= len(line)
+    return "\n".join(lines)
+
+
+def format_agent_session_ref(ref: dict[str, Any], lang: str) -> str:
+    """引用**导入的**第三方 CLI 历史会话（§7.12）：与历史会话引用共用同一组额度。
+
+    额度必须复用（`HISTORY_REF_INJECT_MAX_CHARS` / `HISTORY_REF_MESSAGE_MAX_CHARS`）：
+    导入的转录动辄几千条，另发明一套上限就是给「一条引用吃穿 32K 预算」留门。
+    正文形状与 `format_history_ref` 不同（落盘的是 `{role, text}` 一行条，不是会话
+    消息的 `content`），所以是另一个函数而不是给它加开关。
+    """
+    from nnnu.services.agents.imports import SOURCE_LABELS
+
+    source = SOURCE_LABELS.get(str(ref.get("source") or ""), str(ref.get("source") or ""))
+    title = ref.get("title") or ref.get("id")
+    header = (
+        f"【引用 {source} 历史会话《{title}》】"
+        if lang == "zh"
+        else f'[Referenced {source} history session "{title}"]'
+    )
+    role_labels = (
+        {"user": "用户", "assistant": "助手"}
+        if lang == "zh"
+        else {"user": "User", "assistant": "Assistant"}
+    )
+    lines: list[str] = [header]
+    budget = HISTORY_REF_INJECT_MAX_CHARS
+    for message in ref.get("messages", []):
+        role = message.get("role")
+        if role not in role_labels or not message.get("text"):
+            continue
+        if budget <= 0:
+            lines.append("…" if lang == "zh" else "...")
+            break
+        line = f"{role_labels[role]}：{str(message['text'])[:HISTORY_REF_MESSAGE_MAX_CHARS]}"
         lines.append(line[:budget])
         budget -= len(line)
     return "\n".join(lines)

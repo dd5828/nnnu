@@ -97,6 +97,16 @@ class SessionManager:
         )
         return await self.get_session(session_id)
 
+    async def set_agent_connection(
+        self, session_id: str, connection_id: str | None
+    ) -> Session | None:
+        """设置会话粘性选中的子代理连接（§7.12；None = 取消选择，回到自动选）。"""
+        await self._db.execute(
+            "UPDATE sessions SET agent_connection = ?, updated_at = ? WHERE id = ?",
+            (connection_id, time.time(), session_id),
+        )
+        return await self.get_session(session_id)
+
     async def set_capability(self, session_id: str, capability: str) -> Session | None:
         """设置会话能力（§6.4 粘性：回合显式带了 capability 就记下来，切走再回来还在）。"""
         await self._db.execute(
@@ -201,6 +211,8 @@ class SessionManager:
             kb_ids=_loads(row["kb_ids"], []),
             tool_overrides=_loads(row["tool_overrides"], {}),
             language=row["language"] or "zh",
+            # 老库升级上来的行这一列是 NULL（v16 才加），取不到就当没选
+            agent_connection=row.get("agent_connection") or None,
         )
 
     @staticmethod
@@ -222,8 +234,8 @@ class SessionManager:
         await self._db.execute(
             """INSERT INTO sessions
                (id, title, capability, model, persona, persona_description, language,
-                kb_ids, tool_overrides, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                kb_ids, tool_overrides, agent_connection, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 session.id,
                 session.title,
@@ -234,6 +246,7 @@ class SessionManager:
                 session.language,
                 _dumps(session.kb_ids),
                 _dumps(session.tool_overrides),
+                session.agent_connection,
                 session.created_at,
                 session.updated_at,
             ),

@@ -1,0 +1,13 @@
+# 子代理提示词（§7.12）：consult_subagent 的输出文案。
+# 注意 str.format 花括号坑：模板里的字面花括号要写成 {{ }}。
+no_connection: "本机还没有配置子代理连接。让用户到「子代理」页新建一条（本版本支持 Claude Code），再让他重说一次这个任务。"
+unknown_connection: "没有叫「{connection}」的子代理连接。当前可用的是：{connections}。"
+pick_connection: "本机有多条子代理连接，这次用哪条得指定：请把 connection 参数填成 {connections} 里的一个。"
+unsupported_kind: "「{connection}」是 {kind} 类型的连接，本版本还没接上它的咨询链路（现在只能建连接、探活）。换一条 Claude Code 的连接，或者让用户在子代理页里改。"
+empty_task: "要给子代理一个明确的任务描述（task 参数，写清目标、范围和期望产出）。"
+header: "【子代理「{connection}」的结论】"
+header_resumed: "【子代理「{connection}」的结论（接着上次那条会话聊的）】"
+incomplete: "（这趟没跑完，下面是它到目前说出的内容，仅供参考。）"
+failed: "【子代理「{connection}」没能完成】{error}"
+no_output: "（子代理跑完了，但没给出文字结论。{extra}）"
+truncated: "（正文过长已截断到 {limit} 字；想要完整内容，可让用户到子代理页把这个工具的历史会话导进来再看。）"

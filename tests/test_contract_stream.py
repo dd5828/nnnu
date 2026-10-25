@@ -24,6 +24,7 @@ TS_TYPE_NAMES = {
     "tool_call": "ToolCallPayload",
     "tool_result": "ToolResultPayload",
     "tool_progress": "ToolProgressPayload",
+    "subagent_event": "SubagentEventPayload",
     "citation": "CitationPayload",
     "ask_user": "AskUserPayload",
     "ask_user_reply": "AskUserReplyPayload",

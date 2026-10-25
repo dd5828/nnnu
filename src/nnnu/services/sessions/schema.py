@@ -42,7 +42,12 @@ from pathlib import Path
 #     enabled/installed_at）。技能正文是 data/user/skills/<name>/ 目录下的
 #     SKILL.md（§8.1 目录已在），不在库里；MCP/CLI Apps 的配置也不在库（JSON
 #     文件，见 src/nnnu/services/{mcp,cli_apps}）。
-SCHEMA_VERSION = "15"
+# v16：P12 子代理（§7.12）——sessions 补 agent_connection（会话粘性选中的子代理连接，
+#     值取 agents/connections.json 里的 ag-…；NULL = 没选，工具按「只有一个连接就
+#     自动选」处理）。新增 agent_sessions 存**导入的**第三方 CLI 历史会话（§8.2 无此表，
+#     记偏离）：只放元数据与检索文本，正文是 data/user/agents/imports/<id>.jsonl。
+#     连接配置本身不进库（JSON 文件，同 MCP/CLI Apps 的口径）。
+SCHEMA_VERSION = "16"
 
 MIGRATIONS: dict[str, list[str]] = {
     "2": [
@@ -372,6 +377,27 @@ MIGRATIONS: dict[str, list[str]] = {
             installed_at REAL
         )""",
     ],
+    # §7.12 P12。agent_sessions.id 是**确定性 id**（core.ids.stable_id，来源+外部 id
+    # 的哈希），所以重复扫同一份历史是幂等覆盖而不是越导越多；digest 记正文指纹，
+    # 变了说明来源那边又聊过 → 整条覆盖重导。search_text 只放标题 + 前若干条消息
+    # （不灌整条转录：正文已经在 imports/<id>.jsonl 里存了一份，库里再来一份纯属浪费）。
+    "16": [
+        "ALTER TABLE sessions ADD COLUMN agent_connection TEXT",
+        """CREATE TABLE IF NOT EXISTS agent_sessions (
+            id TEXT PRIMARY KEY,
+            source TEXT NOT NULL DEFAULT 'claude_code',
+            source_id TEXT NOT NULL DEFAULT '',
+            title TEXT NOT NULL DEFAULT '',
+            cwd TEXT NOT NULL DEFAULT '',
+            started_at REAL,
+            ended_at REAL,
+            message_count INTEGER NOT NULL DEFAULT 0,
+            digest TEXT NOT NULL DEFAULT '',
+            imported_at REAL,
+            search_text TEXT NOT NULL DEFAULT ''
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_agent_sessions_source ON agent_sessions(source, source_id)",
+    ],
 }
 
 # 每级迁移应落地的产物——启动自检清单（见 _verify）。
@@ -390,6 +416,7 @@ EXPECTED_TABLES: dict[str, tuple[str, ...]] = {
     "13": ("co_writer_docs",),
     "14": ("books", "book_pages", "book_page_messages", "book_attempts"),
     "15": ("skills_meta",),
+    "16": ("agent_sessions",),
 }
 
 EXPECTED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
@@ -403,6 +430,7 @@ EXPECTED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("questions", "parent_id"),
     ),
     "12": (("messages", "metadata"),),
+    "16": (("sessions", "agent_connection"),),
 }
 
 

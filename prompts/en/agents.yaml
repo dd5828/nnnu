@@ -1,0 +1,13 @@
+# Subagent prompts (section 7.12): output text for consult_subagent.
+# Note the str.format brace pitfall: literal braces in templates must be written as {{ }}.
+no_connection: "No subagent connection is configured on this machine. Ask the user to create one on the Agents page (this version supports Claude Code), then have them restate the task."
+unknown_connection: "There is no subagent connection named \"{connection}\". Available: {connections}."
+pick_connection: "Several subagent connections exist, so this call must pick one: set the connection parameter to one of {connections}."
+unsupported_kind: "\"{connection}\" is a {kind} connection, and this version does not yet wire up consulting for that kind (it can only be created and probed). Use a Claude Code connection, or ask the user to change it on the Agents page."
+empty_task: "Give the subagent a concrete task description (the task parameter: goal, scope, and what output you expect)."
+header: "[Conclusion from subagent \"{connection}\"]"
+header_resumed: "[Conclusion from subagent \"{connection}\" (continuing the previous conversation with it)]"
+incomplete: "(This run did not finish; what it had said so far is below, for reference only.)"
+failed: "[Subagent \"{connection}\" did not complete] {error}"
+no_output: "(The subagent finished without a text conclusion. {extra})"
+truncated: "(The text was too long and has been truncated to {limit} characters; for the full content the user can import this tool's history on the Agents page.)"

@@ -22,6 +22,9 @@ class Session(BaseModel):
     kb_ids: list[str] = Field(default_factory=list)
     tool_overrides: dict[str, Any] = Field(default_factory=dict)
     language: str = "zh"
+    # 会话粘性选中的子代理连接（§7.12，v16 加）：agents/connections.json 里的 ag-…，
+    # None = 没选（工具层此时按「只有一个连接就自动选」兜底）
+    agent_connection: str | None = None
 
     @classmethod
     def new(cls, **kwargs) -> "Session":
