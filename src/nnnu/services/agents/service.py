@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from collections.abc import Sequence
 from pathlib import Path
 
 from nnnu.core.ids import new_id
@@ -89,7 +90,7 @@ class AgentService:
         cwd: str = "",
         model_override: str = "",
         permission_mode: str = "bypassPermissions",
-        command: list[str] | None = None,
+        command: Sequence[str] | None = None,
         acknowledged: bool = False,
     ) -> AgentConnection:
         """建一条连接。
