@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 from nnnu.core.tool_protocol import BaseTool, ToolContext, ToolDefinition, ToolMount, ToolResult
+from nnnu.services.i18n.prompts import get_prompt_manager
 from nnnu.services.learning.grading import grade_with_fallback, resolve_choice_submission
 from nnnu.services.learning.models import LearningInteraction
 from nnnu.services.learning.service import LearningError, LearningService, get_learning_service
@@ -176,7 +177,20 @@ class MasteryGradeTool(BaseTool):
             "gate": payload.get("gate"),
         }
         payload["cards"] = [card]
-        return ToolResult(ok=True, output=card_line(ctx, card, index=1, total=1), detail=payload)
+        output = card_line(ctx, card, index=1, total=1)
+        # 下一步不是「继续出题」：答错先讲，答对先点明为什么对（提示词里的讲—测节奏，
+        # 在这里再顶一句，免得模型一拿到判分就接着连问）
+        hint_key = (
+            "grade.cleared"
+            if payload.get("cleared")
+            else ("grade.next_teach" if not result.correct else "grade.next_after_correct")
+        )
+        hint = get_prompt_manager().render("mastery", ctx.language, hint_key).strip()
+        return ToolResult(
+            ok=True,
+            output=f"{output}\n{hint}" if hint else output,
+            detail=payload,
+        )
 
     async def _target_interaction(
         self, ctx: ToolContext, service: LearningService, path_id: str

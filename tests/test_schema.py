@@ -691,3 +691,35 @@ def test_migrate_v15_to_v16_keeps_rows(tmp_home):
     assert imported == ("claude_code", "", 0, "", "")
     # 来源索引是普通索引（同一来源的会话成百上千条，不唯一）
     assert _indexes(tmp_home, "agent_sessions")["idx_agent_sessions_source"] == (0, 0)
+
+
+def test_migrate_v16_to_v17_adds_path_mode_default_learn(tmp_home):
+    """老路径升上来一律是 learn：学习路径的本意是学新知识，不会被静默切成巩固模式。"""
+    data = tmp_home / "data"
+    (data / "system").mkdir(parents=True)
+    _version_file(tmp_home).write_text("16\n", encoding="utf-8")
+    path = db_path(data)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    try:
+        for level in (str(v) for v in range(2, 17)):
+            for statement in MIGRATIONS[level]:
+                conn.execute(statement)
+        conn.execute(
+            "INSERT INTO learning_paths (id, topic, title, session_id, created_at, updated_at) "
+            "VALUES ('lpath-v16', '老主题', '老路径', NULL, 1.0, 1.0)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert migrate(data) == SCHEMA_VERSION
+    assert "mode" in _columns(tmp_home, "learning_paths")
+    conn = sqlite3.connect(path)
+    try:
+        kept = conn.execute(
+            "SELECT topic, title, mode FROM learning_paths WHERE id = 'lpath-v16'"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert kept == ("老主题", "老路径", "learn")

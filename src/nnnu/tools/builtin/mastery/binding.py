@@ -11,7 +11,12 @@ import sqlite3
 from nnnu.core.tool_protocol import BaseTool, ToolContext, ToolDefinition, ToolMount, ToolResult
 from nnnu.services.i18n.prompts import get_prompt_manager
 from nnnu.services.learning.service import LearningService, get_learning_service
-from nnnu.tools.builtin.mastery.common import action_label, resolve_path, status_lines
+from nnnu.tools.builtin.mastery.common import (
+    action_label,
+    mode_label,
+    resolve_path,
+    status_lines,
+)
 
 _COST_HINT = "tools.cost.mastery_paths"
 
@@ -46,7 +51,10 @@ class MasteryPathsTool(BaseTool):
             # 「一条路径都还没有」是正常状态，不是调用出错：给指路，别标成 ok=False
             return ToolResult(
                 ok=True,
-                output="还没有任何学习路径：用 mastery_build 建一条（给 topic 与 nodes）。",
+                output=(
+                    "还没有任何学习路径：用 mastery_build 建一条"
+                    "（给 topic 与 nodes；mode 默认 learn，想巩固已学内容时传 consolidate）。"
+                ),
                 detail={"paths": []},
             )
         prompts = get_prompt_manager()
@@ -59,6 +67,7 @@ class MasteryPathsTool(BaseTool):
                     ctx.language,
                     "state_block.path_line",
                     title=summary.path.title,
+                    mode=mode_label(prompts, ctx.language, summary.path.mode),
                     mastered=summary.stats.mastered,
                     total=summary.stats.total,
                     due=summary.stats.due,
@@ -71,6 +80,7 @@ class MasteryPathsTool(BaseTool):
                 {
                     "path_id": summary.path.id,
                     "title": summary.path.title,
+                    "mode": summary.path.mode,
                     "stats": summary.stats.model_dump(),
                     "next_title": summary.next_title,
                     "next_action": summary.next_action,

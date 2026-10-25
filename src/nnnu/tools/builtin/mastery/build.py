@@ -7,8 +7,10 @@
 from __future__ import annotations
 
 from nnnu.core.tool_protocol import BaseTool, ToolContext, ToolDefinition, ToolMount, ToolResult
+from nnnu.services.i18n.prompts import get_prompt_manager
+from nnnu.services.learning.models import PATH_MODES
 from nnnu.services.learning.service import LearningError, get_learning_service
-from nnnu.tools.builtin.mastery.common import MAX_NODES, status_lines, tree_lines
+from nnnu.tools.builtin.mastery.common import MAX_NODES, mode_label, status_lines, tree_lines
 
 _NODE_SCHEMA = {
     "type": "object",
@@ -47,6 +49,15 @@ class MasteryBuildTool(BaseTool):
                 "topic": {"type": "string", "description": "学习主题"},
                 "title": {"type": "string", "description": "路径标题（不给就用主题）"},
                 "summary": {"type": "string", "description": "一句话说明这条路径"},
+                "mode": {
+                    "type": "string",
+                    "enum": list(PATH_MODES),
+                    "default": "learn",
+                    "description": (
+                        "learn 学习新知识（默认，先讲后测）；"
+                        "consolidate 学习巩固（用户已学过，以测代讲查漏补缺）"
+                    ),
+                },
                 "nodes": {
                     "type": "array",
                     "items": _NODE_SCHEMA,
@@ -67,6 +78,11 @@ class MasteryBuildTool(BaseTool):
         topic = str(ctx.args.get("topic") or "").strip()
         if not topic:
             return ToolResult(ok=False, output="需要 topic（学习主题）。")
+        mode = str(ctx.args.get("mode") or "learn").strip()
+        if mode not in PATH_MODES:
+            return ToolResult(
+                ok=False, output=f"mode 只支持 {'、'.join(PATH_MODES)}（学习 / 学习巩固）。"
+            )
         nodes = ctx.args.get("nodes")
         if not isinstance(nodes, list) or not nodes:
             return ToolResult(ok=False, output="需要 nodes 数组（至少一个节点）。")
@@ -77,7 +93,11 @@ class MasteryBuildTool(BaseTool):
             return ToolResult(ok=False, output="nodes 里每一项都得是节点对象。")
 
         bound = await service.get_path_by_session(ctx.session_id)
-        if bound is not None and bound.topic.strip().casefold() == topic.casefold():
+        if (
+            bound is not None
+            and bound.topic.strip().casefold() == topic.casefold()
+            and bound.mode == mode
+        ):
             detail = await service.get_path(bound.id)
             text = status_lines(ctx, detail) if detail else ""
             return ToolResult(
@@ -93,6 +113,7 @@ class MasteryBuildTool(BaseTool):
                 topic=topic,
                 title=str(ctx.args.get("title") or "").strip() or None,
                 summary=str(ctx.args.get("summary") or "").strip() or None,
+                mode=mode,
                 nodes=rows,
                 session_id=ctx.session_id or None,
             )
@@ -100,11 +121,13 @@ class MasteryBuildTool(BaseTool):
             return ToolResult(ok=False, output=f"建路径失败：{exc}")
         detail = await service.get_path(path.id)
         target = detail.next_target if detail else None
+        prompts = get_prompt_manager()
+        mode_text = mode_label(prompts, ctx.language, path.mode)
         return ToolResult(
             ok=True,
             output=(
-                f"已建好学习路径《{path.title}》（id={path.id}，共 {len(built)} 个节点，"
-                f"顺序即学习顺序）：\n{tree_lines(built)}\n"
+                f"已建好学习路径《{path.title}》（id={path.id}，模式：{mode_text}，"
+                f"共 {len(built)} 个节点，顺序即学习顺序）：\n{tree_lines(built)}\n"
                 f"下一目标：{target.reason if target else '—'}"
             ),
             detail={

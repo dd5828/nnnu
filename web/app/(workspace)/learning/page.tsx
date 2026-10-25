@@ -46,7 +46,16 @@ function PathCard({
       >
         <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-sm font-medium">{card.title}</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="truncate text-sm font-medium">{card.title}</h2>
+              <span
+                data-testid="l-card-mode"
+                data-mode={card.mode}
+                className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 text-[10px] text-muted"
+              >
+                {t(`learning.mode_${card.mode}`)}
+              </span>
+            </div>
             <p className="mt-0.5 truncate text-[11px] text-muted">
               {card.topic}
               {card.summary ? ` · ${card.summary}` : ""}

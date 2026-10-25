@@ -531,6 +531,8 @@
   "learning": {
     "title": "Learning paths",
     "desc": "Four node types: memory/procedure clear on a score (90), concept/design clear when you explain them in your own words. The next objective is recomputed server-side every turn — nothing to advance by hand.",
+    "mode_learn": "Learning",
+    "mode_consolidate": "Consolidation",
     "empty": "No learning path yet.",
     "emptyHint": "Paths are created in chat: hit “New learning path” to open a learning session, or switch the capability to “Learning path” and say “build me a learning path for linear algebra”.",
     "newPath": "New learning path",

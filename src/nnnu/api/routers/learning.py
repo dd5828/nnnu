@@ -62,6 +62,7 @@ class PathPatch(BaseModel):
     title: str | None = None
     topic: str | None = None
     summary: str | None = None
+    mode: str | None = None  # learn / consolidate（学习 / 学习巩固）
 
 
 class NodeBody(BaseModel):

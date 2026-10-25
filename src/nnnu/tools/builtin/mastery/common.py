@@ -88,7 +88,10 @@ async def no_path(ctx: ToolContext, service: LearningService) -> ToolResult:
                 f"- 《{summary.path.title}》：已过门 {summary.stats.mastered}/"
                 f"{summary.stats.total}，下一目标 {summary.next_title or '—'}；id={summary.path.id}"
             )
-    lines.append("都不合适就 mastery_build 新建一条（给 topic 与 nodes）。")
+    lines.append(
+        "都不合适就 mastery_build 新建一条（给 topic 与 nodes；mode 默认 learn，"
+        "用户已学过、想复习巩固时传 consolidate）。"
+    )
     return ToolResult(ok=False, output="\n".join(lines))
 
 
@@ -199,6 +202,12 @@ def action_label(prompts: Any, language: str, action: str | None) -> str:
     return prompts.render("mastery", language, f"state_block.action_{action}").strip() or action
 
 
+def mode_label(prompts: Any, language: str, mode: str) -> str:
+    """路径模式的人读文案（learn / consolidate；脏值按 learn 渲染）。"""
+    key = f"state_block.mode_{'consolidate' if mode == 'consolidate' else 'learn'}"
+    return prompts.render("mastery", language, key).strip()
+
+
 def tree_lines(nodes: list[LearningNode]) -> str:
     lines = []
     for node in nodes:
@@ -227,6 +236,12 @@ def status_lines(ctx: ToolContext, detail: PathDetail | None) -> str:
             due=stats.due,
             progress=f"{stats.progress:.0%}",
             id=path.id,
+        ).strip(),
+        prompts.render(
+            "mastery",
+            ctx.language,
+            "state_block.mode",
+            mode=mode_label(prompts, ctx.language, path.mode),
         ).strip(),
         prompts.render(
             "mastery",

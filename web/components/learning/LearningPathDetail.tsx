@@ -272,9 +272,18 @@ export default function LearningPathDetail() {
             </div>
           ) : (
             <div className="min-w-0 flex-1">
-              <h1 className="truncate text-xl font-semibold" data-testid="l-path-title-text">
-                {path.title}
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="truncate text-xl font-semibold" data-testid="l-path-title-text">
+                  {path.title}
+                </h1>
+                <span
+                  data-testid="l-path-mode"
+                  data-mode={path.mode}
+                  className="shrink-0 rounded-full bg-accent px-2 py-0.5 text-[11px] text-muted"
+                >
+                  {t(`learning.mode_${path.mode}`)}
+                </span>
+              </div>
               <p className="mt-0.5 text-xs text-muted">
                 {path.topic}
                 {path.summary ? ` · ${path.summary}` : ""}

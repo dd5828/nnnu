@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from nnnu.core.tool_protocol import BaseTool, ToolContext, ToolDefinition, ToolMount, ToolResult
+from nnnu.services.i18n.prompts import get_prompt_manager
 from nnnu.services.learning.service import LearningError, get_learning_service
 from nnnu.tools.builtin.mastery.common import (
     ANSWER_KEY,
@@ -120,9 +121,19 @@ class MasteryAssessTool(BaseTool):
         }
         payload["cards"] = [card]
         verdict = "讲清楚了，这一节点算过关" if passed else "还差点意思：这一节点没过"
+        hint = (
+            get_prompt_manager()
+            .render(
+                "mastery",
+                ctx.language,
+                "assess.next_after_pass" if passed else "assess.next_reteach",
+            )
+            .strip()
+        )
         lines = [
             f"节点「{node.title}」的定性评定：{verdict}。",
             feedback,
+            hint,
             f"下一目标：{detail.next_target.reason if detail else '—'}",
         ]
         return ToolResult(

@@ -47,7 +47,9 @@ from pathlib import Path
 #     自动选」处理）。新增 agent_sessions 存**导入的**第三方 CLI 历史会话（§8.2 无此表，
 #     记偏离）：只放元数据与检索文本，正文是 data/user/agents/imports/<id>.jsonl。
 #     连接配置本身不进库（JSON 文件，同 MCP/CLI Apps 的口径）。
-SCHEMA_VERSION = "16"
+# v17：学习路径模式——learning_paths 补 mode（learn 学习新知识 / consolidate 学习巩固）。
+#     老行默认 learn：学习路径的本意是学新知识（先讲后测），巩固模式是按需另建的。
+SCHEMA_VERSION = "17"
 
 MIGRATIONS: dict[str, list[str]] = {
     "2": [
@@ -398,6 +400,11 @@ MIGRATIONS: dict[str, list[str]] = {
         )""",
         "CREATE INDEX IF NOT EXISTS idx_agent_sessions_source ON agent_sessions(source, source_id)",
     ],
+    # 注意：ADD COLUMN 不是幂等语句（同 v9/v11/v12），崩在「DDL 已应用、版本文件还没写」
+    # 之间要把 data/system/schema_version.txt 退回 v16 重跑。
+    "17": [
+        "ALTER TABLE learning_paths ADD COLUMN mode TEXT NOT NULL DEFAULT 'learn'",
+    ],
 }
 
 # 每级迁移应落地的产物——启动自检清单（见 _verify）。
@@ -431,6 +438,7 @@ EXPECTED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
     ),
     "12": (("messages", "metadata"),),
     "16": (("sessions", "agent_connection"),),
+    "17": (("learning_paths", "mode"),),
 }
 
 

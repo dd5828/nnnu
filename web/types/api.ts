@@ -358,11 +358,15 @@ export type NodeState = "not_started" | "learning" | "mastered" | "reviewing";
 /** 下一目标要做什么（服务端每回合现算；`complete` = 全部过门）。 */
 export type NextAction = "answer_pending" | "review" | "probe" | "practice" | "assess" | "complete";
 
+/** 路径模式：learn 学新知识（先讲后测）；consolidate 学习巩固（以测代讲）。 */
+export type PathMode = "learn" | "consolidate";
+
 export interface LearningPath {
   id: string;
   topic: string;
   title: string;
   summary: string | null;
+  mode: PathMode;
   // **没有 current_node_id**：门就是游标，下一步由服务端按「哪些节点已过门」现算
   session_id: string | null;
   created_at: number;

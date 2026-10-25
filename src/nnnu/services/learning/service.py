@@ -27,6 +27,7 @@ from nnnu.services.learning.mastery import (
 )
 from nnnu.services.learning.models import (
     NODE_TYPES,
+    PATH_MODES,
     DueReview,
     LearningInteraction,
     LearningNode,
@@ -118,6 +119,7 @@ class LearningService:
         nodes: Sequence[Mapping[str, Any]],
         title: str | None = None,
         summary: str | None = None,
+        mode: str = "learn",
         session_id: str | None = None,
         now: float | None = None,
     ) -> tuple[LearningPath, list[LearningNode]]:
@@ -137,12 +139,16 @@ class LearningService:
             raise LearningError("路径至少要有一个节点")
         if len(nodes) > MAX_NODES_PER_PATH:
             raise LearningError(f"一条路径最多 {MAX_NODES_PER_PATH} 个节点")
+        mode_text = (mode or "learn").strip()
+        if mode_text not in PATH_MODES:
+            raise LearningError(f"未知的路径模式 {mode!r}（只支持 {'、'.join(PATH_MODES)}）")
         specs = self._flatten_specs(nodes)
 
         path = LearningPath.new(
             topic=topic_text,
             title=(title or topic_text).strip() or topic_text,
             summary=summary,
+            mode=mode_text,  # type: ignore[arg-type]  # 上面已按 PATH_MODES 校验
             session_id=session_id,
             created_at=now,
             updated_at=now,
@@ -156,13 +162,14 @@ class LearningService:
         async def _insert() -> None:
             await self._db.execute(
                 "INSERT INTO learning_paths "
-                "(id, topic, title, summary, session_id, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "(id, topic, title, summary, mode, session_id, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     path.id,
                     path.topic,
                     path.title,
                     path.summary,
+                    path.mode,
                     path.session_id,
                     path.created_at,
                     path.updated_at,
@@ -202,7 +209,9 @@ class LearningService:
         for row in rows:
             path = self._row_to_path(row)
             nodes = await self.list_nodes(path.id)
-            target = self._next_target(nodes, counts, interactions, pendings.get(path.id), now=now)
+            target = self._next_target(
+                nodes, counts, interactions, pendings.get(path.id), mode=path.mode, now=now
+            )
             summaries.append(
                 PathSummary(
                     path=path,
@@ -237,7 +246,9 @@ class LearningService:
             stats=self._stats(nodes, counts, now),
             weak_points=self._weak_points(nodes, counts),
             reviews=self._reviews(nodes, now),
-            next_target=self._next_target(nodes, counts, interactions, pending, now=now),
+            next_target=self._next_target(
+                nodes, counts, interactions, pending, mode=path.mode, now=now
+            ),
         )
 
     async def get_path_model(self, path_id: str) -> LearningPath | None:
@@ -317,6 +328,12 @@ class LearningService:
         if "summary" in fields:
             sets.append("summary = ?")
             params.append(None if fields["summary"] is None else str(fields["summary"]).strip())
+        if "mode" in fields and fields["mode"] is not None:
+            mode = str(fields["mode"]).strip()
+            if mode not in PATH_MODES:
+                raise LearningError(f"未知的路径模式 {mode!r}（只支持 {'、'.join(PATH_MODES)}）")
+            sets.append("mode = ?")
+            params.append(mode)
         if not sets:
             return path
         sets.append("updated_at = ?")
@@ -551,7 +568,8 @@ class LearningService:
 
     async def next_objective(self, path_id: str, *, now: float | None = None) -> NextTarget:
         """下一目标（服务端每回合现算）：门就是游标，没有「当前节点」这一列。"""
-        if await self.get_path_model(path_id) is None:
+        path = await self.get_path_model(path_id)
+        if path is None:
             raise LearningError(f"路径 {path_id} 不存在")
         now = time.time() if now is None else now
         nodes = await self.list_nodes(path_id)
@@ -560,6 +578,7 @@ class LearningService:
             await self._question_counts(),
             await self._interaction_counts(),
             await self.pending_interaction(path_id),
+            mode=path.mode,
             now=now,
         )
 
@@ -979,13 +998,18 @@ class LearningService:
         interactions: Mapping[str, int],
         pending: LearningInteraction | None,
         *,
+        mode: str = "learn",
         now: float,
     ) -> NextTarget:
         """下一目标：① 未决题 → ② 到期待复习 → ③ 前序第一个没过门 → ④ 全过了。
 
         优先级是有理由的：卡还在飞就先答完（否则同一节点会重复出卡）；复习优先于新内容
         （忘了的先捡回来）；没过门的节点按「摸过没有」分 probe/practice/assess 三种动作。
+
+        `mode` 只改**动作说明**（reason），不改游标：learn 每步都要求「先讲后测」；
+        consolidate（学习巩固）以测代讲，直接出题、答错再做针对性补讲。
         """
+        consolidate = mode == "consolidate"
         by_id = {node.id: node for node in nodes}
         if pending is not None and pending.node_id in by_id:
             node = by_id[pending.node_id]
@@ -1006,7 +1030,14 @@ class LearningService:
             return self._target(
                 "review",
                 node,
-                reason=f"节点《{node.title}》到了复习时间（第 {node.review_stage + 1} 档）",
+                reason=(
+                    f"节点《{node.title}》到了复习时间（第 {node.review_stage + 1} 档）"
+                    + (
+                        "——直接出 1 题检验；答对就过，答错先补讲这个点，再出下一题"
+                        if consolidate
+                        else "——先简短回顾要点，再出 1 题检验"
+                    )
+                ),
                 now=now,
             )
 
@@ -1022,14 +1053,29 @@ class LearningService:
                 return self._target(
                     "probe",
                     node,
-                    reason=f"节点《{node.title}》还没碰过——先出 1–2 题摸底，过了就直接跳过讲解",
+                    reason=(
+                        f"节点《{node.title}》还没碰过——"
+                        + (
+                            "直接出 1–2 题摸底，靠作答找薄弱点；答错先简短纠正这个点，再继续出题"
+                            if consolidate
+                            else "最多出 1–2 题摸底；答错、不会或忘了就立刻停下出题，"
+                            "先完整讲解，再出检验题"
+                        )
+                    ),
                     now=now,
                 )
             if not quantitative:
                 return self._target(
                     "assess",
                     node,
-                    reason=f"节点《{node.title}》是定性节点——请用户用自己的话讲一遍，判定过不过",
+                    reason=(
+                        f"节点《{node.title}》是定性节点——"
+                        + (
+                            "直接请用户用自己的话讲一遍；讲漏或讲错时先补讲那一块，再请他重讲"
+                            if consolidate
+                            else "先完整讲一遍，再请用户用自己的话复述，判定过不过"
+                        )
+                    ),
                     now=now,
                 )
             return self._target(
@@ -1037,7 +1083,12 @@ class LearningService:
                 node,
                 reason=(
                     f"节点《{node.title}》还没过门（当前掌握度 {node.mastery:.0f}，"
-                    f"门 {gate_of(node.node_type):.0f}）——先讲清楚再出题练"
+                    f"门 {gate_of(node.node_type):.0f}）——"
+                    + (
+                        "继续出题巩固；每答错一题先针对那个点补讲，再出下一题"
+                        if consolidate
+                        else "先针对上次暴露的问题补讲清楚，再出下一题"
+                    )
                 ),
                 now=now,
             )
@@ -1239,6 +1290,8 @@ class LearningService:
             topic=str(row["topic"] or ""),
             title=str(row["title"] or ""),
             summary=row["summary"],
+            # 脏数据兜底选 learn：老库/坏值都不该把用户推进「以测代讲」
+            mode=row["mode"] if row["mode"] in PATH_MODES else "learn",
             session_id=row["session_id"],
             created_at=float(row["created_at"] or 0.0),
             updated_at=float(row["updated_at"] or 0.0),

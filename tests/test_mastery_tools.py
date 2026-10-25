@@ -153,6 +153,24 @@ async def test_build_rejects_bad_input(hub):
     assert (await tool.run(_ctx(topic="空"))).ok is False
     bad = await tool.run(_ctx(topic="坏树", nodes=[{"title": "A"}, "B"]))
     assert bad.ok is False and "节点对象" in bad.output
+    assert (await tool.run(_ctx(topic="坏模式", nodes=NODES, mode="cram"))).ok is False
+
+
+async def test_build_persists_mode(hub):
+    """默认 learn；明确要巩固时落 consolidate，并在输出里告诉模型当前模式。"""
+    _client, app = hub
+    default = await _create(hub)
+    assert (await app.state.learning.get_path_model(default["path_id"])).mode == "learn"
+
+    result = await MasteryBuildTool().run(_ctx(topic="巩固线代", nodes=NODES, mode="consolidate"))
+    assert result.ok is True, result.output
+    path = await app.state.learning.get_path_model(result.detail["path_id"])
+    assert path is not None and path.mode == "consolidate"
+    assert "学习巩固" in result.output
+    # 每轮先调的 mastery_status 也要把模式告诉模型，否则模型不知道按哪种节奏走
+    status = await MasteryStatusTool().run(_ctx())
+    assert status.ok is True, status.output
+    assert "路径模式：学习巩固" in status.output
 
 
 async def test_switch_and_leave_rebind_session(hub):
@@ -405,6 +423,8 @@ async def test_grade_uses_stored_answer_not_model_transcript(hub):
     assert card["grading"]["correct"] is True and card["grading"]["source"] == "deterministic"
     assert card["question"]["answer"] == "B"  # 判分之后才给答案键
     assert card["mastery"] == 50.0 and card["cleared"] is False
+    # 答对但没过门：先把「为什么对」讲出来，不要连续出题
+    assert "为什么对" in graded.output
 
     attempts = await app.state.questions.list_attempts(question_id=registered["question_id"])
     assert len(attempts) == 1 and attempts[0].answer == "B" and attempts[0].correct is True
@@ -426,6 +446,8 @@ async def test_grade_wrong_answer_keeps_mastery_at_zero(hub):
     assert graded.ok is True, graded.output
     card = graded.detail["cards"][0]
     assert card["grading"]["correct"] is False and card["answer"] == "C"
+    # 答错时给模型的下一步是「先讲」，不是「再出一题」
+    assert "不要马上出下一题" in graded.output
     assert (await app.state.learning.get_node(nodes[1].id)).mastery == 0.0
     assert registered["question_id"] == card["question"]["id"]
 
@@ -579,6 +601,8 @@ async def test_assess_fail_keeps_node_uncleared(hub):
     assert result.ok is True, result.output
     fresh = await learning.get_node(node.id)
     assert fresh.assess_passed is False and fresh.cleared is False
+    # 没讲清楚：下一步是补讲后重讲，不是直接再问一遍
+    assert "重新讲一遍" in result.output
     # 展示分是 min(证据值, 40)：这个节点一道题都没做过，证据 0 ⇒ 0 分（封顶只挡虚高）
     assert fresh.mastery == 0.0
     assert result.detail["cards"][0]["grading"]["correct"] is False

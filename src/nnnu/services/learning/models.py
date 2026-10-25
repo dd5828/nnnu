@@ -19,6 +19,8 @@ from nnnu.core.ids import new_id
 from nnnu.services.learning.mastery import is_due
 from nnnu.services.learning.policy import gate_kind_of, gate_of, is_cleared
 
+# 路径模式：learn 从零学新知识（先讲后测）；consolidate 学习巩固（已学过，以测代讲查漏补缺）
+PathMode = Literal["learn", "consolidate"]
 # 节点类型（§7.5「每个节点标注 type，不同类型不同达标线」）：四类两套门
 NodeType = Literal["memory", "procedure", "concept", "design"]
 # 节点四态（§7.5：未开始 / 学习中 / 已掌握 / 需复习）
@@ -28,6 +30,7 @@ GateKind = Literal["quantitative", "qualitative"]
 # 下一目标要做的事（服务端每回合现算，模型没有推进权）
 NextAction = Literal["answer_pending", "review", "probe", "practice", "assess", "complete"]
 
+PATH_MODES: tuple[str, ...] = ("learn", "consolidate")
 NODE_TYPES: tuple[str, ...] = ("memory", "procedure", "concept", "design")
 NODE_STATES: tuple[str, ...] = ("not_started", "learning", "mastered", "reviewing")
 NEXT_ACTIONS: tuple[str, ...] = (
@@ -45,6 +48,9 @@ class LearningPath(BaseModel):
     topic: str = ""
     title: str = ""
     summary: str | None = None
+    # 默认 learn：学习路径的本意是学新知识（先讲后测）。consolidate 是「学习巩固」：
+    # 用户已经学过，靠做题查漏补缺，答错只做针对性补讲。老库迁移后一律是 learn。
+    mode: PathMode = "learn"
     # 绑定的学习会话（聊天驱动）。**没有 current_node_id**：门就是游标，
     # 每回合由 next_objective 现算，见 services/learning/service.py
     session_id: str | None = None

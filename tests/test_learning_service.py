@@ -412,6 +412,34 @@ async def test_next_objective_probe_then_practice_then_review(hub):
     assert (target.action, target.node_id) == ("practice", nodes[1].id)
 
 
+async def test_path_mode_defaults_to_learn_and_rejects_unknown(hub):
+    """学习路径默认是学新知识（learn）；只有明确要巩固才用 consolidate。"""
+    _, service, _ = hub
+    path, _ = await service.create_path(topic="线代", nodes=SPEC[:1], now=NOW)
+    assert path.mode == "learn"
+    with pytest.raises(LearningError, match="模式"):
+        await service.create_path(topic="坏模式", nodes=SPEC[:1], mode="cram", now=NOW)
+
+    switched = await service.update_path(path.id, mode="consolidate")
+    assert switched is not None and switched.mode == "consolidate"
+    with pytest.raises(LearningError, match="模式"):
+        await service.update_path(path.id, mode="cram")
+
+
+async def test_consolidate_mode_changes_next_target_wording(hub):
+    """学习巩固以测代讲：定性节点直接请用户讲，定量节点直接出题找薄弱点。"""
+    _, service, _ = hub
+    path, nodes = await service.create_path(topic="线代", nodes=SPEC, mode="consolidate", now=NOW)
+    target = await service.next_objective(path.id, now=NOW)
+    assert (target.action, target.node_id) == ("assess", nodes[0].id)
+    assert "直接请用户" in target.reason
+
+    await service.record_qualitative(nodes[0].id, passed=True, now=NOW)
+    target = await service.next_objective(path.id, now=NOW)
+    assert (target.action, target.node_id) == ("probe", nodes[1].id)
+    assert "直接出 1–2 题摸底" in target.reason
+
+
 async def test_next_objective_walks_preorder_and_completes(hub):
     path, nodes = await _path(hub, nodes=[{"title": "甲"}, {"title": "乙"}, {"title": "丙"}])
     _, service, _ = hub
