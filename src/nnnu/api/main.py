@@ -20,6 +20,8 @@ from nnnu.api.routers import (
     cli_apps,
     co_writer,
     cost,
+    external_libs,
+    github_sources,
     health,
     knowledge,
     learning,
@@ -212,6 +214,34 @@ def create_app() -> FastAPI:
             await kb_service.recover_stale()
         except Exception:  # 恢复失败不该拦住启动：库各自的 manifest 仍是权威
             logger.exception("知识库启动恢复失败，继续启动")
+        # GitHub 源定时同步（§7.9 P14）：后台循环自己看每个源的间隔是否到期；
+        # 首轮延迟 30s，别和启动恢复/第一批用户请求抢网络
+        from nnnu.services.github_source.service import GithubSourceService
+
+        github_source_service = GithubSourceService(kb_service)
+        github_source_service.start()
+        _app.state.github_sources = github_source_service
+        # 外部库（§7.9 P14）：Obsidian 挂载清单、IMA 客户端、MarginNote 接收库。
+        # 三者都不在启动时联网/扫盘：路由和挂载门按需读，配好/挂好才给模型工具
+        from nnnu.services.external_libs.ima import ImaService, set_ima_service
+        from nnnu.services.external_libs.marginnote import (
+            MarginNoteService,
+            set_marginnote_service,
+        )
+        from nnnu.services.external_libs.obsidian import (
+            ObsidianService,
+            set_obsidian_service,
+        )
+
+        obsidian_service = ObsidianService(data_root)
+        set_obsidian_service(obsidian_service)
+        _app.state.obsidian = obsidian_service
+        ima_service = ImaService()
+        set_ima_service(ima_service)
+        _app.state.ima = ima_service
+        marginnote_service = MarginNoteService(data_root)
+        set_marginnote_service(marginnote_service)
+        _app.state.marginnote = marginnote_service
         # 可视化/动画（§7.7/§7.8）：产物存储给路由下载用，渲染服务给能力层取用；
         # NNNU_MANIM_MOCK=1 时装配假渲染器（测试与 E2E），否则真 Manim 渲染器
         from nnnu.services.render.artifacts import RenderStore
@@ -246,6 +276,10 @@ def create_app() -> FastAPI:
         set_book_service(None)
         await memory_service.shutdown()
         set_memory_service(None)
+        await github_source_service.stop()
+        set_obsidian_service(None)
+        set_ima_service(None)
+        set_marginnote_service(None)
         await kb_service.shutdown()
         set_kb_service(None)
         set_embedding_service(None)
@@ -293,6 +327,8 @@ def create_app() -> FastAPI:
     app.include_router(settings.router)
     app.include_router(attachments.router)
     app.include_router(knowledge.router)
+    app.include_router(github_sources.router)
+    app.include_router(external_libs.router)
     app.include_router(notebooks.router)
     app.include_router(skills.router)
     app.include_router(mcp.router)

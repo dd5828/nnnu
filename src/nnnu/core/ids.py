@@ -36,6 +36,9 @@ KNOWN_PREFIXES = (
     "mcp",  # 一个 MCP 服务器配置（servers.json 里的键由用户起名，这个留作内部引用）
     "ag",  # 一条子代理连接配置（agents/connections.json，§7.12）——走 new_id
     "imp",  # 一条导入的第三方 CLI 历史会话（agent_sessions）——走 stable_id，不是 new_id
+    "src",  # 一个外部源绑定（GitHub，§7.9 P14）——走 new_id
+    "vault",  # 一个 Obsidian 库挂载记录（§7.9 P14）——走 new_id
+    "mnd",  # 一台 MarginNote 4 配对设备（§7.9 P14）——走 new_id
 )
 
 

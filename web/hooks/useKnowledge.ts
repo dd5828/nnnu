@@ -13,7 +13,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "@/lib/api";
 import { errorText } from "@/lib/errors";
 import { useI18n } from "@/hooks/useI18n";
-import type { KbDoc, KbManifest } from "@/types/api";
+import type { KbDoc, KbEngineInfo, KbManifest } from "@/types/api";
 
 /** §7.9 要求索引进度实时更新：800ms 一次，肉眼看着像连续。 */
 const POLL_MS = 800;
@@ -62,15 +62,37 @@ function useInvalidateKb() {
   );
 }
 
+/** 可选检索引擎（含没装依赖的：界面照样列出来，带安装提示）。 */
+export function useEngines() {
+  return useQuery({
+    queryKey: ["kb-engines"],
+    queryFn: () => apiFetch<{ engines: KbEngineInfo[] }>("/api/v1/kbs/engines"),
+    staleTime: 60_000, // 依赖装没装不会几分钟就变
+  });
+}
+
 export function useCreateKb() {
   const invalidate = useInvalidateKb();
   return useMutation({
-    mutationFn: (name: string) =>
+    mutationFn: ({ name, engine }: { name: string; engine: string }) =>
       apiFetch<KbManifest>("/api/v1/kbs", {
         method: "POST",
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, engine }),
       }),
     onSuccess: (manifest) => invalidate(manifest.id),
+  });
+}
+
+/** 换引擎：后端会改 manifest 并后台重建，旧版本在重建期间照常可查。 */
+export function useSetKbEngine(kbId: string) {
+  const invalidate = useInvalidateKb();
+  return useMutation({
+    mutationFn: (engine: string) =>
+      apiFetch<KbManifest>(`/api/v1/kbs/${kbId}/engine`, {
+        method: "PUT",
+        body: JSON.stringify({ engine }),
+      }),
+    onSuccess: () => invalidate(kbId),
   });
 }
 

@@ -104,6 +104,12 @@ async def mount_tools(
         ctx.tool_flags.context.update(CLI_APP_TOOL_NAMES)
     if _agent_gate():
         ctx.tool_flags.context.update(AGENT_TOOL_NAMES)
+    if _obsidian_gate():
+        ctx.tool_flags.context.update(OBSIDIAN_TOOL_NAMES)
+    if _ima_gate():
+        ctx.tool_flags.context.update(IMA_TOOL_NAMES)
+    if _marginnote_gate():
+        ctx.tool_flags.context.update(MARGINNOTE_TOOL_NAMES)
     mounted = get_tool_registry().mounted(ctx.tool_flags)
     if allowlist is not None:
         allowed = set(allowlist)
@@ -151,6 +157,15 @@ async def mount_tools(
 SKILL_TOOL_NAMES = ("read_skill", "load_tools")  # 技能两件的上下文条件（等于工具名）
 CLI_APP_TOOL_NAMES = ("list_cli_apps", "run_cli_app")  # 命令行应用两件（§7.18）
 AGENT_TOOL_NAMES = ("consult_subagent",)  # 子代理咨询（§7.12）
+# 外部库三组（§7.9 P14）：挂载/连好/配对才开对应的门
+OBSIDIAN_TOOL_NAMES = ("obsidian_list", "obsidian_read", "obsidian_write")
+IMA_TOOL_NAMES = ("ima_browse", "ima_search", "ima_read", "ima_write_note")
+MARGINNOTE_TOOL_NAMES = (
+    "marginnote_search",
+    "marginnote_list",
+    "marginnote_read",
+    "marginnote_links",
+)
 
 
 def _agent_gate() -> bool:
@@ -181,6 +196,39 @@ async def _cli_app_gate() -> bool:
         return bool(get_cli_app_service().installed_ids())
     except Exception:
         logger.warning("命令行应用清单读取失败，本回合不开这门", exc_info=True)
+        return False
+
+
+def _obsidian_gate() -> bool:
+    """挂了至少一个 Obsidian vault 才开这门；服务未装配/读盘失败一律不开。"""
+    try:
+        from nnnu.services.external_libs.obsidian import get_obsidian_service
+
+        return bool(get_obsidian_service().list_vaults())
+    except Exception:
+        logger.warning("Obsidian 库清单读取失败，本回合不开这门", exc_info=True)
+        return False
+
+
+def _ima_gate() -> bool:
+    """IMA 三项配置齐了才开这门（凭证错在调用时由工具自己报，不在这里探测）。"""
+    try:
+        from nnnu.services.external_libs.ima import is_ima_configured
+
+        return is_ima_configured()
+    except Exception:
+        logger.warning("IMA 配置读取失败，本回合不开这门", exc_info=True)
+        return False
+
+
+def _marginnote_gate() -> bool:
+    """至少配对过一台 MarginNote 设备才开这门。"""
+    try:
+        from nnnu.services.external_libs.marginnote import get_marginnote_service
+
+        return get_marginnote_service().is_active()
+    except Exception:
+        logger.warning("MarginNote 设备清单读取失败，本回合不开这门", exc_info=True)
         return False
 
 

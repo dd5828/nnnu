@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Database, Loader2, Plus } from "lucide-react";
 import CreateWizard from "@/components/knowledge/CreateWizard";
+import ExternalLibrariesPanel from "@/components/knowledge/ExternalLibrariesPanel";
 import KnowledgeList from "@/components/knowledge/KnowledgeList";
 import SearchBench from "@/components/knowledge/SearchBench";
 import { useKbList } from "@/hooks/useKnowledge";
@@ -82,6 +83,8 @@ export default function KnowledgePage() {
         ) : (
           <KnowledgeList kbs={kbs} />
         )}
+
+        <ExternalLibrariesPanel />
       </div>
     </main>
   );

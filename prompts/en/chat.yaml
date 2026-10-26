@@ -52,6 +52,17 @@ tool_descriptions:
   list_cli_apps: "Inspect command-line apps: with no argument, list installed apps and their parameter templates; with query, search the catalog (including apps that are not installed yet, so you can suggest installing one). Use it when you need to run a local program but are unsure whether it is installed or how its arguments work."
   run_cli_app: "Run an installed command-line app (app is the id, args follow the parameter template from list_cli_apps). Use it for jobs whose deliverable is a file - transcoding, format conversion, frame extraction, PDF processing. If the app is not installed, tell the user to install it from the CLI apps page first. All paths are relative to the sandbox working directory (data/user/workspace)."
   consult_subagent: "Hand a coding task to the coding AI subagent on this machine (Claude Code) and wait for its conclusion. Use it for jobs that touch real files and take several rounds - writing code, modifying a project, reading a whole repository, running commands to verify. Do not hand over simple questions you can answer right away. Spell out the goal, the files/directories involved and the expected output in task - it cannot see this conversation. It takes minutes; the progress shows on this tool's card. Consulting it again in the same session keeps its memory of the previous exchange."
+  obsidian_list: "List notes in a mounted Obsidian vault (optionally under one folder). Use it first when the user asks what is in their Obsidian or wants to find a note."
+  obsidian_read: "Read the full text of one note in the user's Obsidian vault. Use it when answering from or citing the user's own notes."
+  obsidian_write: "Write Markdown back into the user's Obsidian vault (overwrite or append). Only call it when the user explicitly asks to save, record, or append to a note; appending cannot be undone, so the target note must be named by the user."
+  ima_browse: "Browse a connected Tencent IMA knowledge base: documents and subfolders at the root or inside one folder. Use it for inventory questions (what is in IMA / what is in a folder); retrieval only reports matches."
+  ima_search: "Search a connected Tencent IMA knowledge base, returning matched documents with highlighted snippets. Prefer it when answering from the user's IMA material."
+  ima_read: "Read the full text of one IMA item (media_id from ima_browse / ima_search). Use it when a snippet is not enough; images, audio and video have no readable text and will say so."
+  ima_write_note: "Write Markdown into the user's Tencent IMA account: create a note by default, or append when note_id is given. Only call it when the user explicitly asks to save back to IMA; appending cannot be undone, so the target note must be named by the user."
+  marginnote_search: "Search the user's synced MarginNote 4 data (excerpts, cards, mindmap nodes, documents, comments) and return snippets. Use it first when answering from their MarginNote reading notes."
+  marginnote_list: "List synced MarginNote 4 objects, optionally filtered by type or source document. Use it to discover structure when there is no clear search term."
+  marginnote_read: "Read one MarginNote 4 object by object_id: title, content, excerpt, tags, links, source document and page."
+  marginnote_links: "Find the objects a MarginNote 4 object links to and the objects that link to it (mindmap parent/child, card links)."
 # Cost/limit hints shown on tool cards (§7.2): the settings tool catalog picks them by language
 tool_cost_hints:
   web_search: "Web search (billed/latency per provider)"
@@ -78,3 +89,5 @@ tool_cost_hints:
   list_cli_apps: "Reads the local catalog and install records (read-only; no extra calls)"
   run_cli_app: "Runs an installed program on this machine (sandbox timeout and output caps apply; long jobs are slow)"
   consult_subagent: "Starts a coding AI on this machine (reads and writes files with your user permissions; takes minutes, stoppable at any time)"
+  obsidian_write: "Writes directly into the user's Obsidian vault (.md only; path escapes are rejected)"
+  ima_write_note: "Writes the user's Tencent IMA notes (create or append; uses IMA API quota)"

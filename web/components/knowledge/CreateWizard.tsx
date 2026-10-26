@@ -13,6 +13,7 @@ import { CheckCircle2, FolderPlus, Loader2, Upload, X } from "lucide-react";
 import { useCreateKb, useKb, useUploadQueue } from "@/hooks/useKnowledge";
 import { useI18n } from "@/hooks/useI18n";
 import { errorText } from "@/lib/errors";
+import EnginePicker from "./EnginePicker";
 import { DocStatusChip, formatSize, ProgressBar } from "./status";
 
 export default function CreateWizard({ onClose }: { onClose: () => void }) {
@@ -20,6 +21,7 @@ export default function CreateWizard({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const create = useCreateKb();
   const [name, setName] = useState("");
+  const [engine, setEngine] = useState("vector");
   const [files, setFiles] = useState<File[]>([]);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +54,7 @@ export default function CreateWizard({ onClose }: { onClose: () => void }) {
     setCreating(true);
     setError(null);
     try {
-      const manifest = await create.mutateAsync(trimmed);
+      const manifest = await create.mutateAsync({ name: trimmed, engine });
       setCreatedId(manifest.id);
       await enqueue(files, manifest.id); // 库刚建出来，hook 手上还没 id，显式传
     } catch (createError) {
@@ -103,6 +105,8 @@ export default function CreateWizard({ onClose }: { onClose: () => void }) {
             }}
           />
         </div>
+
+        <EnginePicker value={engine} onChange={setEngine} disabled={started} testId="kb-engine" />
 
         <div>
           <div className="mb-1 flex items-baseline gap-2">

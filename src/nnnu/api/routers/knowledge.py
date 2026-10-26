@@ -6,8 +6,9 @@
 - `GET /kbs/{id}/docs/{doc_id}/content`：文本类文档的解析结果，前端 <pre> 渲染；
 - `POST /kbs/search`：跨全部就绪库检索（知识中心列表页入口，用 service.search_all_ready）。
 
-`/sources`（GitHub 源 / 外部库绑定）P4 留空壳返回 501，P14 交付。
-检索只用 mode（vector/hybrid）：P4 只有一个引擎，engine 参数到 P14 才有意义。
+`/sources`（GitHub 源）P14 起由 `github_sources` 路由接管（见 api/routers/github_sources.py）。
+检索模式：单库按当前活跃版本的引擎收紧（vector 不认 local/global 之类图谱模式），
+跨库检索只做全集校验，各引擎自己归一。
 """
 
 from fastapi import APIRouter, File, Request, UploadFile
@@ -18,10 +19,28 @@ from nnnu.services.embedding.base import EmbeddingError
 from nnnu.services.knowledge import manifest as store
 from nnnu.services.knowledge.service import MAX_KB_UPLOAD_BYTES, KBError
 from nnnu.services.knowledge.types import DOC_DELETED, KbDoc
+from nnnu.services.rag.base import EngineUnavailable
+from nnnu.services.rag.pipelines.graph_common import EngineProcessError
+from nnnu.services.rag.registry import (
+    DEFAULT_ENGINE,
+    engine_info,
+    engine_infos,
+)
 
 router = APIRouter()
 
-SEARCH_MODES = ("vector", "hybrid", "auto")
+# 已知检索模式的全集；单库检索再按引擎的 supported_modes 收紧
+SEARCH_MODES = (
+    "vector",
+    "hybrid",
+    "auto",
+    "local",
+    "global",
+    "drift",
+    "basic",
+    "naive",
+    "mix",
+)
 MAX_TOP_K = 50
 
 
@@ -48,6 +67,11 @@ def _live_doc(service, kb_id: str, doc_id: str) -> KbDoc | None:
 
 class CreateKbRequest(BaseModel):
     name: str
+    engine: str = DEFAULT_ENGINE
+
+
+class SetEngineRequest(BaseModel):
+    engine: str
 
 
 class SearchRequest(BaseModel):
@@ -66,12 +90,20 @@ async def list_kbs(http_request: Request):
     return {"kbs": [manifest.model_dump() for manifest in manifests]}
 
 
+@router.get("/api/v1/kbs/engines")
+async def list_engines():
+    """可选检索引擎（含没装依赖的：带 available=false 与安装提示）。"""
+    return {"engines": [info.payload() for info in engine_infos()]}
+
+
 @router.post("/api/v1/kbs")
 async def create_kb(body: CreateKbRequest, http_request: Request):
     try:
-        manifest = await http_request.app.state.kb.create_kb(body.name)
+        manifest = await http_request.app.state.kb.create_kb(body.name, engine=body.engine)
     except store.KbNameError as exc:
         return _error(422, "invalid_name", str(exc))
+    except KBError as exc:  # 引擎不可用
+        return _error(422, "engine_unavailable", str(exc))
     return manifest.model_dump()
 
 
@@ -88,6 +120,25 @@ async def delete_kb(kb_id: str, http_request: Request):
     if not await http_request.app.state.kb.delete_kb(kb_id):
         return _not_found(f"知识库 {kb_id} 不存在")
     return {"deleted": kb_id}
+
+
+@router.put("/api/v1/kbs/{kb_id}/engine")
+async def set_kb_engine(kb_id: str, body: SetEngineRequest, http_request: Request):
+    """换引擎：校验依赖 → 改 manifest.engine → 后台强制重建（旧版本在重建期间照常可查）。"""
+    service = http_request.app.state.kb
+    if service.get_kb(kb_id) is None:
+        return _not_found(f"知识库 {kb_id} 不存在")
+    try:
+        info = engine_info(body.engine)
+    except EngineUnavailable as exc:
+        return _error(422, "engine_unavailable", str(exc))
+    if not info.available:
+        return _error(422, "engine_unavailable", info.reason)
+    try:
+        manifest = await service.set_engine(kb_id, body.engine)
+    except KBError as exc:
+        return _error(409, "engine_switch_failed", str(exc), recoverable=True)
+    return manifest.model_dump()
 
 
 @router.post("/api/v1/kbs/{kb_id}/docs")
@@ -195,8 +246,20 @@ async def search_kb(kb_id: str, body: SearchRequest, http_request: Request):
     if not body.query.strip():
         return _error(422, "invalid_request", "query 不能为空")
     service = http_request.app.state.kb
-    if service.get_kb(kb_id) is None:
+    manifest = service.get_kb(kb_id)
+    if manifest is None:
         return _not_found(f"知识库 {kb_id} 不存在")
+    engine_id = service.version_engine(manifest, manifest.active_version)
+    try:
+        allowed = engine_info(engine_id).modes
+    except EngineUnavailable:
+        allowed = SEARCH_MODES
+    if body.mode not in allowed:
+        return _error(
+            422,
+            "invalid_mode",
+            f"这个库当前的 {engine_id} 引擎支持 {'/'.join(allowed)}，不支持 {body.mode}",
+        )
     try:
         hits = await service.search(
             kb_id,
@@ -206,6 +269,8 @@ async def search_kb(kb_id: str, body: SearchRequest, http_request: Request):
         )
     except EmbeddingError as exc:  # 嵌入端不可用：说清楚，别让前端只看 500
         return _error(503, "embedding_unavailable", str(exc), recoverable=True)
+    except (EngineUnavailable, EngineProcessError) as exc:
+        return _error(503, "engine_error", str(exc), recoverable=True)
     return {"mode": body.mode, "query": body.query, "hits": [hit.model_dump() for hit in hits]}
 
 
@@ -226,15 +291,4 @@ async def cancel_build(kb_id: str, http_request: Request):
     return {"cancelled": kb_id}
 
 
-@router.get("/api/v1/kbs/{kb_id}/sources")
-async def get_sources(kb_id: str, http_request: Request):
-    return _error(
-        501, "not_implemented", "外部源绑定（GitHub / 外部库）在 P14 交付", recoverable=False
-    )
-
-
-@router.put("/api/v1/kbs/{kb_id}/sources")
-async def put_sources(kb_id: str, http_request: Request):
-    return _error(
-        501, "not_implemented", "外部源绑定（GitHub / 外部库）在 P14 交付", recoverable=False
-    )
+# GitHub 源绑定见 api/routers/github_sources.py（P14）；这里不再留 501 空壳。

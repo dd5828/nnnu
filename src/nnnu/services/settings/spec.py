@@ -31,9 +31,11 @@ class SettingField:
     # 数值字段的取值区间（None = 不限制）
     min_value: float | None = None
     max_value: float | None = None
-    # secret 字段专属：user-secrets 域与槽位（槽名取同区某个字段的值）
+    # secret 字段专属：user-secrets 域与槽位（槽名取同区某个字段的值；固定槽位用
+    # secret_slot，优先于 secret_slot_of，给 IMA 这种一个账号两把钥匙的场景）
     secret_domain: str = "llm"
     secret_slot_of: str = "provider"
+    secret_slot: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -291,6 +293,44 @@ SPECS: dict[str, AreaSpec] = {
                 effect="reindex",
                 choices=("", "pymupdf", "markitdown"),
                 description_key="settings.kb.parseEngineDesc",
+            ),
+            # P14 GitHub 源：私有仓库才需要；固定槽位 default（secret_slot_of 指向
+            # 一个不存在的字段，_secret_slot 会回落到 "default"）
+            SettingField(
+                "github_token",
+                "secret",
+                None,
+                "settings.kb.githubToken",
+                description_key="settings.kb.githubTokenDesc",
+                secret_domain="github",
+                secret_slot_of="github_token_slot",
+            ),
+            # §7.9 P14 腾讯 IMA：知识库 ID 是普通配置；client ID / API key 进
+            # user-secrets 的 ima 域，用固定槽位区分两把钥匙
+            SettingField(
+                "ima_knowledge_base_id",
+                "string",
+                "",
+                "settings.kb.imaKnowledgeBaseId",
+                description_key="settings.kb.imaKnowledgeBaseIdDesc",
+            ),
+            SettingField(
+                "ima_client_id",
+                "secret",
+                None,
+                "settings.kb.imaClientId",
+                description_key="settings.kb.imaClientIdDesc",
+                secret_domain="ima",
+                secret_slot="client_id",
+            ),
+            SettingField(
+                "ima_api_key",
+                "secret",
+                None,
+                "settings.kb.imaApiKey",
+                description_key="settings.kb.imaApiKeyDesc",
+                secret_domain="ima",
+                secret_slot="api_key",
             ),
         ),
     ),

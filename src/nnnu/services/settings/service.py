@@ -270,8 +270,11 @@ class SettingsService:
 
     @staticmethod
     def _secret_slot(field: SettingField, merged: dict[str, Any]) -> str:
-        """secret 槽名：取同区 secret_slot_of 字段的值（如 provider / search_provider）；
-        字段留空时落 "default" 槽（读侧同规则对齐，见 services/search/service.py）。"""
+        """secret 槽名：固定槽位优先，否则取同区 secret_slot_of 字段的值
+        （如 provider / search_provider）；字段留空时落 "default" 槽
+        （读侧同规则对齐，见 services/search/service.py）。"""
+        if field.secret_slot:
+            return field.secret_slot
         return str(merged.get(field.secret_slot_of, "") or "default")
 
     def seed_missing(self) -> None:

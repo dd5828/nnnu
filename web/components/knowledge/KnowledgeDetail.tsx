@@ -11,10 +11,20 @@ import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { ArrowLeft, FilePlus2, Loader2, RefreshCw, Square } from "lucide-react";
-import { useCancelBuild, useKb, useReindex, useUploadQueue } from "@/hooks/useKnowledge";
+import { confirmDialog } from "@/hooks/useConfirm";
+import {
+  useCancelBuild,
+  useKb,
+  useReindex,
+  useSetKbEngine,
+  useUploadQueue,
+} from "@/hooks/useKnowledge";
 import { useI18n } from "@/hooks/useI18n";
+import { errorText } from "@/lib/errors";
 import type { KbDoc, KbHit } from "@/types/api";
 import DocTable from "./DocTable";
+import EnginePicker from "./EnginePicker";
+import GithubSourcesPanel from "./GithubSourcesPanel";
 import KnowledgeReader from "./KnowledgeReader";
 import SearchBench from "./SearchBench";
 import { formatSize, KbStatusChip, ProgressBar } from "./status";
@@ -32,10 +42,13 @@ export default function KnowledgeDetail() {
   const { data: kb, isLoading, error } = useKb(kbId);
   const reindex = useReindex(kbId ?? "");
   const cancelBuild = useCancelBuild(kbId ?? "");
+  const setEngine = useSetKbEngine(kbId ?? "");
   const { uploads, enqueue } = useUploadQueue(kbId);
   const fileInput = useRef<HTMLInputElement>(null);
   const [manualReader, setManualReader] = useState<OpenDoc | null>(null);
   const [deepLinkClosed, setDeepLinkClosed] = useState(false);
+  const [engineChoice, setEngineChoice] = useState<string | null>(null);
+  const [engineError, setEngineError] = useState<string | null>(null);
 
   // 引用跳过来：?doc=…&page=N。这份「想开哪个文档」直接由 URL 推出来，
   // 用户点开别的文档（manualReader）优先，关掉深链接那个之后就别再自动弹。
@@ -87,6 +100,30 @@ export default function KnowledgeDetail() {
   const docs = kb.docs.filter((doc) => doc.status !== "deleted");
   const activeVersion = kb.versions.find((version) => version.version === kb.active_version);
 
+  const switchEngine = (next: string) => {
+    if (next === kb.engine) {
+      setEngineChoice(null);
+      return;
+    }
+    setEngineChoice(next);
+    void confirmDialog({
+      message: t("knowledge.engineConfirm", { name: t(`knowledge.engine_${next}`) }),
+    }).then((ok) => {
+      if (!ok) {
+        setEngineChoice(null);
+        return;
+      }
+      setEngineError(null);
+      setEngine.mutate(next, {
+        onSuccess: () => setEngineChoice(null),
+        onError: (switchError) => {
+          setEngineChoice(null);
+          setEngineError(errorText(switchError, t("common.requestFailed")));
+        },
+      });
+    });
+  };
+
   return (
     <main className="no-scrollbar min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-6">
@@ -108,6 +145,23 @@ export default function KnowledgeDetail() {
               ? ` · ${t("knowledge.chunkCount", { n: String(activeVersion.chunk_count) })}`
               : ""}
           </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <EnginePicker
+            value={engineChoice ?? kb.engine}
+            onChange={switchEngine}
+            disabled={setEngine.isPending}
+            compact
+            testId="kb-engine-switch"
+          />
+          {setEngine.isPending && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {t("knowledge.engineSwitching")}
+            </span>
+          )}
+          {engineError && <span className="text-xs text-danger">{engineError}</span>}
         </div>
 
         {kb.error && <p className="text-sm text-danger">{kb.error}</p>}
@@ -200,6 +254,8 @@ export default function KnowledgeDetail() {
 
           <DocTable kbId={kb.id} docs={docs} onOpen={(doc) => openDoc(doc)} />
         </section>
+
+        <GithubSourcesPanel kbId={kb.id} />
 
         <section className="rounded-xl border border-border bg-surface p-5">
           <h2 className="mb-3 text-base font-semibold">{t("knowledge.searchTitle")}</h2>

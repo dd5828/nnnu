@@ -62,6 +62,7 @@ export default function KnowledgeList({ kbs }: { kbs: KbManifest[] }) {
                       ? t("knowledge.versionShort", { n: String(kb.active_version) })
                       : t("knowledge.noVersion")}
                   </span>
+                  <span>{t(`knowledge.engine_${kb.engine}`)}</span>
                 </div>
                 {kb.status === "error" && kb.error && (
                   <p className="mt-1 text-xs text-danger">{kb.error}</p>

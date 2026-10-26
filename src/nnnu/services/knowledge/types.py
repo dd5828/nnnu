@@ -42,6 +42,9 @@ class KbVersion(BaseModel):
     chunk_count: int = 0
     dim: int = 0
     embedding_signature: str = ""
+    #: 这一版是谁建的。切换引擎时旧版仍可查（按版本自己的引擎读），
+    #: 构建失败/取消也不会把可用版本弄成“新引擎读旧格式”的坏状态。
+    engine: str = "vector"
     created_at: float = Field(default_factory=time.time)
 
 
@@ -58,6 +61,11 @@ class KbDoc(BaseModel):
     error: str | None = None
     progress: float = 0.0  # 0~1，当前阶段的进度
     note: str = ""  # 给人看的一句（"正在下载嵌入模型 42/95 MB"）
+    # 外部源（P14 GitHub 同步）：上传的文档这三项为空
+    source_kind: str = ""  # "" | "github"
+    source_id: str = ""
+    source_path: str = ""  # 仓库内路径（相对 repo 根）
+    remote_sha: str = ""  # 上次同步时 GitHub tree 里的 blob sha
     created_at: float = Field(default_factory=time.time)
     updated_at: float = Field(default_factory=time.time)
 

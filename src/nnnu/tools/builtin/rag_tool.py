@@ -46,6 +46,8 @@ class RagSearchTool(BaseTool):
     async def run(self, ctx: ToolContext) -> ToolResult:
         from nnnu.services.embedding.base import EmbeddingError
         from nnnu.services.knowledge.service import get_kb_service
+        from nnnu.services.rag.base import EngineUnavailable
+        from nnnu.services.rag.pipelines.graph_common import EngineProcessError
 
         try:
             service = get_kb_service()
@@ -78,6 +80,8 @@ class RagSearchTool(BaseTool):
             hits = await service.search(kb_id, query, mode=mode, top_k=top_k)
         except EmbeddingError as exc:
             return ToolResult(ok=False, output=f"知识库检索失败：嵌入端点不可用（{exc}）。")
+        except (EngineUnavailable, EngineProcessError) as exc:
+            return ToolResult(ok=False, output=f"知识库检索失败：检索引擎出错（{exc}）。")
 
         if not hits:
             return ToolResult(
@@ -92,6 +96,9 @@ class RagSearchTool(BaseTool):
             filename = str(hit.metadata.get("filename") or hit.doc_id)
             where = f"第 {hit.page} 页" if hit.page else "无页码"
             lines.append(f"- 《{kb_name}》{filename} {where}：{snippet}")
+            if hit.metadata.get("synthetic"):
+                # 图谱上下文兜底命中没有对应文档，不生成点开了会 404 的引用
+                continue
             sources.append(
                 {
                     "doc_id": hit.doc_id,

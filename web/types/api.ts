@@ -155,6 +155,167 @@ export interface KbDocContent {
   text: string;
 }
 
+// ---- 检索引擎（§7.9 P14，对应 services/rag/registry.py） ----
+
+/** `available=false` 时 reason 里有一句给用户看的安装/配置说明。 */
+export interface KbEngineInfo {
+  id: string;
+  available: boolean;
+  reason: string;
+  needs_embeddings: boolean;
+  modes: string[];
+}
+
+// ---- GitHub 源同步（§7.9 P14，对应 services/github_source/types.py） ----
+
+export interface GithubSourceDoc {
+  path: string;
+  sha: string;
+  doc_id: string;
+}
+
+export interface GithubSource {
+  source_id: string;
+  repo: string;
+  branch: string;
+  glob: string;
+  auto_sync: boolean;
+  interval_minutes: number;
+  last_check_at: number;
+  last_sync_at: number;
+  last_error: string;
+  docs: Record<string, GithubSourceDoc>;
+}
+
+export interface SourceSyncReport {
+  source_id: string;
+  added: string[];
+  modified: string[];
+  deleted: string[];
+  unchanged: number;
+  skipped: string[];
+  failed: { path: string; error: string }[];
+  docs_created: number;
+  docs_updated: number;
+  docs_deleted: number;
+}
+
+// ---- 外部库（§7.9 P14，对应 api/routers/external_libs.py） ----
+
+export interface ObsidianVault {
+  vault_id: string;
+  name: string;
+  path: string;
+  added_at: number;
+}
+
+export interface ObsidianNoteSummary {
+  path: string;
+  title: string;
+  size: number;
+  modified_at: number;
+}
+
+export interface ObsidianNote {
+  vault: ObsidianVault;
+  path: string;
+  title: string;
+  content: string;
+  size: number;
+  modified_at: number;
+}
+
+export interface ObsidianSearchHit {
+  path: string;
+  snippet: string;
+}
+
+export interface ImaStatus {
+  configured: boolean;
+  knowledge_base_id: string;
+  error: string;
+}
+
+export interface ImaDocument {
+  media_id: string;
+  title: string;
+  parent_folder_id: string;
+  highlight: string;
+}
+
+export interface ImaFolder {
+  folder_id: string;
+  name: string;
+  file_number: number;
+  folder_number: number;
+}
+
+export interface ImaPage {
+  documents: ImaDocument[];
+  folders: ImaFolder[];
+  path: string[];
+  next_cursor: string;
+  is_end: boolean;
+}
+
+export interface ImaItem {
+  media_id: string;
+  title: string;
+  kind: "note" | "file" | "unknown";
+  text: string;
+  truncated: boolean;
+  note?: string;
+}
+
+export interface ImaNote {
+  note_id: string;
+  title: string;
+  summary: string;
+  folder_name: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface MarginNoteDevice {
+  device_id: string;
+  device_name: string;
+  device_kind: string;
+  paired_at: string;
+  last_seen: string;
+  active: boolean;
+}
+
+export interface MarginNoteObject {
+  object_id: string;
+  object_type: string;
+  title: string;
+  content: string;
+  excerpt: string;
+  document_id: string | null;
+  document_title: string | null;
+  page: number | null;
+  tags: string[];
+  links: string[];
+  created_at: string | null;
+  updated_at: string | null;
+  synced_at?: string;
+  device_id?: string;
+}
+
+export interface MarginNoteStatus {
+  devices: number;
+  active_devices: number;
+  objects: number;
+  last_seen: string;
+  cursors: Record<string, string>;
+}
+
+export interface LibrariesOverview {
+  obsidian: { vaults: ObsidianVault[] };
+  ima: ImaStatus;
+  marginnote: MarginNoteStatus;
+}
+
 // ---- 笔记本（§8.2 / §9.1，对应 nnnu/services/notebooks/models.py） ----
 
 /** 记录类型：批一三种 + 批二补的 question（出题回合存进笔记本的记录）+ P6 的 research

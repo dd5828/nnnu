@@ -52,6 +52,17 @@ tool_descriptions:
   list_cli_apps: "查看命令行应用：不带参数列已装的应用及其参数模板；带 query 搜目录（还没装的也能搜到，可以建议用户去装）。要跑某个本机程序、但不确定装没装/参数怎么填时先查它。"
   run_cli_app: "跑一件已装好的命令行应用（app 填 id，args 按 list_cli_apps 给的参数模板填）。转码、格式转换、抽帧、PDF 处理这类「用户要的是一份产出文件」的活用它；要用没装的应用，先告诉用户去 CLI 应用页装。所有路径相对沙箱工作目录（data/user/workspace）。"
   consult_subagent: "把一件编码任务交给本机的编码 AI 子代理（Claude Code）去做，等它给出结论。写代码、改工程、读一整个仓库、跑命令验证这类「要动真文件、要跑好几轮」的活交给它；简单问答、你当场就能答的别转手。task 里把目标、要动的目录/文件和期望产出写全——它看不到本回合的对话。它跑起来要几分钟，过程会显示在这次调用那张卡里；同一会话里再找它，它会记得上次说过的话。"
+  obsidian_list: "列出已挂载 Obsidian 库里的笔记（可按子目录过滤）。用户问「我的 Obsidian 里有什么」「找找某篇笔记」时先用它。"
+  obsidian_read: "读取 Obsidian 库里一篇笔记的全文。回答涉及用户自己的笔记、或需要引用笔记原文时用它。"
+  obsidian_write: "把 Markdown 写回用户的 Obsidian 库（overwrite 覆盖、append 追加）。只有用户明确要求保存/记录/追加到笔记时才调用；追加不可撤销，目标笔记必须由用户点名。"
+  ima_browse: "浏览腾讯 IMA 知识库的内容：根目录或某个文件夹下的文档与子文件夹。用户问「IMA 里有什么」「某个文件夹里有什么」时用它（检索只能回答命中的条目，清点要靠浏览）。"
+  ima_search: "在腾讯 IMA 知识库里做检索，返回命中文档及高亮片段。回答涉及用户 IMA 资料时优先用它。"
+  ima_read: "读取腾讯 IMA 知识库里一条素材的正文（media_id 来自 ima_browse / ima_search）。检索片段不够回答时用它；图片、音视频等没有可读正文的素材会明确说明。"
+  ima_write_note: "把 Markdown 写进用户的腾讯 IMA 账户：默认新建笔记，给了 note_id 则追加。只有用户明确要求保存/写回 IMA 时才调用；追加不可撤销，目标笔记必须由用户点名。"
+  marginnote_search: "搜索用户已同步到本机的 MarginNote 4 数据（摘录、卡片、脑图节点、文档、评论），返回带片段的命中。回答涉及用户 MarginNote 阅读笔记时先用它找位置。"
+  marginnote_list: "列出已同步的 MarginNote 4 对象，可按类型或来源文档过滤。没有明确检索词、想先了解结构时用它。"
+  marginnote_read: "按 object_id 读取一条 MarginNote 4 对象的完整内容（标题、正文、摘录、标签、关系、来源文档与页码）。"
+  marginnote_links: "查一条 MarginNote 4 对象的关系：它指向哪些对象、哪些对象指向它（脑图父子关系、卡片链接）。"
 # 工具卡上的成本/限制提示（§7.2）：设置页「工具目录」按当前语言取用
 tool_cost_hints:
   web_search: "联网搜索（按提供商计费/耗时）"
@@ -78,3 +89,5 @@ tool_cost_hints:
   list_cli_apps: "读本地目录与安装记录（只读，零额外调用）"
   run_cli_app: "在本机跑已装程序（受沙箱超时与输出上限约束；长任务慢）"
   consult_subagent: "起一个本机编码 AI 干活（以你的用户权限读写文件；动辄几分钟，可随时停）"
+  obsidian_write: "直接写用户的 Obsidian vault（只写 .md，路径越界会被拒绝）"
+  ima_write_note: "写用户的腾讯 IMA 笔记（新建或追加，消耗 IMA API 额度）"

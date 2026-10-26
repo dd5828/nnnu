@@ -29,6 +29,8 @@ DATA_SUBDIRS: tuple[str, ...] = (
     "user/agents",  # 子代理连接配置（§7.12）
     "user/agents/imports",  # 导入的第三方 CLI 历史会话正文（每会话一个 jsonl）
     "user/knowledge",
+    "user/external-libs",  # Obsidian 挂载点 / IMA 配置索引 / MarginNote 接收库（§7.9 P14）
+    "user/external-libs/marginnote",
     "user/renders",
     "user/uploads",
     "user/workspace",
@@ -86,6 +88,7 @@ def register_builtins() -> None:
     from nnnu.tools.builtin.code_execution import CodeExecutionTool
     from nnnu.tools.builtin.cron_tool import CronTool
     from nnnu.tools.builtin.exec_tool import ExecTool
+    from nnnu.tools.builtin.external_lib_tools import ALL_EXTERNAL_LIB_TOOLS
     from nnnu.tools.builtin.file_tools import (
         ListWorkspaceTool,
         ReadWorkspaceFileTool,
@@ -144,6 +147,9 @@ def register_builtins() -> None:
     get_tool_registry().register(RunCliAppTool())
     # 子代理咨询（§7.12）：配了至少一条连接才挂（CONTEXT_GATED 门键 = 工具名）
     get_tool_registry().register(ConsultSubagentTool())
+    # 外部库（§7.9 P14）：Obsidian / IMA / MarginNote 各自挂载/配置/配对后自动出现
+    for external_tool_class in ALL_EXTERNAL_LIB_TOOLS:
+        get_tool_registry().register(external_tool_class())
     # videogen 不注册：只有友好报错的桩（§7.2 未交付），挂上去等于给模型一个
     # 永远失败的工具，白烧一轮调用。VideoGenTool 类与 media.generate_video 桩
     # 保留，后续阶段接上真实端点时在这里加回 register(VideoGenTool())。

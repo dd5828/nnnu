@@ -62,6 +62,7 @@ class LoadedIndex:
 
 class VectorEngine(BaseEngine):
     engine_id = "vector"
+    supported_modes = ("vector", "hybrid", "auto")
 
     def __init__(self) -> None:
         # 进程内缓存：index_dir → (mtime 令牌, 索引)。活跃版本切换后令牌变化自然失效。

@@ -277,12 +277,71 @@ async def test_reindex_and_cancel(client, tmp_path):
     assert (await client.post("/api/v1/kbs/kb-ffffffff/reindex")).status_code == 404
 
 
-async def test_sources_not_implemented(client):
-    kb_id = (await _create(client))["id"]
-    for method in ("get", "put"):
-        response = await getattr(client, method)(f"/api/v1/kbs/{kb_id}/sources")
-        assert response.status_code == 501
-        assert response.json()["error"]["code"] == "not_implemented"
+async def test_engine_catalog_and_pageindex_switch(client, tmp_path):
+    """P14：引擎目录、按引擎建库、切换引擎后台重建、旧版本窗口内仍可查。"""
+    engines = (await client.get("/api/v1/kbs/engines")).json()["engines"]
+    ids = [item["id"] for item in engines]
+    assert ids[:2] == ["vector", "pageindex"]
+    assert {item["id"] for item in engines} == {"vector", "pageindex", "lightrag", "graphrag"}
+    vector = next(item for item in engines if item["id"] == "vector")
+    assert vector["available"] is True and vector["needs_embeddings"] is True
+
+    created = await client.post("/api/v1/kbs", json={"name": "页索引库", "engine": "pageindex"})
+    assert created.status_code == 200, created.text
+    kb_id = created.json()["id"]
+    assert created.json()["engine"] == "pageindex"
+    doc = (
+        await _upload(client, kb_id, "信号.pdf", _pdf(tmp_path / "a.pdf", 2), "application/pdf")
+    ).json()
+    manifest = await _wait_ready(client, kb_id)
+    assert manifest["status"] == "ready"
+    assert manifest["versions"][-1]["engine"] == "pageindex"
+
+    hits = (await client.post(f"/api/v1/kbs/{kb_id}/search", json={"query": "傅里叶变换"})).json()
+    assert hits["hits"]
+    assert hits["hits"][0]["metadata"]["page_id"].startswith(doc["doc_id"])
+
+    # vector 引擎不认 local/global 这类图谱模式
+    bad_mode = await client.post(
+        f"/api/v1/kbs/{kb_id}/search", json={"query": "傅里叶变换", "mode": "local"}
+    )
+    assert bad_mode.status_code == 422
+    assert bad_mode.json()["error"]["code"] == "invalid_mode"
+
+    switched = await client.put(f"/api/v1/kbs/{kb_id}/engine", json={"engine": "vector"})
+    assert switched.status_code == 200, switched.text
+    assert switched.json()["engine"] == "vector"
+    # 重建期间活跃版本仍是 pageindex 那一版，查询照常
+    during = await client.post(f"/api/v1/kbs/{kb_id}/search", json={"query": "傅里叶变换"})
+    assert during.status_code == 200
+    assert during.json()["hits"]
+    manifest = await _wait_ready(client, kb_id)
+    assert manifest["active_version"] == 2
+    assert manifest["versions"][-1]["engine"] == "vector"
+
+    missing = await client.put("/api/v1/kbs/kb-ffffffff/engine", json={"engine": "vector"})
+    assert missing.status_code == 404
+    unknown = await client.put(f"/api/v1/kbs/{kb_id}/engine", json={"engine": "nope"})
+    assert unknown.status_code == 422
+    assert unknown.json()["error"]["code"] == "engine_unavailable"
+
+
+async def test_unavailable_graph_engine_is_rejected_with_reason(client):
+    engines = {
+        item["id"]: item for item in (await client.get("/api/v1/kbs/engines")).json()["engines"]
+    }
+    for engine_id in ("lightrag", "graphrag"):
+        info = engines[engine_id]
+        response = await client.post(
+            "/api/v1/kbs", json={"name": f"图库-{engine_id}", "engine": engine_id}
+        )
+        if info["available"]:
+            assert response.status_code == 200, response.text
+            assert response.json()["engine"] == engine_id
+        else:
+            assert response.status_code == 422
+            assert response.json()["error"]["code"] == "engine_unavailable"
+            assert "pip install" in response.json()["error"]["message"]
 
 
 async def test_unknown_kb_endpoints_404(client):

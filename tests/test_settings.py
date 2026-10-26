@@ -380,6 +380,7 @@ KB_DEFAULTS = {
     "chunk_overlap": 50,
     "embedding_batch_size": 32,
     "parse_engine": "",
+    "ima_knowledge_base_id": "",
 }
 MODELS_PATH = ("data", "user", "settings", "models.json")
 
@@ -396,11 +397,17 @@ def test_kb_area_defaults(svc):
 
 
 async def test_kb_fields_are_reindex_effect(client):
-    """切块/批量参数改了不会自动重排索引：前端据此提示「需要重建索引」。"""
+    """切块/批量参数改了不会自动重排索引：前端据此提示「需要重建索引」。
+
+    P14 的 GitHub token / IMA 凭证是 secret（instant），不属于索引参数；
+    IMA 知识库 ID 虽然是普通配置，也不影响索引，单独排除。
+    """
     resp = await client.get("/api/v1/settings/kb")
-    fields = resp.json()["fields"]
-    assert [f["key"] for f in fields] == list(KB_DEFAULTS)
-    assert {f["effect"] for f in fields} == {"reindex"}
+    fields = {f["key"]: f for f in resp.json()["fields"]}
+    non_index = {"github_token", "ima_knowledge_base_id", "ima_client_id", "ima_api_key"}
+    assert set(fields) == {*KB_DEFAULTS, *non_index}
+    assert {fields[key]["effect"] for key in non_index} == {"instant"}
+    assert {f["effect"] for key, f in fields.items() if key not in non_index} == {"reindex"}
 
 
 def test_kb_range_validation(svc):

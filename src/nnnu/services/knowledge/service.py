@@ -54,9 +54,11 @@ from nnnu.services.knowledge.types import (
     KbVersion,
 )
 from nnnu.services.parsing.service import ParsedDocument, parse_document
-from nnnu.services.rag.base import BaseEngine, Chunk, Hit
+from nnnu.services.rag.base import BaseEngine, Chunk, EngineUnavailable, Hit
 from nnnu.services.rag.chunking import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE, chunk_document
+from nnnu.services.rag.pipelines.graph_common import EngineProcessError
 from nnnu.services.rag.pipelines.vector import VectorEngine
+from nnnu.services.rag.registry import DEFAULT_ENGINE, build_engine, ensure_engine_available
 from nnnu.services.rag.rrf import rrf_fuse
 
 logger = logging.getLogger(__name__)
@@ -70,6 +72,7 @@ REBUILD_RETRY = "retry"
 # 知识库里图片没有意义（索引不了像素），白名单 = 附件白名单 − image/*
 KB_MIME_WHITELIST = frozenset(mime for mime in ALLOWED_MIMES if not mime.startswith("image/"))
 PROGRESS_WRITE_INTERVAL_S = 0.2  # 进度写盘节流：轮询 800ms，写太勤没意义
+BUILD_STEP_POLL_S = 0.5  # 等引擎写索引时多久看一眼取消标志（图谱子进程要杀得掉）
 # 活跃版本之外保留的旧版本个数。重建/增量每跑一次就落一个完整索引目录（每版几十 MB
 # 起），全留着就是磁盘泄漏；留一个够回退排查（新索引召回变差时能拿旧版对比），再往前的删。
 KEEP_OLD_VERSIONS = 1
@@ -89,6 +92,9 @@ class KBService:
     ) -> None:
         self._data_root = Path(data_root)
         self._engine = engine or VectorEngine()
+        # engine_id → 实例。vector 的默认实例可由测试注入（沿用 _engine 老口子）；
+        # 其余引擎按需构造，构造本身不 import 重依赖（见各引擎模块）。
+        self._engines: dict[str, BaseEngine] = {"vector": self._engine}
         self._embedder = embedder or get_embedding_service()
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._cancel: dict[str, Event] = {}
@@ -96,6 +102,11 @@ class KBService:
         self._rebuild: dict[str, str] = {}  # kb_id → REBUILD_*（下一次构建生效）
 
     # ================= 读 =================
+
+    @property
+    def data_root(self) -> Path:
+        """数据根（外部源服务要按 kb_id 找 sources.json，避免访问私有字段）。"""
+        return self._data_root
 
     def list_kbs(self) -> list[KbManifest]:
         manifests = [
@@ -113,6 +124,24 @@ class KBService:
     def has_ready_kb(self) -> bool:
         """挂不挂 rag 工具的判据：至少有一个库真的能搜（ready 且有活跃版本）。"""
         return any(item.status == KB_READY and item.active_version > 0 for item in self.list_kbs())
+
+    # ---- 引擎 ----
+
+    def engine_for(self, engine_id: str) -> BaseEngine:
+        """按 engine_id 取引擎实例（同 id 只建一次，缓存随实例走）。"""
+        engine = self._engines.get(engine_id)
+        if engine is None:
+            engine = build_engine(engine_id)
+            self._engines[engine_id] = engine
+        return engine
+
+    @staticmethod
+    def version_engine(manifest: KbManifest, version: int) -> str:
+        """某个版本是谁建的；老 manifest 没有 engine 字段时按 vector 处理。"""
+        for item in manifest.versions:
+            if item.version == version:
+                return item.engine or "vector"
+        return manifest.engine or DEFAULT_ENGINE
 
     def doc_file(self, kb_id: str, doc_id: str) -> Path | None:
         """原始文件路径（阅读器用）；文档不存在或文件没了返回 None。"""
@@ -137,21 +166,26 @@ class KBService:
 
     # ================= 建/删 =================
 
-    async def create_kb(self, name: str) -> KbManifest:
+    async def create_kb(self, name: str, *, engine: str = DEFAULT_ENGINE) -> KbManifest:
         clean = store.validate_kb_name(name)
+        try:
+            ensure_engine_available(engine)
+        except EngineUnavailable as exc:
+            raise KBError(str(exc)) from exc
         kb_id = new_id("kb")
         directory = store.kb_dir(self._data_root, kb_id)
         directory.mkdir(parents=True, exist_ok=True)
         manifest = KbManifest(
             id=kb_id,
             name=self._unique_name(clean),
+            engine=engine,
             status=KB_CREATING,
         )
         store.write_manifest(self._data_root, manifest)
         # 空库没有待办：创建是一瞬间的事，直接落到 ready（首次上传才会进 indexing）
         manifest.status = KB_READY
         store.write_manifest(self._data_root, manifest)
-        audit_log("kb_create", kb_id=kb_id, name=manifest.name)
+        audit_log("kb_create", kb_id=kb_id, name=manifest.name, engine=engine)
         return manifest
 
     async def delete_kb(self, kb_id: str) -> bool:
@@ -160,6 +194,10 @@ class KBService:
             return False
         await self.cancel_build(kb_id)
         await self.wait_idle(kb_id)
+        for version in manifest.versions:
+            index_dir = store.version_dir(self._data_root, kb_id, version.version)
+            for engine in self._engines.values():
+                engine.invalidate(index_dir)
         store.remove_tree(store.kb_dir(self._data_root, kb_id))
         uploads = self._data_root / "user" / "uploads" / "kb" / kb_id
         store.remove_tree(uploads)
@@ -167,8 +205,24 @@ class KBService:
         audit_log("kb_delete", kb_id=kb_id, name=manifest.name, doc_count=len(manifest.docs))
         return True
 
-    async def add_doc(self, kb_id: str, filename: str, content: bytes, mime: str | None) -> KbDoc:
-        """落盘 + 记账 + 触发构建；返回文档记录（status 此刻是 parsing）。"""
+    async def add_doc(
+        self,
+        kb_id: str,
+        filename: str,
+        content: bytes,
+        mime: str | None,
+        *,
+        source_kind: str = "",
+        source_id: str = "",
+        source_path: str = "",
+        remote_sha: str = "",
+        kick: bool = True,
+    ) -> KbDoc:
+        """落盘 + 记账 + 触发构建；返回文档记录（status 此刻是 parsing）。
+
+        `kick=False` 给批量导入用（GitHub 源一次同步几十个文件）：全部记账完
+        再统一踢一脚，否则每个文件都会单独触发一轮构建。
+        """
         if not content:
             raise KBError("文件是空的")
         if len(content) > MAX_KB_UPLOAD_BYTES:
@@ -195,6 +249,10 @@ class KBService:
             fingerprint=f"sha256:{_sha256(content)}",
             status=DOC_PARSING,
             note="排队等待索引",
+            source_kind=source_kind,
+            source_id=source_id,
+            source_path=source_path,
+            remote_sha=remote_sha,
         )
         async with self._lock(kb_id):
             manifest = self.get_kb(kb_id)
@@ -205,8 +263,73 @@ class KBService:
             manifest.error = None
             store.write_manifest(self._data_root, manifest)
         audit_log("kb_doc_add", kb_id=kb_id, doc_id=doc_id, filename=doc.filename, size=doc.size)
-        self._kick(kb_id)
+        if kick:
+            self._kick(kb_id)
         return doc
+
+    async def replace_doc(
+        self,
+        kb_id: str,
+        doc_id: str,
+        filename: str,
+        content: bytes,
+        mime: str | None,
+        *,
+        remote_sha: str = "",
+        kick: bool = True,
+    ) -> KbDoc:
+        """外部源更新了一份已有文档：原地换内容并重新排队索引。
+
+        不建新文档：保留 doc_id，引用/收藏不失效；fingerprint 变了，解析缓存
+        自然作废。旧内容在新版本就绪前仍留在活跃索引里（和普通重建同一条协议）。
+        """
+        if not content:
+            raise KBError("文件是空的")
+        if len(content) > MAX_KB_UPLOAD_BYTES:
+            raise KBError(f"文件超过 {MAX_KB_UPLOAD_BYTES // (1024 * 1024)}MB 上限")
+        normalized = normalize_mime(filename, mime)
+        if normalized is None or normalized not in KB_MIME_WHITELIST:
+            raise KBError(f"知识库不支持这种文件类型：{filename}")
+        manifest = self.get_kb(kb_id)
+        doc = manifest.doc(doc_id) if manifest else None
+        if doc is None or doc.status == DOC_DELETED:
+            raise KBError("文档不存在")
+        directory = store.upload_dir(self._data_root, kb_id, doc_id)
+        directory.mkdir(parents=True, exist_ok=True)
+        stored_name = doc.stored_name or f"original{extension_for(filename, normalized)}"
+        tmp = directory / (stored_name + ".tmp")
+        tmp.write_bytes(content)
+        tmp.replace(directory / stored_name)
+
+        async with self._lock(kb_id):
+            manifest = self.get_kb(kb_id)
+            doc = manifest.doc(doc_id) if manifest else None
+            if manifest is None or doc is None or doc.status == DOC_DELETED:
+                raise KBError("文档不存在")
+            doc.filename = Path(filename).name[:200]
+            doc.stored_name = stored_name
+            doc.mime = normalized
+            doc.size = len(content)
+            doc.fingerprint = f"sha256:{_sha256(content)}"
+            doc.status = DOC_PARSING
+            doc.page_count = 0
+            doc.chunk_count = 0
+            doc.error = None
+            doc.progress = 0.0
+            doc.note = "排队等待索引"
+            doc.remote_sha = remote_sha
+            doc.updated_at = time.time()
+            manifest.status = KB_INDEXING
+            manifest.error = None
+            store.write_manifest(self._data_root, manifest)
+        audit_log("kb_doc_replace", kb_id=kb_id, doc_id=doc_id, filename=doc.filename)
+        if kick:
+            self._kick(kb_id)
+        return doc
+
+    def kick_build(self, kb_id: str) -> None:
+        """批量导入收尾：一次性启动构建（配合 add_doc/replace_doc 的 kick=False）。"""
+        self._kick(kb_id)
 
     async def delete_doc(self, kb_id: str, doc_id: str) -> bool:
         """单文档删除（含 error 态）：置 deleted 即从检索里消失，不重写索引。"""
@@ -238,6 +361,12 @@ class KBService:
         manifest = self.get_kb(kb_id)
         if manifest is None:
             raise KBError("知识库不存在")
+        if self.version_engine(manifest, manifest.active_version) != (
+            manifest.engine or DEFAULT_ENGINE
+        ):
+            # 换过引擎但新版本没建成功：普通「重试失败文档」修不好格式不一致，
+            # 自动升级成整库重建
+            force = True
         self._rebuild[kb_id] = REBUILD_ALL if force else REBUILD_RETRY
         async with self._lock(kb_id):
             manifest = self.get_kb(kb_id)
@@ -248,6 +377,36 @@ class KBService:
             store.write_manifest(self._data_root, manifest)
         audit_log("kb_reindex", kb_id=kb_id, force=force)
         self._kick(kb_id)
+        return manifest
+
+    async def set_engine(self, kb_id: str, engine: str) -> KbManifest:
+        """换检索引擎：改 manifest.engine，然后强制重建一个版本。
+
+        旧版本的 engine 记在 KbVersion 里，构建期间查询仍按旧版本的引擎走
+        （见 search），所以「换引擎」不会出现“新引擎读旧格式”的空窗；构建失败
+        也只是 manifest.engine 停在新值，活跃版本照旧能用，重试即可。
+        """
+        try:
+            ensure_engine_available(engine)
+        except EngineUnavailable as exc:
+            raise KBError(str(exc)) from exc
+        manifest = self.get_kb(kb_id)
+        if manifest is None:
+            raise KBError("知识库不存在")
+        if manifest.engine == engine:
+            return manifest
+        if kb_id in self._running_tasks():
+            raise KBError("这个库正在构建，等构建结束（或先取消）再换引擎")
+        async with self._lock(kb_id):
+            manifest = self.get_kb(kb_id)
+            if manifest is None:
+                raise KBError("知识库不存在")
+            manifest.engine = engine
+            manifest.error = None
+            store.write_manifest(self._data_root, manifest)
+        audit_log("kb_engine_set", kb_id=kb_id, engine=engine)
+        if manifest.live_docs():
+            return await self.reindex(kb_id, force=True)
         return manifest
 
     async def cancel_build(self, kb_id: str) -> bool:
@@ -280,8 +439,15 @@ class KBService:
         index_dir = store.version_dir(self._data_root, kb_id, manifest.active_version)
         if not store.is_version_ready(index_dir):
             return []
-        embedder = await self._embedder.provider()
-        hits = await self._engine.query(
+        engine_id = self.version_engine(manifest, manifest.active_version)
+        try:
+            engine = self.engine_for(engine_id)
+        except EngineUnavailable as exc:
+            # 建库时装了、后来卸了：宁可返回空也不把整个聊天打断；界面重建时会报原因
+            logger.warning("知识库 %s 的引擎 %s 当前不可用：%s", kb_id, engine_id, exc)
+            return []
+        embedder = await self._embedder.provider() if engine.needs_embeddings else None
+        hits = await engine.query(
             index_dir,
             query,
             kb_id=kb_id,
@@ -312,9 +478,21 @@ class KBService:
         ]
         if not targets or not query.strip():
             return []
-        per_kb = await asyncio.gather(
-            *(self.search(item.id, query, mode=mode, top_k=top_k) for item in targets)
+        outcomes = await asyncio.gather(
+            *(self.search(item.id, query, mode=mode, top_k=top_k) for item in targets),
+            return_exceptions=True,
         )
+        per_kb: list[list[Hit]] = []
+        for manifest, outcome in zip(targets, outcomes, strict=True):
+            if isinstance(outcome, BaseException):
+                # 单个库的引擎坏了（图谱子进程失败/依赖被卸）不该让整个聊天搜不了；
+                # 嵌入端点故障是全局问题，仍然往上抛，让工具给出明确提示
+                if not isinstance(outcome, (EngineUnavailable, EngineProcessError)):
+                    raise outcome
+                logger.warning("知识库 %s 检索失败，已跳过：%s", manifest.id, outcome)
+                per_kb.append([])
+            else:
+                per_kb.append(outcome)
         keyed: dict[str, Hit] = {}
         entries: list[_KbList] = []
         for manifest, hits in zip(targets, per_kb, strict=True):
@@ -495,6 +673,15 @@ class KBService:
         self, kb_id: str, version: int, doc_ids: list[str], *, reuse: bool
     ) -> bool:
         """构建一个版本；返回 False 表示被取消（半成品已丢弃、状态已恢复）。"""
+        manifest = self.get_kb(kb_id)
+        if manifest is None:
+            return False
+        engine_id = manifest.engine or DEFAULT_ENGINE
+        try:
+            engine = self.engine_for(engine_id)
+        except EngineUnavailable as exc:
+            raise KBError(str(exc)) from exc
+        compute_vectors = engine.needs_embeddings
         index_dir = store.version_dir(self._data_root, kb_id, version)
         index_dir.mkdir(parents=True, exist_ok=True)
         cancel = self._cancel.setdefault(kb_id, Event())
@@ -505,7 +692,7 @@ class KBService:
         blocks: list[np.ndarray] = []
         dim = 0
         if reuse:
-            old = self._reuse_base(kb_id, doc_ids)
+            old = self._reuse_base(kb_id, doc_ids, engine)
             if old is not None:
                 chunks, blocks, dim = old
 
@@ -517,13 +704,20 @@ class KBService:
                 doc = manifest.doc(doc_id) if manifest else None
                 if doc is None or doc.status == DOC_DELETED:
                     continue  # 构建途中被删掉：不进新版本
-                made = await self._process_doc(kb_id, doc, chunk_size=chunk_size, overlap=overlap)
+                made = await self._process_doc(
+                    kb_id,
+                    doc,
+                    chunk_size=chunk_size,
+                    overlap=overlap,
+                    compute_vectors=compute_vectors,
+                )
                 if made is None:
                     continue
                 doc_chunks, doc_vectors = made
                 chunks.extend(doc_chunks)
-                blocks.append(doc_vectors)
-                dim = doc_vectors.shape[1] if doc_vectors.size else dim
+                if doc_vectors is not None:
+                    blocks.append(doc_vectors)
+                    dim = doc_vectors.shape[1] if doc_vectors.size else dim
         except BuildCancelled:
             self._abort_build(kb_id, version)
             return False
@@ -533,18 +727,34 @@ class KBService:
             return False
 
         matrix = np.vstack(blocks) if blocks else np.zeros((0, dim), dtype=np.float32)
-        if len(chunks) != matrix.shape[0]:
+        if compute_vectors and len(chunks) != matrix.shape[0]:
             raise KBError(f"块数 {len(chunks)} 与向量行数 {matrix.shape[0]} 不一致，拒绝写索引")
-        await self._engine.write_index(index_dir, chunks=chunks, vectors=matrix, dim=dim)
+        write_task = asyncio.create_task(
+            engine.write_index(index_dir, chunks=chunks, vectors=matrix, dim=dim)
+        )
+        while not write_task.done():
+            # 图谱建库是分钟级子进程：轮询取消标志，取消时连带杀掉子进程
+            await asyncio.wait({write_task}, timeout=BUILD_STEP_POLL_S)
+            if not write_task.done() and cancel.is_set():
+                write_task.cancel()
+                try:
+                    await write_task
+                except BaseException:
+                    pass  # 取消/子进程被杀都是预期结果，这里只等它收干净
+                self._abort_build(kb_id, version)
+                return False
+        write_task.result()  # 引擎的异常照原样交给 worker 处理
+        signature = self._embedder.signature() if compute_vectors else ""
         # 先落 ready 标志，再切指针——崩溃窗口里指针永远指向完整版本（验收 C）
         store.write_ready_meta(
             index_dir,
             {
                 "version": version,
+                "engine": engine_id,
                 "dim": dim,
                 "chunk_count": len(chunks),
                 "doc_count": len({chunk.doc_id for chunk in chunks}),
-                "embedding_signature": self._embedder.signature(),
+                "embedding_signature": signature,
                 "created_at": time.time(),
             },
         )
@@ -560,7 +770,8 @@ class KBService:
                     doc_count=len({chunk.doc_id for chunk in chunks}),
                     chunk_count=len(chunks),
                     dim=dim,
-                    embedding_signature=self._embedder.signature(),
+                    engine=engine_id,
+                    embedding_signature=signature,
                 )
             )
             manifest.active_version = version
@@ -585,33 +796,35 @@ class KBService:
         removed = store.prune_versions_except(self._data_root, manifest.id, keep=keep)
         if removed:
             manifest.versions = [item for item in manifest.versions if item.version in keep]
-            if isinstance(self._engine, VectorEngine):
-                # 引擎按目录缓存整份索引（几百 MB 级），目录删了缓存也一并丢
-                for version in removed:
-                    self._engine.invalidate(
-                        store.version_dir(self._data_root, manifest.id, version)
-                    )
+            # 引擎按目录缓存整份索引（几百 MB 级），目录删了缓存也一并丢
+            for version in removed:
+                index_dir = store.version_dir(self._data_root, manifest.id, version)
+                for engine in self._engines.values():
+                    engine.invalidate(index_dir)
         return removed
 
     def _reuse_base(
-        self, kb_id: str, doc_ids: list[str]
+        self, kb_id: str, doc_ids: list[str], engine: BaseEngine
     ) -> tuple[list[Chunk], list[np.ndarray], int] | None:
         """复用旧版本里「不在本次构建名单、且状态是 done」的块与向量。
 
         增量新增文档时，没必要把整库重新嵌入一遍；只有强制重建（换 chunk
         参数）才全量重来。
 
-        「取回旧版本里的块」是 vector 引擎的能力（load 不在 BaseEngine 契约里：
-        graphrag 之类的引擎结构完全不同，硬塞进契约只会让 P14 变形）。换引擎
-        就是不增量——退化成全量重建，不是错。
+        「取回旧版本里的块」是 vector/pageindex 的能力（load 不在 BaseEngine
+        契约里：graphrag 之类的引擎结构完全不同，硬塞进契约只会让 P14 变形）。
+        换引擎/换版本引擎时不增量——退化成全量重建，不是错。
         """
-        if not isinstance(self._engine, VectorEngine):
+        load = getattr(engine, "load", None)
+        if not callable(load):
             return None
         manifest = self.get_kb(kb_id)
         if manifest is None or manifest.active_version <= 0:
             return None
         old_dir = store.version_dir(self._data_root, kb_id, manifest.active_version)
         if not store.is_version_ready(old_dir):
+            return None
+        if self.version_engine(manifest, manifest.active_version) != engine.engine_id:
             return None
         fresh = set(doc_ids)
         keep = {
@@ -621,7 +834,7 @@ class KBService:
         }
         if not keep:
             return [], [], 0
-        loaded = self._engine.load(old_dir)
+        loaded = load(old_dir)
         rows = [index for index, chunk in enumerate(loaded.chunks) if chunk.doc_id in keep]
         if not rows:
             return [], [], 0
@@ -629,8 +842,14 @@ class KBService:
         return [loaded.chunks[index] for index in rows], [vectors], int(vectors.shape[1])
 
     async def _process_doc(
-        self, kb_id: str, doc: KbDoc, *, chunk_size: int, overlap: int
-    ) -> tuple[list[Chunk], np.ndarray] | None:
+        self,
+        kb_id: str,
+        doc: KbDoc,
+        *,
+        chunk_size: int,
+        overlap: int,
+        compute_vectors: bool = True,
+    ) -> tuple[list[Chunk], np.ndarray | None] | None:
         """解析 → 切块 → 嵌入；失败把文档标 error 并返回 None（不拖垮整库）。"""
         if not self._update_doc(
             kb_id,
@@ -668,6 +887,21 @@ class KBService:
                 page_count=parsed.page_count,
             )
             return None
+
+        if not compute_vectors:
+            # 图谱引擎自己嵌入：外层只管解析/切块，整库建图在 write_index 里做
+            if not self._update_doc(
+                kb_id,
+                doc.doc_id,
+                status=DOC_DONE,
+                progress=1.0,
+                note="",
+                error=None,
+                chunk_count=len(chunks),
+                page_count=parsed.page_count,
+            ):
+                return None
+            return chunks, None
 
         self._update_doc(
             kb_id,
